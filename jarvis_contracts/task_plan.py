@@ -32,6 +32,18 @@ class PlanPreview:
     risks: object
 
     @property
+    def read_only_count(self) -> int:
+        return sum(value is ActionRisk.READ_ONLY for value in self.risks.values())
+
+    @property
+    def approval_count(self) -> int:
+        return sum(value is ActionRisk.REQUIRES_APPROVAL for value in self.risks.values())
+
+    @property
+    def blocked_count(self) -> int:
+        return sum(value is ActionRisk.BLOCKED for value in self.risks.values())
+
+    @property
     def can_execute(self) -> bool:
         # Even a read-only plan must be dispatched by a separate authorised
         # executor that verifies source identity, capabilities and deadlines.
@@ -57,7 +69,7 @@ class PlanCompiler:
             raise InvalidPlan("missing or unknown plan step fields")
         ident, action, dependencies = raw["id"], raw["action"], raw["dependsOn"]
         if (type(ident) is not str or cls._IDENTIFIER.fullmatch(ident) is None
-                or type(action) is not str or cls._ACTION.fullmatch(action) is None
+                or type(action) is not str or len(action) > 64 or cls._ACTION.fullmatch(action) is None
                 or type(dependencies) is not list or len(dependencies) > 50
                 or any(type(d) is not str or cls._IDENTIFIER.fullmatch(d) is None
                        for d in dependencies)
