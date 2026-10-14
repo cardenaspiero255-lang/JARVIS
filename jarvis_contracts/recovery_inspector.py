@@ -48,26 +48,17 @@ class RecoveryInspector:
     def inspect(self, source, key, fingerprint, *, now, deadline):
         if (type(source) is not str or _SOURCE.fullmatch(source) is None
                 or type(key) is not str or _KEY.fullmatch(key) is None
-                or type(fingerprint) is not str or
-                _FINGERPRINT.fullmatch(fingerprint) is None
+                or type(fingerprint) is not str or _FINGERPRINT.fullmatch(fingerprint) is None
                 or type(now) not in (int, float) or not math.isfinite(now)
-                or type(deadline) not in (int, float) or
-                not math.isfinite(deadline)
-                or now <= 0 or deadline <= 0 or deadline < now):
-            # Passing a request with an expired deadline is not an invalid
-            # operation input; it must return EXPIRED without side effects.
-            if (type(now) in (int, float) and type(deadline) in (int, float)
-                    and math.isfinite(now) and math.isfinite(deadline)
-                    and 0 < deadline <= now
-                    and type(source) is str and _SOURCE.fullmatch(source)
-                    and type(key) is str and _KEY.fullmatch(key)
-                    and type(fingerprint) is str and _FINGERPRINT.fullmatch(fingerprint)):
-                # Still check fingerprint collision even on an expired command.
-                self._store.get(source, key, fingerprint)
-                return ResumeAdvice(ResumeDisposition.EXPIRED)
+                or type(deadline) not in (int, float) or not math.isfinite(deadline)
+                or now <= 0 or deadline <= 0):
             raise InvalidRecoveryInput("invalid principal, key, fingerprint or clock")
 
+        # Detect a reused idempotency key even if this request is expired.
         previous = self._store.get(source, key, fingerprint)
+        if now >= deadline:
+            return ResumeAdvice(ResumeDisposition.EXPIRED)
+
         status = self._store.status(source, key)
         if status is None:
             return ResumeAdvice(ResumeDisposition.UNSEEN)
