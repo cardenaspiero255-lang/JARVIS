@@ -15,6 +15,15 @@ class DurableStore:
             source TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL,
             status TEXT NOT NULL, result TEXT, PRIMARY KEY(source, key))""")
 
+    def claim(self, source, key, fingerprint):
+        """Atomically reserve a command across processes and SQLite connections."""
+        with self.db:
+            cursor = self.db.execute(
+                "INSERT OR IGNORE INTO commands VALUES (?, ?, ?, 'uncertain', NULL)",
+                (source, key, fingerprint))
+            self._check(source, key, fingerprint)
+            return cursor.rowcount == 1
+
     def begin(self, source, key, fingerprint):
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO commands VALUES (?, ?, ?, 'uncertain', NULL)",
