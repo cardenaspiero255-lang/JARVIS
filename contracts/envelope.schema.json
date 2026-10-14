@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JarvisEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "messageId",
+    "correlationId",
+    "timestamp",
+    "source",
+    "target",
+    "type",
+    "idempotencyKey",
+    "deadline",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "messageId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
