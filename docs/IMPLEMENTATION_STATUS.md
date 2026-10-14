@@ -10,7 +10,7 @@
 - Versioned envelopes, explicit capabilities, one-use scoped approvals and durable SQLite idempotency.
 - Atomic claims and immutable completion; uncertain outcomes never automatically replay.
 - Narrow read-only retries, circuit breaking, HTTPS, forbidden credential-carrying redirects.
-- Authenticated GitHub GET client with strict path allowlist, timeout, size limits and immutable PR-head/check snapshot. Snapshot always reports unauthorizedToMerge and checkInventoryComplete=false.
+- Authenticated GitHub GET client with strict path allowlist, timeout, size limits and immutable PR-head/check snapshot. Snapshot always reports authorizedToMerge=false and checkInventoryComplete=false.
 - Parsed Sentinel v1 advisory and GameHub read-only descriptor shapes, never allowing source-provided claims to grant merge or remote execution.
 - Concurrent gateway deduplication, default-deny unknown actions, adversarial regression tests.
 - Standard-library unit and failure injection CI, plus a separate job executing the PINNED upstream Sentinel wire validator against JARVIS advisory fixtures.
