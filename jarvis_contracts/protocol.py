@@ -4,6 +4,7 @@ Not an Android executor, network transport, or authorization server.
 """
 from dataclasses import dataclass
 import json
+import threading
 from datetime import datetime, timezone
 from typing import Callable, Mapping
 from uuid import UUID
@@ -76,6 +77,7 @@ class InMemoryGateway:
         self.allowed = allowed
         self.handlers = handlers
         self._completed: dict[tuple[str, str], tuple[str, object]] = {}
+        self._lock = threading.RLock()
 
     def dispatch(self, message: Mapping[str, object], now: datetime) -> object:
         envelope = Envelope.parse(message)
@@ -87,14 +89,15 @@ class InMemoryGateway:
             raise PermissionDenied("capability not authorized")
         key = (envelope.source, envelope.idempotency_key)
         fingerprint = json.dumps({"target": envelope.target, "type": envelope.type, "payload": envelope.payload}, sort_keys=True, separators=(",", ":"))
-        if key in self._completed:
-            saved_fingerprint, saved_result = self._completed[key]
-            if saved_fingerprint != fingerprint:
-                raise ContractError("idempotency key reused for different command")
-            return saved_result
-        handler = self.handlers.get(envelope.target)
-        if handler is None:
-            raise ContractError("target unavailable")
-        result = handler(envelope)
-        self._completed[key] = (fingerprint, result)
-        return result
+        with self._lock:
+            if key in self._completed:
+                saved_fingerprint, saved_result = self._completed[key]
+                if saved_fingerprint != fingerprint:
+                    raise ContractError("idempotency key reused for different command")
+                return saved_result
+            handler = self.handlers.get(envelope.target)
+            if handler is None:
+                raise ContractError("target unavailable")
+            result = handler(envelope)
+            self._completed[key] = (fingerprint, result)
+            return result
