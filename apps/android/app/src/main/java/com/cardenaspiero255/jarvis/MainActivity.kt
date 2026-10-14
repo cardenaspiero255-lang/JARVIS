@@ -69,7 +69,7 @@ class MainActivity : Activity() {
             12f, Color.rgb(159, 161, 171)
         ).apply { setPadding(0, dp(24), 0, 0) })
 
-        val scroll = ScrollView(this).apply { fillViewport = true }
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         scroll.addView(layout)
         setContentView(scroll)
     }
