@@ -21,7 +21,7 @@ class TransportTests(unittest.TestCase):
             captured["request"] = request
             captured["timeout"] = timeout
             return Mock(__enter__=lambda self: self, __exit__=lambda *args: None,
-                        read=lambda: b'{"status":"accepted"}', status=200)
+                        read=lambda size: b'{"status":"accepted"}', status=200)
         transport = SecureTransport("https://example.test/api", lambda: "secret", opener=opener)
         self.assertEqual(transport.send({"type": "review.requested"}), {"status": "accepted"})
         self.assertEqual(captured["request"].get_header("Authorization"), "Bearer secret")
@@ -29,7 +29,7 @@ class TransportTests(unittest.TestCase):
 
     def test_rejects_non_json_response(self):
         response = Mock(__enter__=lambda self: self, __exit__=lambda *args: None,
-                        read=lambda: b"not json", status=200)
+                        read=lambda size: b"not json", status=200)
         transport = SecureTransport("https://example.test/api", lambda: "secret", opener=lambda *_args, **_kw: response)
         with self.assertRaises(TransportError):
             transport.send({"type": "review.requested"})
