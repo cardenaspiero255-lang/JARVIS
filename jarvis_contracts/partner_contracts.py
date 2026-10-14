@@ -29,7 +29,10 @@ class SentinelAdvisory:
     verdict: str
     evidence_state: str
     finding_count: int = 0
-    authorized_to_merge: bool = False
+
+    @property
+    def authorized_to_merge(self):
+        return False
 
     @classmethod
     def from_wire(cls, data, *, repository, head_sha):
@@ -63,7 +66,10 @@ class GameHubToolManifest:
     tool_id: str
     kind: str
     read_only: bool
-    can_execute_remotely: bool = False
+
+    @property
+    def can_execute_remotely(self):
+        return False
 
     @classmethod
     def from_descriptor(cls, descriptor):
