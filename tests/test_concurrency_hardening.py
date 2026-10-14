@@ -27,16 +27,29 @@ class HardeningTests(unittest.TestCase):
     def test_concurrent_claim_has_one_winner(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = tmp + "/state.db"
-            with DurableStore(path) as first, DurableStore(path) as second:
-                results = []
-                barrier = threading.Barrier(2)
-                def claim(store):
-                    barrier.wait()
-                    results.append(store.claim("alice", "k", "fingerprint"))
-                t1 = threading.Thread(target=claim, args=(first,))
-                t2 = threading.Thread(target=claim, args=(second,))
-                t1.start(); t2.start(); t1.join(); t2.join()
-                self.assertCountEqual(results, [True, False])
+            results = []
+            errors = []
+            barrier = threading.Barrier(8)
+
+            def claim():
+                try:
+                    # SQLite connections are owned by the thread that created them.
+                    with DurableStore(path) as store:
+                        barrier.wait(timeout=5)
+                        result = store.claim("alice", "k", "fingerprint")
+                        results.append(result)
+                except Exception as exc:
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=claim) for _ in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+            self.assertTrue(all(not thread.is_alive() for thread in threads))
+            self.assertEqual(errors, [])
+            self.assertEqual(results.count(True), 1)
+            self.assertEqual(results.count(False), 7)
 
     def test_sensitive_approval_is_consumed_on_dispatch(self):
         approvals = ApprovalStore()
