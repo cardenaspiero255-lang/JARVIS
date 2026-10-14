@@ -70,7 +70,7 @@ class OmegaHandsService : AccessibilityService() {
             )
             if (decision != HandsDecision.ALLOW_HOME || service == null) return false
             return try {
-                service.performGlobalAction(GLOBAL_ACTION_HOME)
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
             } catch (_: SecurityException) {
                 false
             } catch (_: IllegalStateException) {
