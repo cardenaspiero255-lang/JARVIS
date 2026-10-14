@@ -1,6 +1,6 @@
 # JARVIS OMEGA — SSS+ Architecture RFC v1
 
-Status: **PROPOSED**. Design only; integrations are NOT implemented. Related: #1.
+Status: **PROPOSED** architecture RFC. Python reference contracts, read-only adapters, durability and tests are implemented; **production partner integrations and Android executor remain unimplemented**. Related: #1. See ../IMPLEMENTATION_STATUS.md for verified evidence and blockers.
 
 ## Architectural principles
 - Hexagonal / Clean Architecture: domain and application layers never depend on Android, GitHub, LLM vendors, or partner apps.
