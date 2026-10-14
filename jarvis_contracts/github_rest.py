@@ -39,6 +39,7 @@ class GitHubRESTClient:
     def get(self, path):
         if not isinstance(path, str) or len(path) > 300:
             raise ValueError("invalid GitHub API path")
+        is_review = self._REVIEWS.fullmatch(path) is not None
         match = next((m for p in (self._PR, self._CHECKS, self._REVIEWS)
                       if (m := p.fullmatch(path)) is not None), None)
         if match is None or any(s in (".", "..") for s in match.group(1).split("/")):
@@ -73,6 +74,9 @@ class GitHubRESTClient:
             decoded = json.loads(raw)
         except (ValueError, UnicodeError) as exc:
             raise GitHubAPIError("invalid GitHub response") from exc
-        if not isinstance(decoded, dict):
+        if is_review:
+            if type(decoded) is not list or len(decoded) > 100:
+                raise GitHubAPIError("GitHub review response is not a bounded array")
+        elif type(decoded) is not dict:
             raise GitHubAPIError("GitHub response is not an object")
         return decoded
