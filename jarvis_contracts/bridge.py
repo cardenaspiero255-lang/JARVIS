@@ -67,7 +67,7 @@ class ProviderBridge:
             if self.approval_store is None:
                 raise ApprovalRequired("explicit authorization required")
             try:
-                self.approval_store.require(envelope.source, envelope.target, envelope.type,
+                self.approval_store.consume(envelope.source, envelope.target, envelope.type,
                                             fingerprint, now.timestamp())
             except ApprovalDenied as exc:
                 raise ApprovalRequired("explicit authorization required") from exc
@@ -80,7 +80,8 @@ class ProviderBridge:
         if previous is not None:
             raise ProviderFailure("operation outcome uncertain; manual reconciliation required")
         # Record before dispatch. Failure leaves uncertain status, preventing unsafe replay.
-        self.durable_store.begin(envelope.source, envelope.idempotency_key, fingerprint)
+        if not self.durable_store.claim(envelope.source, envelope.idempotency_key, fingerprint):
+            raise ProviderFailure("operation already claimed; manual reconciliation required")
         result = self.gateway.dispatch(message, now)
         self.durable_store.complete(envelope.source, envelope.idempotency_key, fingerprint, result)
         return result
