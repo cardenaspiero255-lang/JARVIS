@@ -26,8 +26,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class GitHubRESTClient:
     _REPO = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
     _PR = re.compile(rf"^/repos/({_REPO})/pulls/([1-9][0-9]*)$")
-    _CHECKS = re.compile(rf"^/repos/({_REPO})/commits/([a-f0-9]{{40}})/check-runs\?per_page=100$")
-    _REVIEWS = re.compile(rf"^/repos/({_REPO})/pulls/([1-9][0-9]*)/reviews\?per_page=100$")
+    _CHECKS = re.compile(rf"^/repos/({_REPO})/commits/([a-f0-9]{{40}})/check-runs\?per_page=100(?:&page=(?:[1-9]|10))?$")
+    _REVIEWS = re.compile(rf"^/repos/({_REPO})/pulls/([1-9][0-9]*)/reviews\?per_page=100(?:&page=(?:[1-9]|10))?$")
 
     def __init__(self, token_provider, *, timeout=10.0, opener=None):
         if not callable(token_provider) or not 0 < timeout <= 60:
