@@ -11,14 +11,17 @@ automatización general ni lectura de pantalla.
    **Autorizar Hands — solo Inicio**.
 4. Pulsa **Ir a Inicio** para solicitar una única acción global de Android.
 5. **Parada de emergencia Hands** detiene inmediatamente nuevas acciones
-   desde JARVIS; la opción queda guardada y se recupera tras reinicios.
+   desde JARVIS. El estado se escribe en preferencias y, de forma adicional,
+   cualquier reinicio del proceso o del servicio exige volver a autorizar
+   manualmente desde la app.
 
 ## Seguridad
 
 - El servicio está protegido por BIND_ACCESSIBILITY_SERVICE; Android gestiona
   la activación o revocación del permiso del sistema.
 - El estado de ejecución está **detenido por defecto** aunque el servicio
-  esté instalado y habilitado.
+  esté instalado y habilitado. La autorización activa es exclusiva de la sesión
+  actual; se revoca cuando el proceso o servicio se reinicia.
 - Solo funciona el comando local **HOME** al pulsar un botón visible.
 - No se leen árboles de accesibilidad, texto, contraseñas ni capturas.
 - No se permiten clics automáticos, escrituras, envío de mensajes, órdenes
