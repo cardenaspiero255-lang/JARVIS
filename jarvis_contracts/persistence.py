@@ -1,6 +1,7 @@
 """SQLite-backed command journal. Unfinished operations are never replayed automatically."""
 import json
 import sqlite3
+import time
 
 
 class IdempotencyConflict(ValueError):
@@ -10,10 +11,25 @@ class IdempotencyConflict(ValueError):
 class DurableStore:
     def __init__(self, path):
         self.db = sqlite3.connect(path, timeout=10, isolation_level=None)
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS commands (
-            source TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL,
-            status TEXT NOT NULL, result TEXT, PRIMARY KEY(source, key))""")
+        try:
+            self.db.execute("PRAGMA busy_timeout=10000")
+            # Enabling WAL for the first time can race with other connections
+            # initializing the same fresh database; bounded retry is safe for
+            # this schema initialization, never for command execution.
+            for attempt in range(20):
+                try:
+                    self.db.execute("PRAGMA journal_mode=WAL")
+                    self.db.execute("""CREATE TABLE IF NOT EXISTS commands (
+                        source TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                        status TEXT NOT NULL, result TEXT, PRIMARY KEY(source, key))""")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or attempt == 19:
+                        raise
+                    time.sleep(min(0.02 * (attempt + 1), 0.2))
+        except BaseException:
+            self.db.close()
+            raise
 
     def claim(self, source, key, fingerprint):
         """Atomically reserve a command across processes and SQLite connections."""
