@@ -46,11 +46,27 @@ class DurableStore:
         return row[0] if row else None
 
     def complete(self, source, key, fingerprint, result):
+        """Commit an outcome once; never overwrite completed evidence."""
         encoded = json.dumps(result, allow_nan=False)
-        with self.db:
-            self.begin(source, key, fingerprint)
-            self.db.execute("UPDATE commands SET status='completed', result=? WHERE source=? AND key=?",
-                            (encoded, source, key))
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._check(source, key, fingerprint)
+            if existing is not None and existing[1] == "completed":
+                raise IdempotencyConflict("completed outcome is immutable")
+            if existing is None:
+                self.db.execute(
+                    "INSERT INTO commands VALUES (?, ?, ?, 'uncertain', NULL)",
+                    (source, key, fingerprint))
+            updated = self.db.execute(
+                "UPDATE commands SET status='completed', result=? "
+                "WHERE source=? AND key=? AND fingerprint=? AND status='uncertain'",
+                (encoded, source, key, fingerprint))
+            if updated.rowcount != 1:
+                raise IdempotencyConflict("cannot complete a non-pending command")
+            self.db.execute("COMMIT")
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
 
     def close(self):
         self.db.close()
