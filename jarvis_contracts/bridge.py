@@ -30,7 +30,7 @@ class ProviderBridge:
         self.handlers = handlers
         self.approved_actions = approved_actions
         self.gateway = InMemoryGateway(
-            {name: set(provider.capabilities) for name, provider in registry._providers.items()},
+            {name: set(provider[1]) for name, provider in registry.providers.items()},
             {name: self._safe_handler(handler) for name, handler in handlers.items()},
         )
 
