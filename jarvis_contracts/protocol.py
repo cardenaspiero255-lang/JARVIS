@@ -3,6 +3,7 @@
 Not an Android executor, network transport, or authorization server.
 """
 from dataclasses import dataclass
+import json
 from datetime import datetime, timezone
 from typing import Callable, Mapping
 from uuid import UUID
@@ -74,7 +75,7 @@ class InMemoryGateway:
     def __init__(self, allowed: Mapping[str, set[str]], handlers: Mapping[str, Callable[[Envelope], object]]):
         self.allowed = allowed
         self.handlers = handlers
-        self._completed: dict[tuple[str, str], object] = {}
+        self._completed: dict[tuple[str, str], tuple[str, object]] = {}
 
     def dispatch(self, message: Mapping[str, object], now: datetime) -> object:
         envelope = Envelope.parse(message)
@@ -85,11 +86,15 @@ class InMemoryGateway:
         if envelope.type not in self.allowed.get(envelope.target, set()):
             raise PermissionDenied("capability not authorized")
         key = (envelope.source, envelope.idempotency_key)
+        fingerprint = json.dumps({"target": envelope.target, "type": envelope.type, "payload": envelope.payload}, sort_keys=True, separators=(",", ":"))
         if key in self._completed:
-            return self._completed[key]
+            saved_fingerprint, saved_result = self._completed[key]
+            if saved_fingerprint != fingerprint:
+                raise ContractError("idempotency key reused for different command")
+            return saved_result
         handler = self.handlers.get(envelope.target)
         if handler is None:
             raise ContractError("target unavailable")
         result = handler(envelope)
-        self._completed[key] = result
+        self._completed[key] = (fingerprint, result)
         return result
