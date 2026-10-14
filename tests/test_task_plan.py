@@ -92,3 +92,20 @@ class PlanCompilerTests(unittest.TestCase):
         ]})
         self.assertEqual(p.risks["inspect"], ActionRisk.READ_ONLY)
         self.assertFalse(p.can_execute)
+
+    def test_action_name_has_bounded_length(self):
+        with self.assertRaises(InvalidPlan):
+            self.compiler.compile({"steps": [
+                {"id": "a", "action": "status." + "x" * 1000, "dependsOn": []}
+            ]})
+
+    def test_impact_summary_reports_risk_counts_without_permission(self):
+        preview = self.compiler.compile({"steps": [
+            {"id": "a", "action": "status.read", "dependsOn": []},
+            {"id": "b", "action": "review.requested", "dependsOn": ["a"]},
+            {"id": "c", "action": "shell.execute", "dependsOn": ["b"]},
+        ]})
+        self.assertEqual(preview.read_only_count, 1)
+        self.assertEqual(preview.approval_count, 1)
+        self.assertEqual(preview.blocked_count, 1)
+        self.assertFalse(preview.can_execute)
