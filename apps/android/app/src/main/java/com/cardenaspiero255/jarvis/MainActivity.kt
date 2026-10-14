@@ -81,7 +81,11 @@ class MainActivity : Activity() {
                 statusText.text = "Primero habilita OMEGA Hands en los ajustes de accesibilidad."
             } else {
                 OmegaHandsService.setEmergencyStop(this, false)
-                statusText.text = "Autorizado: únicamente el botón Inicio con pulsación visible."
+                statusText.text = if (OmegaHandsService.isStopped(this)) {
+                    "No se pudo autorizar Hands. Comprueba el estado del servicio."
+                } else {
+                    "Autorizado en esta sesión: solo Inicio mediante pulsación visible."
+                }
             }
             refreshHandsStatus()
         })
