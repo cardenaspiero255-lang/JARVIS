@@ -1,4 +1,5 @@
-"""Explicit, scoped, expiring approvals; no implicit action-wide grants."""
+"""Explicit, scoped, expiring, single-use approvals."""
+import threading
 
 
 class ApprovalDenied(PermissionError):
@@ -8,6 +9,7 @@ class ApprovalDenied(PermissionError):
 class ApprovalStore:
     def __init__(self):
         self._approvals = {}
+        self._lock = threading.Lock()
 
     def grant(self, principal, target, action, fingerprint, *, expires_at):
         if not all(isinstance(v, str) and v for v in (principal, target, action, fingerprint)):
@@ -18,3 +20,11 @@ class ApprovalStore:
         expiry = self._approvals.get((principal, target, action, fingerprint))
         if expiry is None or now >= expiry:
             raise ApprovalDenied("specific, unexpired approval required")
+
+    def consume(self, principal, target, action, fingerprint, now):
+        scope = (principal, target, action, fingerprint)
+        with self._lock:
+            expiry = self._approvals.get(scope)
+            if expiry is None or now >= expiry:
+                raise ApprovalDenied("specific, unexpired unused approval required")
+            del self._approvals[scope]
