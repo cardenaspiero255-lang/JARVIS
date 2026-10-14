@@ -113,7 +113,16 @@ class IntegrityAudit:
             raise
 
     def entries(self):
-        return tuple(self._rows())
+        self.db.execute("BEGIN")
+        try:
+            rows = self._rows()
+            if not self._verify_unlocked(rows):
+                raise AuditTampered("audit history failed integrity verification")
+            self.db.execute("COMMIT")
+            return tuple(rows)
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
 
     def record(self, principal_digest, action, outcome, resource_digest, *, when):
         if (type(principal_digest) is not str or not _HEX.fullmatch(principal_digest)
