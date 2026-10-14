@@ -16,6 +16,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
+import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
@@ -28,6 +29,7 @@ class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private lateinit var statusText: TextView
+    private lateinit var handsStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +60,43 @@ class MainActivity : Activity() {
             14f, Color.rgb(164, 166, 174)
         ).apply { setPadding(0, dp(24), 0, dp(16)) })
 
+        layout.addView(label("OMEGA HANDS — CONTROL LIMITADO", 20f, Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(20), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        handsStatusText = label(handsStatus(), 15f, Color.rgb(211, 213, 220))
+        layout.addView(handsStatusText)
+        layout.addView(label(
+            "Opcional: habilita el servicio desde los ajustes de Android. " +
+                "Después podrás autorizar solo el botón Inicio. " +
+                "Detener Hands desactiva inmediatamente las órdenes de JARVIS, " +
+                "sin cambiar los permisos del sistema.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("CONSULTAR ESTADO HANDS") {
+            refreshHandsStatus()
+        })
+        layout.addView(primaryButton("AUTORIZAR HANDS — SOLO INICIO") {
+            if (!OmegaHandsService.isConnected()) {
+                statusText.text = "Primero habilita OMEGA Hands en los ajustes de accesibilidad."
+            } else {
+                OmegaHandsService.setEmergencyStop(this, false)
+                statusText.text = "Autorizado: únicamente el botón Inicio con pulsación visible."
+            }
+            refreshHandsStatus()
+        })
+        layout.addView(primaryButton("IR A INICIO (PULSACIÓN EXPLÍCITA)") {
+            val result = OmegaHandsService.goHome(this, explicitTap = true)
+            statusText.text = if (result) "Orden Inicio aceptada por Android." else
+                "No se ejecutó. Comprueba el servicio y la parada de emergencia."
+            refreshHandsStatus()
+        })
+        layout.addView(primaryButton("PARADA DE EMERGENCIA HANDS") {
+            OmegaHandsService.setEmergencyStop(this, true)
+            statusText.text = "HANDS detenido. No se ejecutarán nuevas acciones."
+            refreshHandsStatus()
+        })
+
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         layout.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
             openAccessibilitySettings(explicitUserGesture = true)
@@ -72,6 +111,20 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true }
         scroll.addView(layout)
         setContentView(scroll)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::handsStatusText.isInitialized) refreshHandsStatus()
+    }
+
+    private fun handsStatus(): String = HandsStatus.present(
+        OmegaHandsService.isConnected(),
+        OmegaHandsService.isStopped(this)
+    )
+
+    private fun refreshHandsStatus() {
+        handsStatusText.text = handsStatus()
     }
 
     private fun startSpeech() {
@@ -130,7 +183,7 @@ class MainActivity : Activity() {
         try {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             statusText.text = "Se abrieron los ajustes de Android. " +
-                "JARVIS todavía no incluye un servicio de accesibilidad."
+                "Activa OMEGA Hands solo si aceptas su alcance limitado."
         } catch (_: ActivityNotFoundException) {
             statusText.text = "Los ajustes de accesibilidad no están disponibles."
         } catch (_: SecurityException) {
