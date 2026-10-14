@@ -2,7 +2,7 @@
 
 No network, Android automation or production authorization is implemented.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 
@@ -10,7 +10,7 @@ from .authorization import ApprovalDenied
 from typing import Callable, Mapping
 
 from .integration import CapabilityRegistry
-from .protocol import Envelope, InMemoryGateway
+from .protocol import Envelope, InMemoryGateway, ContractError, _parse_time
 
 
 class ApprovalRequired(ValueError):
@@ -61,6 +61,11 @@ class ProviderBridge:
 
     def dispatch(self, message: Mapping[str, object], now: datetime) -> object:
         envelope = Envelope.parse(message)
+        # Validate deadline before consuming approval or writing durable state.
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ContractError("now must include timezone")
+        if now.astimezone(timezone.utc) >= _parse_time(envelope.deadline):
+            raise ContractError("expired command")
         self.registry.require(envelope.target, envelope.schema_version, envelope.type)
         fingerprint = self.fingerprint(message)
         if envelope.type in self.SENSITIVE_ACTIONS:
