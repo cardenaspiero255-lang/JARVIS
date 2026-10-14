@@ -70,11 +70,18 @@ class RecoveryInspectorTests(unittest.TestCase):
                 (SOURCE, KEY, "short", NOW, NOW+60),
                 (SOURCE, KEY, FP, float("nan"), NOW+60),
                 (SOURCE, KEY, FP, NOW, float("inf")),
-                (SOURCE, KEY, FP, NOW, NOW-1),
             ]
             for source, key, fp, now, deadline in bad:
                 with self.subTest(args=(source, key, fp, now, deadline)):
                     with self.assertRaises(InvalidRecoveryInput):
                         RecoveryInspector(db).inspect(source, key, fp,
                                                       now=now, deadline=deadline)
+            self.assertIsNone(db.status(SOURCE, KEY))
+
+    def test_past_deadline_is_expired_not_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp, DurableStore(tmp + "/state.db") as db:
+            result = RecoveryInspector(db).inspect(SOURCE, KEY, FP,
+                                                  now=NOW, deadline=NOW-1)
+            self.assertEqual(result.disposition, ResumeDisposition.EXPIRED)
+            self.assertFalse(result.can_execute)
             self.assertIsNone(db.status(SOURCE, KEY))
