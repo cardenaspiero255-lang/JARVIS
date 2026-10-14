@@ -3,6 +3,10 @@
 No network, Android automation or production authorization is implemented.
 """
 from datetime import datetime
+import hashlib
+import json
+
+from .authorization import ApprovalDenied
 from typing import Callable, Mapping
 
 from .integration import CapabilityRegistry
@@ -25,7 +29,11 @@ class ProviderBridge:
         registry: CapabilityRegistry,
         handlers: Mapping[str, Callable[[Envelope], object]],
         approved_actions: frozenset[str] = frozenset(),
+        durable_store=None,
+        approval_store=None,
     ):
+        self.durable_store = durable_store
+        self.approval_store = approval_store
         self.registry = registry
         self.handlers = handlers
         # A global action allowlist is not proof of approval for a specific request.
@@ -44,9 +52,35 @@ class ProviderBridge:
                 raise ProviderFailure("provider execution failed") from exc
         return invoke
 
+    @staticmethod
+    def fingerprint(message):
+        envelope = Envelope.parse(message)
+        body = {"target": envelope.target, "type": envelope.type,
+                "payload": envelope.payload, "version": envelope.schema_version}
+        return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
     def dispatch(self, message: Mapping[str, object], now: datetime) -> object:
         envelope = Envelope.parse(message)
         self.registry.require(envelope.target, envelope.schema_version, envelope.type)
+        fingerprint = self.fingerprint(message)
         if envelope.type in self.SENSITIVE_ACTIONS:
-            raise ApprovalRequired("explicit authorization required")
-        return self.gateway.dispatch(message, now)
+            if self.approval_store is None:
+                raise ApprovalRequired("explicit authorization required")
+            try:
+                self.approval_store.require(envelope.source, envelope.target, envelope.type,
+                                            fingerprint, now.timestamp())
+            except ApprovalDenied as exc:
+                raise ApprovalRequired("explicit authorization required") from exc
+        if self.durable_store is None:
+            return self.gateway.dispatch(message, now)
+        previous = self.durable_store.status(envelope.source, envelope.idempotency_key)
+        cached = self.durable_store.get(envelope.source, envelope.idempotency_key, fingerprint)
+        if previous == "completed":
+            return cached
+        if previous is not None:
+            raise ProviderFailure("operation outcome uncertain; manual reconciliation required")
+        # Record before dispatch. Failure leaves uncertain status, preventing unsafe replay.
+        self.durable_store.begin(envelope.source, envelope.idempotency_key, fingerprint)
+        result = self.gateway.dispatch(message, now)
+        self.durable_store.complete(envelope.source, envelope.idempotency_key, fingerprint, result)
+        return result
