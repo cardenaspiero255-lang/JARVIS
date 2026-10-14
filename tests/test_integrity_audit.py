@@ -48,6 +48,8 @@ class IntegrityAuditTests(unittest.TestCase):
             with IntegrityAudit(path, key=KEY) as audit:
                 self.assertFalse(audit.verify())
                 with self.assertRaises(AuditTampered):
+                    audit.entries()
+                with self.assertRaises(AuditTampered):
                     audit.record("a"*64, "pr.read", "SUCCEEDED", "b"*64, when=1800000001)
 
     def test_missing_entry_is_detected(self):
