@@ -1,0 +1,47 @@
+name: Android shell
+on:
+  push:
+    paths:
+      - "apps/android/**"
+      - ".github/workflows/android-shell.yml"
+  pull_request:
+    paths:
+      - "apps/android/**"
+      - ".github/workflows/android-shell.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          accept-android-sdk-licenses: true
+      - name: Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+        with:
+          gradle-version: "8.13"
+      - name: Unit tests and debug APK
+        run: gradle -p apps/android --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - name: Upload testable debug APK
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: jarvis-omega-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
