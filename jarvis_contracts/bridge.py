@@ -22,6 +22,9 @@ class ProviderFailure(RuntimeError):
 
 
 class ProviderBridge:
+    # Anything not explicitly classified as a low-risk request requires
+    # specific, one-time consent. Unknown operations always fail closed.
+    SAFE_AUTOMATIC_ACTIONS = frozenset({"review.requested", "status.read", "telemetry.read", "pull_request.read"})
     SENSITIVE_ACTIONS = frozenset({"merge.execute", "repository.delete", "payment.submit"})
 
     def __init__(
@@ -68,7 +71,7 @@ class ProviderBridge:
             raise ContractError("expired command")
         self.registry.require(envelope.target, envelope.schema_version, envelope.type)
         fingerprint = self.fingerprint(message)
-        if envelope.type in self.SENSITIVE_ACTIONS:
+        if envelope.type not in self.SAFE_AUTOMATIC_ACTIONS:
             if self.approval_store is None:
                 raise ApprovalRequired("explicit authorization required")
             try:
