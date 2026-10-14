@@ -10,6 +10,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class TransportError(RuntimeError):
     pass
 
@@ -43,7 +48,7 @@ class SecureTransport:
         self.endpoint = endpoint
         self.token_provider = token_provider
         self.timeout = timeout
-        self.opener = opener if opener is not None else urllib.request.urlopen
+        self.opener = opener if opener is not None else urllib.request.build_opener(_NoRedirect()).open
 
     def send(self, payload, *, retry_safe=False):
         token = self.token_provider()
@@ -62,7 +67,10 @@ class SecureTransport:
                 raise CircuitOpen("circuit breaker open")
             self.opened_at = None
             self.failures = 0
-        attempts = self.max_retries + 1 if retry_safe else 1
+        # A caller-provided retry flag cannot make arbitrary POST actions retriable.
+        safe_read = (type(payload) is dict and len(payload) == 1
+                     and payload.get("read") is True)
+        attempts = self.max_retries + 1 if retry_safe and safe_read else 1
         for attempt in range(attempts):
             try:
                 with self.opener(request, timeout=self.timeout) as response:
@@ -74,6 +82,8 @@ class SecureTransport:
             except HTTPError as exc:
                 if exc.code in (401, 403):
                     raise AuthenticationError("authentication rejected") from exc
+                if exc.code not in (408, 425, 429, 500, 502, 503, 504):
+                    raise TransportError("non-retriable HTTP request failure") from exc
                 error = TransportError("HTTP request failed")
             except (URLError, TimeoutError, OSError) as exc:
                 error = TransportError("transport unavailable")
