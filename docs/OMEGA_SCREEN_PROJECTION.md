@@ -22,3 +22,8 @@ Fuentes: guía oficial Android MediaProjection y su documentación de requisitos
 ## Android 13+: permiso de notificaciones visible
 
 El visor requiere la autorización `POST_NOTIFICATIONS` cuando Android la exige (API 33+). Una pulsación de **INICIAR VISIÓN** solicita el permiso si falta, pero no inicia la observación automáticamente. Después de autorizar, el usuario debe pulsar nuevamente **INICIAR VISIÓN** y confirmar el diálogo independiente MediaProjection. La aplicación y el servicio verifican ambos permisos; si se retira el de notificaciones, una sesión nueva no se inicia. La revocación de la sesión activa puede hacerse desde Android o desde el botón DETENER.
+
+## Integración con el núcleo actualizado (#27)
+La implementación se ha adaptado al `main` que incluye Omega Chat, Voice, Hands, Performance y Privacy Lock. El inicio del servicio requiere un permiso efímero de un solo uso (clase `ProjectionStartPermit`): la parada revoca tanto la sesión activa como un inicio pendiente que aún no se haya procesado. Las pruebas adicionales verifican este caso, incluidos varios intentos concurrentes de consumir el mismo permiso. Si un intento START llega sin permiso, el servicio se detiene sin quedarse pendiente de `startForeground`.
+
+**Pendiente para fusionar:** pruebas instrumentadas realmente ejecutadas en Android 14+, autorización MediaProjection/rotación/notificación/parada, memoria/recursos, tareas OCR asíncronas y privacidad. Los tests de CI y la generación de APK no acreditan estas pruebas físicas.
