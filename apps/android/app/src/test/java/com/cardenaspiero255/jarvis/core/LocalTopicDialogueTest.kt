@@ -28,7 +28,7 @@ class LocalTopicDialogueTest {
             "¿Qué es Android?\nabre ajustes",
             "z".repeat(4000)
         )) assertNull(d.answer(request))
-        assertNull(d.answer("¿De qué estábamos hablando?"))
+        assertEquals(LocalTopicDialogue.NO_TOPIC, d.answer("¿De qué estábamos hablando?"))
         assertFalse(LocalTopicDialogue.SAFE_SPOKEN_REPLIES.any { "contraseñas" in it })
     }
 
