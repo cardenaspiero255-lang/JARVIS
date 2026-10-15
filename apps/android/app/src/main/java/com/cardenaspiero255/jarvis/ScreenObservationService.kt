@@ -90,6 +90,10 @@ class ScreenObservationService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            // Even if no frames arrive, the session expires after ten minutes.
+            mainHandler.postDelayed({
+                if (!shuttingDown.get()) terminate(stopProjection = true)
+            }, ScreenObservationPolicy.MAX_SESSION_MILLIS)
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val activeProjection = manager.getMediaProjection(code, permission)
                 ?: throw IllegalStateException("projection permission unavailable")
@@ -126,7 +130,7 @@ class ScreenObservationService : Service() {
                 w, h, metrics.densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader.surface, null, frameHandler
-            )
+            ) ?: throw IllegalStateException("virtual display unavailable")
         } catch (_: Exception) {
             terminate(stopProjection = true)
         } catch (_: OutOfMemoryError) {
@@ -137,6 +141,7 @@ class ScreenObservationService : Service() {
 
     private fun readFrameForLocalOcr(image: android.media.Image) {
         var owned: Bitmap? = null
+        var submitted = false
         try {
             val plane = image.planes.firstOrNull() ?: return
             if (plane.pixelStride != 4 || image.width <= 0 || image.height <= 0) return
@@ -181,13 +186,13 @@ class ScreenObservationService : Service() {
                     bitmap.recycle()
                     processing.set(false)
                 }
+            submitted = true
         } catch (_: Exception) {
             // Untrusted screen content must not kill the rest of JARVIS.
         } catch (_: OutOfMemoryError) {
         } finally {
             owned?.recycle()
-            // If no asynchronous OCR job was started, release the busy flag.
-            // A later OCR completion also clears it unconditionally.
+            if (!submitted) processing.set(false)
         }
     }
 
