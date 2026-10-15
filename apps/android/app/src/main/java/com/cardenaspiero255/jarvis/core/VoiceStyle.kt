@@ -34,6 +34,17 @@ object VoiceStyleSelector {
                         if (it.localeTag.equals("es-CL", ignoreCase = true)) 0 else 1
                     VoiceStyle.BRITISH_ASSISTANT -> 0
                 }
+            }.thenBy {
+                // Android has no portable API for voice gender; prefer a clearly
+                // labelled masculine local timbre when the installed TTS engine
+                // exposes one. "female" must not match the substring "male".
+                val label = it.name.lowercase()
+                when {
+                    Regex("""(^|[-_. ])female($|[-_. 0-9])""").containsMatchIn(label) -> 2
+                    Regex("""(^|[-_. ])male($|[-_. 0-9])""").containsMatchIn(label) ||
+                        "masculino" in label || "masculine" in label -> 0
+                    else -> 1
+                }
             }.thenBy { it.name.lowercase() }
         )
     }
@@ -42,12 +53,12 @@ object VoiceStyleSelector {
         candidates(style, installed).firstOrNull()
 
     fun pitch(style: VoiceStyle): Float = when (style) {
-        VoiceStyle.SPANISH -> 1.00f
-        VoiceStyle.BRITISH_ASSISTANT -> 0.92f
+        VoiceStyle.SPANISH -> 0.94f
+        VoiceStyle.BRITISH_ASSISTANT -> 0.88f
     }
 
     fun rate(style: VoiceStyle): Float = when (style) {
-        VoiceStyle.SPANISH -> 0.96f
-        VoiceStyle.BRITISH_ASSISTANT -> 0.91f
+        VoiceStyle.SPANISH -> 0.95f
+        VoiceStyle.BRITISH_ASSISTANT -> 0.89f
     }
 }
