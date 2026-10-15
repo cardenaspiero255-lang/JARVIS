@@ -47,6 +47,7 @@
         </service>
         <service
             android:name=".ScreenObservationService"
+            android:enabled="false"
             android:exported="false"
             android:foregroundServiceType="mediaProjection"
             android:stopWithTask="false" />
