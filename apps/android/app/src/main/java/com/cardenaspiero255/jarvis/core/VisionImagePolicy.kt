@@ -20,7 +20,8 @@ class VisionImagePolicy {
     }
 
     fun renderPreview(raw: String): String {
-        val normalized = raw.replace(Regex("[\\p{Cc}\\p{Cf}]+"), "")
+        val normalized = raw.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
         if (normalized.isBlank()) return "No se detectó texto en la imagen."
         return normalized.take(320)
