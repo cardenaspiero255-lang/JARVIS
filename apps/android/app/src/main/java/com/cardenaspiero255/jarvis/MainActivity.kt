@@ -7,6 +7,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.view.ViewGroup
@@ -21,6 +22,8 @@ import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
+import com.cardenaspiero255.jarvis.core.VoiceConsentGate
+import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
 
 /**
  * User-operated Android shell. No background microphone, accessibility
@@ -29,6 +32,7 @@ import com.cardenaspiero255.jarvis.core.VoiceStyle
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
+    private val voiceConsent = VoiceConsentGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
 
@@ -63,6 +67,14 @@ class MainActivity : Activity() {
         ).apply { setPadding(0, dp(24), 0, dp(16)) })
 
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
+        layout.addView(primaryButton("CONFIRMAR AJUSTES SOLICITADOS POR VOZ") {
+            val confirmed = voiceConsent.consume(
+                VoiceRequestedAction.ACCESSIBILITY_SETTINGS,
+                SystemClock.elapsedRealtime()
+            )
+            if (confirmed) openAccessibilitySettings(explicitUserGesture = true)
+            else statusText.text = "Sin solicitud vigente. Vuelve a pedir los ajustes por voz."
+        })
         layout.addView(primaryButton("PERFIL: ESPAÑOL LOCAL") {
             spokenReplyEngine.selectStyleByTap(VoiceStyle.SPANISH)
         })
@@ -98,6 +110,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        voiceConsent.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
     }
@@ -108,6 +121,8 @@ class MainActivity : Activity() {
     }
 
     private fun startSpeech() {
+        voiceConsent.cancel()
+        if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -147,8 +162,13 @@ class MainActivity : Activity() {
                         "Integraciones remotas y automatización aún no habilitadas."
                 }
             }
-            VoiceAction.OPEN_ACCESSIBILITY_SETTINGS ->
-                openAccessibilitySettings(explicitUserGesture = true)
+            VoiceAction.OPEN_ACCESSIBILITY_SETTINGS -> {
+                voiceConsent.request(
+                    VoiceRequestedAction.ACCESSIBILITY_SETTINGS,
+                    SystemClock.elapsedRealtime()
+                )
+                statusText.text = "Solicitud recibida. Pulsa CONFIRMAR AJUSTES antes de 30 segundos."
+            }
             VoiceAction.UNSUPPORTED ->
                 statusText.text = "Orden no disponible. No se realizó ninguna acción."
         }
