@@ -39,6 +39,7 @@ import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.AiGatewayPolicy
+import com.cardenaspiero255.jarvis.core.OfflineCostPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.GameReadinessReport
@@ -231,15 +232,15 @@ class MainActivity : Activity() {
                     chatInput.text.clear()
                     statusText.text = when {
                         aiGatewayClient.isConfigured() ->
-                            "IA emparejada con JARVIS Gateway. Puedes enviar " +
-                                "una pregunta escrita para comprobar la respuesta. " +
-                                "La voz en la nube requiere consentimiento aparte."
+                            "IA emparejada, pero JARVIS sigue en modo gratuito y local. " +
+                                "Solo el comando consulta nube: seguido de una pregunta " +
+                                "y una confirmación permite usar la API de pago."
                         aiGatewaySettings.hasStoredPairing() ->
                             "IA no emparejada: hay una configuración cifrada antigua " +
                                 "o ilegible. Escribe conectar ia para repararla."
                         else ->
-                            "IA no emparejada: JARVIS está respondiendo en modo local. " +
-                                "Escribe conectar ia para activar GPT-6 Astra."
+                            "Modo gratuito y local activo. No necesitas configurar IA " +
+                                "para conversar sobre los conocimientos disponibles."
                     }
                 }
                 message.equals("conectar ia", ignoreCase = true) -> {
@@ -257,9 +258,26 @@ class MainActivity : Activity() {
                         else "No se pudo confirmar la eliminación del acceso a la IA."
                     } catch (_: Exception) { "No se pudo revocar la conexión de IA." }
                 }
-                aiGatewayClient.isConfigured() -> {
-                    chatInput.text.clear()
-                    requestAiReply(message, fromVoice = false)
+                OfflineCostPolicy.isPaidRequest(message) -> {
+                    val paidPrompt = OfflineCostPolicy.paidPrompt(message)
+                    when {
+                        paidPrompt == null ->
+                            statusText.text = "Escribe consulta nube: y después una pregunta corta."
+                        !aiGatewayClient.isConfigured() ->
+                            statusText.text = "Consulta de pago no disponible. " +
+                                "El modo local sigue funcionando sin API. " +
+                                "Para usar la nube, primero escribe conectar ia."
+                        else -> AlertDialog.Builder(this)
+                            .setTitle("Confirmar consulta de pago")
+                            .setMessage("Esta pregunta se enviará a la API OpenAI " +
+                                "y podría generar cargos en tu cuenta. " +
+                                "El modo local es gratuito. ¿Quieres continuar?")
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Enviar de pago") { _, _ ->
+                                chatInput.text.clear()
+                                requestAiReply(paidPrompt, fromVoice = false)
+                            }.show()
+                    }
                 }
                 else -> {
                     val answer = localDialogue.reply(message)
@@ -267,12 +285,7 @@ class MainActivity : Activity() {
                     lastAiReply = null
                     chatInput.text.clear()
                     chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
-                    statusText.text =
-                        if (answer.startsWith("No tengo una conexión a un modelo conversacional"))
-                            "IA no emparejada. El servidor HTTPS ya está integrado. " +
-                                "Escribe conectar ia para autorizarlo una sola vez. " +
-                                "Si ya lo hiciste, consulta estado ia."
-                        else answer
+                    statusText.text = answer
                     if (privateMemory.isEnabled()) {
                         try {
                             if (!privateMemory.save(localDialogue.snapshotForStorage())) {
@@ -1064,13 +1077,8 @@ class MainActivity : Activity() {
                 lockSessionByTap()
             }
             VoiceAction.UNSUPPORTED -> {
-                // Send a one-shot spoken question only after the separate pairing
-                // explicitly opted into voice-to-cloud. Unknown voice text never
-                // becomes an Android action or executable model tool.
-                if (aiGatewayClient.isConfigured() && aiGatewayClient.voiceEnabled()) {
-                    requestAiReply(transcript, fromVoice = true)
-                    return
-                }
+                // Zero-billing voice by default, regardless of a previous
+                // cloud pairing. Spoken words can NEVER initiate a paid call.
                 // Read-only math fallback: no Android actions or saved transcript.
                 val localAnswer = voiceMathSession.answer(transcript,
                     SystemClock.elapsedRealtime())
