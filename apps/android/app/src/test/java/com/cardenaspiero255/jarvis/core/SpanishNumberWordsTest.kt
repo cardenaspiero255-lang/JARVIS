@@ -54,7 +54,7 @@ class SpanishNumberWordsTest {
     @Test fun rejectsUnknownNumbersAndIncompleteOperands() {
         assertNull(VoiceMathGate.answer("un trillón por dos"))
         assertNull(VoiceMathGate.answer("treinta y cien por dos"))
-        assertNull(VoiceMathGate.answer("dos más"))
+        assertTrue(VoiceMathGate.answer("dos más")!!.contains("No pude interpretar"))
         assertTrue(OfflineArithmetic.evaluate("calcula dos mas")!!.answer.contains("No pude interpretar"))
     }
 
