@@ -539,6 +539,13 @@ class MainActivity : Activity() {
                 val reading = DeviceHealthReader(this).read()
                 statusText.text = DeviceHealthFormatter.format(reading)
             }
+            VoiceAction.READ_GAME_READINESS -> {
+                // Voice only requests a one-shot, read-only advisory from Android.
+                // No app launch, hardware changes, TTS or persistent telemetry.
+                val reading = DeviceHealthReader(this).read()
+                val report = GameReadinessAdvisor.assess(reading, gamingPreference)
+                statusText.text = GameReadinessAdvisor.format(report)
+            }
             VoiceAction.OPEN_ACCESSIBILITY_SETTINGS -> {
                 voiceConsent.request(
                     VoiceRequestedAction.ACCESSIBILITY_SETTINGS,
