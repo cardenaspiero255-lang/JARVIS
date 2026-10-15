@@ -20,7 +20,7 @@ Conservar el código de salida y el resumen de pruebas. Si se usa un emulador en
 1. **Inicio y rotación:** abrir/cerrar y rotar sin bloqueos; no se concede control de pantalla automáticamente.
 2. **Voz:** probar TTS y detenerlo; iniciar el reconocedor mientras habla y confirmar que TTS se corta; abandonar la app durante un resultado tardío (no debe quedar consentimiento válido).
 3. **Hands:** comprobar el permiso Android, el botón Inicio, la parada de emergencia, el reinicio del proceso y la revocación del servicio. Nunca habilitar acciones automáticas fuera del alcance.
-4. **Vision:** elegir una imagen, OCR correcto en idioma español, imagen dañada, imagen grande, cambiar de app durante OCR; un resultado caducado no debe mostrarse.
+4. **Vision:** elegir una imagen, OCR correcto en idioma español, imagen dañada, imagen grande, cambiar de app durante OCR; un resultado caducado no debe mostrarse. Además, abrir selector y cancelarlo; comprobar resultado duplicado/antiguo y dos selectores sucesivos; bloquear privacidad antes de aceptar un resultado tardío; dejar el selector abierto más de cinco minutos; destruir y recrear Activity. Ninguno de esos casos debe reactivar OCR sin nueva selección válida.
 5. **GameHub:** probar instalado y ausente; confirmar que solo se abre al pulsar el botón.
 6. **Chat privado:** memoria desactivada por defecto; activar, guardar, cerrar/abrir, reautorizar lectura, borrar, confirmar que ya no hay historial y que la clave es nueva.
 7. **Offline:** desactivar Internet; el chat local y recuperación del historial deben seguir funcionando. El reconocimiento de voz Android no se presume offline.
