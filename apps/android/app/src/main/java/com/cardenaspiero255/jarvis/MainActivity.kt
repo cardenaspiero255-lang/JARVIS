@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private val foregroundGate = VoiceForegroundGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
+    private lateinit var visionRecognizer: VisionRecognizer
     private lateinit var handsStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,6 +65,7 @@ class MainActivity : Activity() {
         )
         layout.addView(statusText)
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
+        visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
                 "JARVIS todavía no controla otras aplicaciones.",
@@ -111,6 +113,16 @@ class MainActivity : Activity() {
             refreshHandsStatus()
         })
 
+        layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        layout.addView(label(
+            "Selecciona una captura o imagen para reconocer su texto en el teléfono. " +
+                "JARVIS no ve tu pantalla continuamente ni convierte el texto en comandos.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
         layout.addView(primaryButton("ABRIR GAMEHUB ULTRA") {
             val launched = GameHubLauncher(this).launchOnTap()
             statusText.text = if (launched) "GameHub Ultra se abrió mediante Android."
@@ -167,12 +179,14 @@ class MainActivity : Activity() {
     override fun onStop() {
         foregroundGate.onStop()
         voiceConsent.cancel()
+        if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
     }
 
     override fun onDestroy() {
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
+        if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
     }
 
@@ -188,6 +202,21 @@ class MainActivity : Activity() {
 
     private fun refreshHandsStatus() {
         handsStatusText.text = handsStatus()
+    }
+
+    private fun pickVisionImage() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, VISION_REQUEST)
+        } catch (_: ActivityNotFoundException) {
+            statusText.text = "No se encontró un selector de imágenes en Android."
+        } catch (_: SecurityException) {
+            statusText.text = "Android no permitió elegir una imagen."
+        }
     }
 
     private fun startSpeech() {
@@ -212,6 +241,13 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VISION_REQUEST) {
+            if (resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
+                val selectedUri = data?.data
+                if (selectedUri != null) visionRecognizer.inspectSelectedImage(selectedUri)
+            }
+            return
+        }
         if (requestCode != SPEECH_REQUEST) return
         if (!foregroundGate.canAcceptRecognitionResult()) {
             voiceConsent.cancel()
@@ -288,5 +324,6 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
+        const val VISION_REQUEST = 7002
     }
 }
