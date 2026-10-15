@@ -8,6 +8,7 @@ enum class SessionLockChannel {
     HANDS,
     PRIVATE_MEMORY,
     LOCAL_DIAGNOSTICS,
+    SCREEN_CAPTURE,
     LOCAL_CHAT
 }
 
