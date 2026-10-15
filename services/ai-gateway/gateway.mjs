@@ -70,6 +70,18 @@ function validate(body) {
   ];
 }
 async function readBody(req) {
+  // Vercel's Node runtime may parse JSON before invoking the handler and
+  // supply req.body. Use it only after enforcing the same byte budget.
+  if (req.body !== undefined) {
+    const parsed = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const size = Buffer.byteLength(JSON.stringify(parsed ?? null), "utf8");
+    if (size > MAX_BODY) {
+      const e = new Error("oversize");
+      e.status = 413;
+      throw e;
+    }
+    return parsed;
+  }
   const chunks = [];
   let total = 0;
   for await (const chunk of req) {
@@ -105,7 +117,8 @@ export function createGateway({apiKey, accessToken, fetchImpl = globalThis.fetch
   const tokenHash = sha256(accessToken);
   const requests = new Map();
   return async (req,res)=>{
-    if (req.url !== "/v1/chat") return json(res,404,{error:"not_found"});
+    if (!["/v1/chat","/api/chat"].includes(req.url))
+      return json(res,404,{error:"not_found"});
     if (req.method !== "POST") return json(res,405,{error:"method_not_allowed"});
     const token = req.headers.authorization?.startsWith("Bearer ") ?
       req.headers.authorization.slice(7) : "";
