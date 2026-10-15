@@ -7,6 +7,8 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.widget.EditText
@@ -14,6 +16,7 @@ import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -25,6 +28,7 @@ import com.cardenaspiero255.jarvis.core.LocalCapabilityDiagnostics
 import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
 import com.cardenaspiero255.jarvis.core.ReadoutRedactionPolicy
 import com.cardenaspiero255.jarvis.core.SensitiveReadout
+import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
@@ -56,6 +60,9 @@ class MainActivity : Activity() {
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private val foregroundGate = VoiceForegroundGate()
+    private val capturePrivacyGate = ScreenCapturePrivacyGate()
+    private val capturePrivacyHandler = Handler(Looper.getMainLooper())
+    private val capturePrivacyExpiry = Runnable { enforceCapturePrivacy() }
     private var gamingPreference = GamingPreference.BALANCED
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
@@ -71,6 +78,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Protect chat, encrypted-memory controls and system-task thumbnails before
+        // creating any UI; a screenshot exception always requires a separate tap.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -96,6 +106,29 @@ class MainActivity : Activity() {
         layout.addView(statusText)
         layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
             lockSessionByTap()
+        })
+        layout.addView(label(
+            "Pantalla protegida contra capturas por defecto. Si necesitas compartir " +
+                "una imagen para depuración, autoriza capturas durante 60 segundos. " +
+                "Durante ese plazo Android u otra app podrían capturar información visible.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("PERMITIR CAPTURAS 60 S — DEPURACIÓN") {
+            val allowed = capturePrivacyGate.allowForDebugByTap(SystemClock.elapsedRealtime())
+            if (allowed) {
+                enforceCapturePrivacy()
+                capturePrivacyHandler.removeCallbacks(capturePrivacyExpiry)
+                capturePrivacyHandler.postDelayed(capturePrivacyExpiry, 60_000L)
+                statusText.text = "Capturas autorizadas temporalmente por 60 s. " +
+                    "BLOQUEAR SESIÓN o salir de JARVIS revoca el permiso."
+            } else {
+                enforceCapturePrivacy()
+                statusText.text = "Capturas ya autorizadas, o solicitud rechazada."
+            }
+        })
+        layout.addView(primaryButton("PROTEGER PANTALLA AHORA") {
+            revokeCaptureException()
+            statusText.text = "Pantalla protegida contra capturas y vista previa de recientes."
         })
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
@@ -367,10 +400,12 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        enforceCapturePrivacy()
         foregroundGate.onStart()
     }
 
     override fun onStop() {
+        revokeCaptureException()
         foregroundGate.onStop()
         clearVisibleReadouts()
         // The system recognizer may be another Activity: preserve only a short-lived
@@ -385,6 +420,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        revokeCaptureException()
         voiceMathSession.clear()
         recognitionRequest.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
@@ -413,6 +449,10 @@ class MainActivity : Activity() {
             },
             SessionLockChannel.PRIVATE_MEMORY to { privateMemory.stop() },
             SessionLockChannel.LOCAL_DIAGNOSTICS to { clearVisibleReadouts() },
+            SessionLockChannel.SCREEN_CAPTURE to {
+                revokeCaptureException()
+                check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+            },
             SessionLockChannel.LOCAL_CHAT to {
                 localDialogue.clear()
                 lastChatReply = null
@@ -449,6 +489,21 @@ class MainActivity : Activity() {
             gameReadinessText.text =
                 ReadoutRedactionPolicy.redacted(SensitiveReadout.GAME_READINESS)
         }
+    }
+
+    /** Reinstates Android's protection, including after timeout or app switch. */
+    private fun enforceCapturePrivacy() {
+        if (capturePrivacyGate.captureAllowed(SystemClock.elapsedRealtime())) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    private fun revokeCaptureException() {
+        capturePrivacyGate.revoke()
+        capturePrivacyHandler.removeCallbacks(capturePrivacyExpiry)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     private fun readCapabilities(): LocalCapabilitySnapshot {
