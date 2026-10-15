@@ -53,6 +53,14 @@ def authenticated_get(token, path):
         raise SentinelHealthError("GitHub read-only API unavailable") from exc
 
 
+def exit_code_for_state(state: str) -> int:
+    """A skipped nonmatching trigger is neutral, never evidence of health.
+
+    Real failures, stale checks and missing evidence still raise an alert.
+    """
+    return 0 if state in ("RECENT_READONLY_SUCCESS", "SKIPPED") else 2
+
+
 def main():
     token = os.environ.get("GITHUB_TOKEN", "")
     try:
@@ -83,7 +91,7 @@ def main():
     report_path = os.environ.get("JARVIS_SENTINEL_PUBLIC_REPORT", "")
     if report_path:
         Path(report_path).write_text(public + "\n", encoding="utf-8")
-    return 0 if state == "RECENT_READONLY_SUCCESS" else 2
+    return exit_code_for_state(state)
 
 
 if __name__ == "__main__":
