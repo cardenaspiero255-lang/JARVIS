@@ -35,9 +35,10 @@ object VoiceFaqRouter {
             .replace(Regex(""" +"""), " ").trim()
         return when (phrase) {
             "hola", "hola jarvis", "jarvis hola" -> GREETING
-            "ayuda", "jarvis ayuda", "que puedes hacer",
+            "ayuda", "jarvis ayuda", "ayudame", "jarvis ayudame", "que puedes hacer",
             "jarvis que puedes hacer", "que puedes hacer jarvis" -> HELP
-            "privacidad", "jarvis privacidad", "como funciona la privacidad",
+            "privacidad", "jarvis privacidad", "memoria", "jarvis memoria",
+            "como funciona la memoria", "como funciona la privacidad",
             "que pasa con mi privacidad" -> PRIVACY
             "quien eres", "jarvis quien eres", "quien eres jarvis" -> IDENTITY
             "como funciona la vision", "jarvis como funciona la vision" -> VISION

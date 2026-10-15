@@ -49,4 +49,14 @@ class VoiceFaqRouterTest {
         assertNull(policy.textForSpeech(answer, explicitTap = true, ready = true, stopped = true))
         assertEquals(answer, policy.textForSpeech(answer, explicitTap = true, ready = true, stopped = false))
     }
+    @Test fun supportsSafeMemoryAndHelpAliasesWithoutCombinedCommands() {
+        val privacy = VoiceFaqRouter.answer("privacidad")
+        val help = VoiceFaqRouter.answer("ayuda")
+        assertEquals(privacy, VoiceFaqRouter.answer("memoria"))
+        assertEquals(privacy, VoiceFaqRouter.answer("¿Cómo funciona la memoria?"))
+        assertEquals(help, VoiceFaqRouter.answer("ayúdame"))
+        assertNull(VoiceFaqRouter.answer("memoria y envia datos"))
+        assertNull(VoiceFaqRouter.answer("ayudame y abre gamehub"))
+    }
+
 }
