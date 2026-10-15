@@ -25,6 +25,9 @@ class AiGatewayClient(private val settings: AiGatewaySettings) {
     private val history = ArrayDeque<Pair<String, String>>()
     @Volatile private var pending: HttpsURLConnection? = null
     @Volatile private var closed = false
+    /** Safe, user-facing failure only; never includes URL, token or raw server body. */
+    private class GatewayFailure(val safeMessage: String) : Exception()
+
 
     fun isConfigured(): Boolean = settings.get() != null
     fun voiceEnabled(): Boolean = settings.get()?.allowVoice == true
@@ -65,7 +68,22 @@ class AiGatewayClient(private val settings: AiGatewaySettings) {
                     .toString().toByteArray(StandardCharsets.UTF_8)
                 if (body.size > 12_000) throw IllegalStateException("request too long")
                 conn.outputStream.use { it.write(body) }
-                if (conn.responseCode != 200) throw IllegalStateException("bad response")
+                val responseCode = conn.responseCode
+                if (responseCode == 401 || responseCode == 403)
+                    throw GatewayFailure("El servidor rechazó el token de JARVIS. " +
+                        "Escribe conectar ia para emparejarlo de nuevo.")
+                if (responseCode == 429)
+                    throw GatewayFailure("El servidor limitó las solicitudes. " +
+                        "Espera un momento antes de volver a intentarlo.")
+                if (responseCode == 502)
+                    throw GatewayFailure("El servidor recibió un error del modelo de IA. " +
+                        "Revisa el acceso, saldo y disponibilidad de la API de OpenAI.")
+                if (responseCode == 503)
+                    throw GatewayFailure("El servidor de IA no tiene sus secretos configurados. " +
+                        "Revisa las variables de entorno en Vercel.")
+                if (responseCode != 200)
+                    throw GatewayFailure("La API de JARVIS devolvió un error de conexión. " +
+                        "Comprueba el servidor en Vercel.")
                 val bytes = ByteArrayOutputStream()
                 conn.inputStream.use { stream ->
                     val buffer = ByteArray(2048)
@@ -82,6 +100,8 @@ class AiGatewayClient(private val settings: AiGatewaySettings) {
                     raw.isBlank() || raw.length > 2400)
                     throw IllegalStateException("invalid model response")
                 answer = raw
+            } catch (safe: GatewayFailure) {
+                error = safe.safeMessage
             } catch (_: Exception) {
                 // Never show user input, the gateway token or upstream diagnostic.
                 error = "No se pudo conectar con la IA. Comprueba el servidor y vuelve a intentarlo."
