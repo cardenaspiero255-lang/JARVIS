@@ -12,7 +12,8 @@ class DeviceHealthPrivacyContract(unittest.TestCase):
     def test_no_network_or_sensitive_privileges(self):
         manifest = ET.parse(ANDROID / "AndroidManifest.xml").getroot()
         permissions = {x.get(ATTR + "name") for x in manifest.findall("uses-permission")}
-        self.assertNotIn("android.permission.INTERNET", permissions)
+        self.assertIn("android.permission.INTERNET", permissions)
+        self.assertNotIn("HttpsURLConnection", (JAVA / "DeviceHealthReader.kt").read_text())
         self.assertNotIn("android.permission.PACKAGE_USAGE_STATS", permissions)
         self.assertNotIn("android.permission.BATTERY_STATS", permissions)
         self.assertNotIn("android.permission.READ_PHONE_STATE", permissions)

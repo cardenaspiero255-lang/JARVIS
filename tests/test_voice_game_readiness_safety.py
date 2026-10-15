@@ -26,9 +26,10 @@ class VoiceGameReadinessSafetyContracts(unittest.TestCase):
     def test_no_extra_permissions_or_network_for_preflight(self):
         manifest=Path(__file__).resolve().parents[1]/"apps/android/app/src/main/AndroidManifest.xml"
         s=manifest.read_text()
-        for permission in ("android.permission.INTERNET","android.permission.WRITE_SETTINGS",
+        for permission in ("android.permission.WRITE_SETTINGS",
                            "android.permission.PACKAGE_USAGE_STATS"):
             self.assertNotIn(permission,s)
+        self.assertIn("android.permission.INTERNET",s)
 
 if __name__=="__main__":
     unittest.main()

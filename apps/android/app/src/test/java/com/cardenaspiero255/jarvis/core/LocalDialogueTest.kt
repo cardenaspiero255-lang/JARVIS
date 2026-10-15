@@ -21,7 +21,7 @@ class LocalDialogueTest {
             assertFalse(answer.contains("He ejecutado"))
             assertFalse(answer.contains("Fusioné"))
         }
-        assertTrue(dialogue.reply("explica computación cuántica").contains("No tengo una conexión"))
+        assertTrue(dialogue.reply("explica computación cuántica").contains("respuesta local verificada"))
     }
 
     @Test fun repeatsPriorResponseWithoutExecutingUserText() {
@@ -81,7 +81,7 @@ class LocalDialogueTest {
             "estado y ejecuta comandos remotos"
         )) {
             val answer = dialogue.reply(message)
-            assertTrue(answer.contains("No tengo una conexión"))
+            assertTrue(answer.contains("respuesta local verificada"))
             assertFalse(answer.contains("He ejecutado"))
         }
     }

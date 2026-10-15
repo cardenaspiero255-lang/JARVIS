@@ -13,10 +13,24 @@ class VoiceFaqPrivacyContract(unittest.TestCase):
         self.assertIn("else -> null",source)
         self.assertIn("transcript.length > 160",source)
 
+    def test_vision_faq_does_not_deny_the_experimental_screen_mode(self):
+        faq=(BASE/"core/VoiceFaqRouter.kt").read_text()
+        screen=(BASE/"ScreenObservationService.kt").read_text()
+        self.assertIn("Omega Vision",faq)
+        self.assertNotIn("La visión continua aún no está incluida",faq)
+        self.assertIn("permiso de Android",faq)
+        self.assertIn("no pulsa botones",faq)
+        self.assertIn("ScreenObservationPolicy.MAX_SESSION_MILLIS",screen)
+        self.assertIn("ProjectionStartPermit",screen)
+
     def test_unsupported_voice_branch_fails_closed_without_history_save(self):
         activity=(BASE/"MainActivity.kt").read_text()
         block=activity.split("VoiceAction.UNSUPPORTED -> {",1)[1].split("\n            }",1)[0]
-        self.assertIn("VoiceFaqRouter.answer(transcript)",block)
+        self.assertIn("localDialogue.replyVoice(transcript)",block)
+        local=(BASE/"core/LocalDialogue.kt").read_text()
+        voice=local.split("fun replyVoice(",1)[1].split("fun history()",1)[0]
+        self.assertIn("VoiceFaqRouter.answer(input)",voice)
+        self.assertNotIn("turns.add(",voice)
         self.assertIn("voiceMathSession.answer(transcript,",block)
         self.assertNotIn("localDialogue.reply(",block)
         self.assertNotIn("privateMemory.save(",block)

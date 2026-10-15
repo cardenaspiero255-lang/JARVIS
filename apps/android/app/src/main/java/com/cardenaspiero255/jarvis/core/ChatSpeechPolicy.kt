@@ -7,6 +7,12 @@ class ChatSpeechPolicy {
         VoiceFaqRouter.VISION,
         VoiceFaqRouter.GAMEHUB,
         VoiceFaqRouter.STOP,
+        // Only deterministic Android-local messages produced after verified
+        // recognition; never read out the raw ASR transcript or screen OCR.
+        "JARVIS operativo en modo observador. Integraciones remotas y automatización aún no habilitadas.",
+        "Solicitud recibida. Pulsa CONFIRMAR AJUSTES antes de 30 segundos.",
+        "GameHub solicitado. Pulsa CONFIRMAR APERTURA antes de 30 segundos. La voz no abre apps por sí sola.",
+        "Orden no disponible. No se realizó ninguna acción.",
         "Escribe una pregunta para conversar.",
         "No hay una respuesta anterior todavía.",
         "No hay un resultado anterior para continuar.",
@@ -19,8 +25,10 @@ class ChatSpeechPolicy {
         "JARVIS funciona en modo observador. Las acciones sensibles necesitan permiso visible.",
         "Puedo consultar el estado en modo observador, conversar sobre funciones disponibles, reconocer texto de imágenes elegidas y abrir GameHub por pulsación.",
         "Soy JARVIS OMEGA, un prototipo de asistente Android. No soy una IA general conectada.",
-        "No tengo una conexión a un modelo conversacional general en esta versión. Puedo ayudarte con estado, privacidad y funciones de JARVIS."
-    )
+        "No tengo una conexión a un modelo conversacional general en esta versión. Puedo ayudarte con estado, privacidad y funciones de JARVIS.",
+        "Todavía no tengo una respuesta local verificada sobre eso. Puedo explicar ciencia, tecnología y juegos sin internet."
+    ) + LocalTopicDialogue.SAFE_SPOKEN_REPLIES +
+        OfflineKnowledgeEngine.SAFE_SPOKEN_REPLIES
 
     /** Invalid, restored or third-party content is denied rather than spoken. */
     fun textForSpeech(answer: String?, explicitTap: Boolean, ready: Boolean, stopped: Boolean): String? {

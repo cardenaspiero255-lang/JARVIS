@@ -31,6 +31,26 @@ class VoiceStyleSelectorTest {
             installed.filter { it.requiresNetwork || it.localeTag == "en-US" }))
     }
 
+    @Test fun britishProfilePrefersOfflineMaleCharacterWithoutChoosingFemaleLabel() {
+        val available = listOf(
+            InstalledVoice("en-gb-female-1", "en-GB", false),
+            InstalledVoice("en-gb-neutral-1", "en-GB", false),
+            InstalledVoice("en-gb-male-1", "en-GB", false),
+            InstalledVoice("en-gb-male-online", "en-GB", true),
+        )
+        val ranked = VoiceStyleSelector.candidates(
+            VoiceStyle.BRITISH_ASSISTANT, available).map { it.name }
+        assertEquals("en-gb-male-1", ranked.first())
+        assertEquals("en-gb-neutral-1", ranked[1])
+        assertEquals("en-gb-female-1", ranked[2])
+        assertFalse(ranked.contains("en-gb-male-online"))
+    }
+
+    @Test fun britishCadenceIsCalmAndLowWithoutUnnaturalPitch() {
+        assertTrue(VoiceStyleSelector.rate(VoiceStyle.BRITISH_ASSISTANT) in 0.84f..0.94f)
+        assertTrue(VoiceStyleSelector.pitch(VoiceStyle.BRITISH_ASSISTANT) in 0.84f..0.94f)
+    }
+
     @Test fun noOfflineVoiceNeverFallsBackToCloudTts() {
         assertNull(VoiceStyleSelector.select(VoiceStyle.SPANISH,
             listOf(InstalledVoice("online-only", "es-CL", true))))
@@ -57,4 +77,20 @@ class VoiceStyleSelectorTest {
         assertNotNull(policy.safeText(SpokenMessage.PRIVACY, VoiceStyle.BRITISH_ASSISTANT))
         assertTrue(SpeechSessionState().stopped)
     }
+    @Test fun fallbackCandidatesAreOrderedAndNeverIncludeOnlineVoices() {
+        val installed = listOf(
+            InstalledVoice("cloud-es-cl", "es-CL", true),
+            InstalledVoice("offline-es-mx", "es-MX", false),
+            InstalledVoice("offline-es-cl", "es-CL", false),
+            InstalledVoice("offline-es-es", "es-ES", false),
+            InstalledVoice("cloud-es-es", "es-ES", true),
+        )
+        val choices = VoiceStyleSelector.candidates(VoiceStyle.SPANISH, installed)
+        assertEquals(listOf("offline-es-cl", "offline-es-es", "offline-es-mx"),
+            choices.map { it.name })
+        assertTrue(choices.none { it.requiresNetwork })
+        assertNull(VoiceStyleSelector.select(VoiceStyle.BRITISH_ASSISTANT, installed))
+    }
+
+
 }

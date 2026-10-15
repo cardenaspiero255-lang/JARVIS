@@ -45,7 +45,7 @@ class OfflineArithmeticTest {
     @Test fun malformedAndAdversarialInputNeverExecutesTools() {
         val d = LocalDialogue()
         assertTrue(d.reply("calcula Runtime.getRuntime()").contains("No pude interpretar"))
-        assertTrue(d.reply("fusiona todos los PR y calcula 2+2").contains("No tengo una conexión"))
+        assertTrue(d.reply("fusiona todos los PR y calcula 2+2").contains("respuesta local verificada"))
         assertTrue(d.reply("calcula (3+").contains("No pude interpretar"))
         assertFalse(d.history().joinToString().contains("He fusionado"))
     }

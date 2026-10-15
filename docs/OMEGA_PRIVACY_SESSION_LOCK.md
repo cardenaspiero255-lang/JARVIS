@@ -6,7 +6,7 @@ Un coordinador Kotlin invoca cada cierre una vez y **notifica fallos** en vez de
 
 **No borra el historial cifrado guardado**: eso requiere el botón separado BORRAR HISTORIAL Y CLAVE CIFRADA. Tampoco apaga el micrófono de servicios externos a JARVIS ni revoca permisos Android del sistema. No hay privilegios especiales, nuevas redes o registros.
 
-**Límite explícito:** el PR #16 de MediaProjection fue cerrado sin fusionar. Su sustituto, el PR #27, sigue en borrador y tampoco está disponible en `main`. Este botón no controla una sesión futura de MediaProjection hasta que #27 incorpore las funciones y supere sus pruebas físicas. No presentar este botón como parada global de funciones aún no fusionadas.
+**Límite explícito:** el PR #16 de MediaProjection fue cerrado sin fusionar. La integración de MediaProjection se incorpora en el PR #27; antes de fusionarse requiere CI y ensayos Android 14+. Hasta entonces la APK de `main` no incluye captura continua. No presentar este botón como parada global de funciones aún no fusionadas.
 
 **Pruebas:** JUnit cubre orden, acciones faltantes, fallos de un módulo e idempotencia. Contratos Python comprueban la presencia de todos los cierres en la UI y ausencia de borrado implícito. CI compila la APK, pero no demuestra interrupción perceptible de voz/OCR en teléfono físico.
 
@@ -27,3 +27,12 @@ Para facilitar depuración, el botón **PERMITIR CAPTURAS 60 S — DEPURACIÓN**
 El nuevo canal `SCREEN_CAPTURE` se integra con `SessionLockCoordinator`: la protección se restablece incluso si otro cierre falla. No añade permisos, servicios, red ni almacenamiento de imágenes.
 
 **Limitaciones:** FLAG_SECURE puede restringir también la captura consentida de la propia ventana JARVIS, relevante para pruebas futuras de MediaProjection PR #27. Ese PR no debe eliminar la protección por defecto ni fusionarse sin verificar físicamente esta interacción. Las pruebas CI acreditan la política y su integración de código; Android real aún requiere ensayos de captura, recientes y ciclo de vida.
+
+## Omega Vision: detención de proyección (PR #27)
+
+El canal `SCREEN_PROJECTION` detiene cualquier captura activa y revoca los inicios
+pendientes del servicio MediaProjection. El consentimiento del sistema Android
+se requiere para cada sesión. Nunca se modifica automáticamente `FLAG_SECURE`
+ni los canales `LOCAL_DIAGNOSTICS`, `GAMEHUB_PREFLIGHT` o `SCREEN_CAPTURE`.
+Esta integración requiere ensayos Android 14+ de consentimiento, rotación,
+notificaciones y revocación antes de certificación física.
