@@ -7,7 +7,6 @@ import android.media.projection.MediaProjectionManager
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -103,13 +102,10 @@ class MainActivity : Activity() {
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(32), dp(24), dp(24))
-            setBackgroundColor(Color.rgb(10, 10, 15))
+            setPadding(dp(18), dp(20), dp(18), dp(28))
+            setBackgroundColor(Color.rgb(9, 11, 19))
         }
-        val heading = label("JARVIS OMEGA", 30f, Color.rgb(239, 43, 54)).apply {
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        layout.addView(heading)
+        layout.addView(OmegaUiKit.hero(this))
         layout.addView(label("OBJETIVO SSS+ | PROTOTIPO ANDROID", 12f,
             Color.rgb(163, 165, 176)))
         layout.addView(label("SIN CERTIFICACIÓN — validación física pendiente", 12f,
@@ -122,6 +118,9 @@ class MainActivity : Activity() {
             "JARVIS está iniciado. Las acciones sensibles permanecen desactivadas.",
             17f, Color.rgb(211, 213, 220)
         )
+        statusText.background = OmegaUiKit.statusSurface(this)
+        statusText.setPadding(dp(16), dp(16), dp(16), dp(16))
+        statusText.minHeight = dp(76)
         layout.addView(statusText)
         layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
             lockSessionByTap()
@@ -150,6 +149,12 @@ class MainActivity : Activity() {
             statusText.text = "Pantalla protegida contra capturas y vista previa de recientes."
         })
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
+        layout.addView(primaryButton("PROBAR AUDIO JARVIS") {
+            spokenReplyEngine.testVoiceByTap()
+        })
+        layout.addView(primaryButton("CONFIGURAR VOZ EN ANDROID") {
+            openTtsSettingsByTap()
+        })
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
         layout.addView(label(
@@ -851,6 +856,23 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun openTtsSettingsByTap() {
+        // System screen names vary by OEM; fall back to general Android settings.
+        try {
+            startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+            statusText.text = "Configura la síntesis de voz sin conexión en Android."
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+                statusText.text = "En Ajustes busca 'Texto a voz' o 'Síntesis de voz'."
+            } catch (_: RuntimeException) {
+                statusText.text = "Android no pudo abrir los ajustes de voz."
+            }
+        } catch (_: SecurityException) {
+            statusText.text = "Android bloqueó la apertura de ajustes de voz."
+        }
+    }
+
     private fun openAccessibilitySettings(explicitUserGesture: Boolean) {
         if (!policy.canExecute(DeviceOperation.OPEN_ACCESSIBILITY_SETTINGS,
                 explicitUserGesture)) {
@@ -869,17 +891,28 @@ class MainActivity : Activity() {
     }
 
     private fun label(value: String, size: Float, color: Int): TextView =
-        TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
+        if (value.startsWith("OMEGA ") && size >= 20f) {
+            OmegaUiKit.sectionTitle(this, value)
+        } else {
+            TextView(this).apply {
+                text = value
+                textSize = size
+                setTextColor(color)
+            }
         }
 
     private fun primaryButton(value: String, action: () -> Unit): Button =
         Button(this).apply {
             text = value
+            isAllCaps = false
+            textSize = 13.5f
+            letterSpacing = .02f
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            backgroundTintList = ColorStateList.valueOf(Color.rgb(179, 18, 32))
+            background = OmegaUiKit.buttonBackground(this@MainActivity, value)
+            minHeight = dp(56)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            elevation = dp(2).toFloat()
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
