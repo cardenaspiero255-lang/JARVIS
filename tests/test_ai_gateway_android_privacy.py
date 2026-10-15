@@ -65,7 +65,7 @@ class AiGatewayAndroidContracts(unittest.TestCase):
         self.assertIn("aiGatewaySettings.hasStoredPairing()",activity)
         self.assertIn("IA no emparejada",activity)
         self.assertIn("aiGatewayClient.isConfigured()",activity)
-        self.assertIn("requestAiReply(message, fromVoice = false)",activity)
+        self.assertIn("requestAiReply(paidPrompt, fromVoice = false)",activity)
         gateway=(SRC/"AiGatewayClient.kt").read_text()
         for marker in ("responseCode == 401", "responseCode == 403",
                        "responseCode == 429", "responseCode == 502"):
