@@ -65,6 +65,22 @@ class LocalDialogue {
     fun history(): List<String> = turns.toList()
 
     /**
+     * Intended ONLY for the existing user-enabled AES-GCM store. The microphone
+     * transcript is never included: speech contributes at most a known topic ID.
+     * Keep ciphertext source below the store's 8192-byte plaintext limit.
+     */
+    fun snapshotForStorage(): String {
+        val lines = turns.takeLast(24).toMutableList()
+        val context = topicDialogue.contextToken()
+        if (context != null) lines.add("Contexto: $context")
+        while (lines.isNotEmpty() &&
+            lines.joinToString("\n").toByteArray(Charsets.UTF_8).size > 7500) {
+            lines.removeAt(0)
+        }
+        return lines.joinToString("\n")
+    }
+
+    /**
      * Restore only local dialogue rows from authenticated encrypted storage.
      * Stored text is data and never dispatched as an Android instruction.
      */
@@ -72,7 +88,9 @@ class LocalDialogue {
         clear()
         for (line in plainHistory.lineSequence().toList().takeLast(48)) {
             val bounded = line.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ").take(400)
-            if (bounded.startsWith("Tú: ") || bounded.startsWith("JARVIS: ")) {
+            if (bounded.startsWith("Contexto: ")) {
+                topicDialogue.restoreContextToken(bounded.removePrefix("Contexto: "))
+            } else if (bounded.startsWith("Tú: ") || bounded.startsWith("JARVIS: ")) {
                 turns.add(bounded)
                 if (bounded.startsWith("Tú: ")) {
                     topicDialogue.restoreTopicHint(bounded.removePrefix("Tú: "))
