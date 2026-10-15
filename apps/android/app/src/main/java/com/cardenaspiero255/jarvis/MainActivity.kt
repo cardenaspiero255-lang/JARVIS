@@ -968,18 +968,18 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (screenConsentGate.owns(requestCode)) {
-            if (!ScreenObservationReleaseGate.ENABLED) {
-                screenConsentRequested = false
-                screenConsentGate.cancel()
-                ScreenObservationService.stopNow()
-                statusText.text = ScreenObservationReleaseGate.UNAVAILABLE_MESSAGE
-                return
-            }
             val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
             if (!authorized) {
                 // A delayed callback from an older session must not cancel the
                 // user consent currently in flight for a different request code.
                 statusText.text = "Resultado anterior de captura ignorado."
+                return
+            }
+            if (!ScreenObservationReleaseGate.ENABLED) {
+                screenConsentRequested = false
+                screenConsentGate.cancel()
+                ScreenObservationService.stopNow()
+                statusText.text = ScreenObservationReleaseGate.UNAVAILABLE_MESSAGE
                 return
             }
             val requestedByTap = screenConsentRequested
