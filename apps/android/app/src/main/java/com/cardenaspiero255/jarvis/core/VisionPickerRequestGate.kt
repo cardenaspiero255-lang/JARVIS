@@ -8,10 +8,17 @@ package com.cardenaspiero255.jarvis.core
  * prevent an older picker callback from consuming a newer authorization.
  * No background capture, image storage or device-control capabilities.
  */
-class VisionPickerRequestGate {
-    private var issuedCodes = 0
+class VisionPickerRequestGate(initialIssuedCodes: Int = 0) {
+    // Restoring a counter never restores the previous Activity's consent.
+    // Invalid saved state exhausts the range, rather than reusing older codes.
+    private var issuedCodes =
+        if (initialIssuedCodes in 0..REQUEST_COUNT) initialIssuedCodes else REQUEST_COUNT
     private var pendingCode: Int? = null
     private var pendingAtMillis = 0L
+
+    /** Save only monotonic allocation progress across Activity recreation. */
+    @Synchronized
+    fun issuedCount(): Int = issuedCodes
 
     /** Only a visible picker button can call this; return null if unavailable. */
     @Synchronized
