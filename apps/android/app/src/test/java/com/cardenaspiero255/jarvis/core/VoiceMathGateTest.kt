@@ -21,7 +21,7 @@ class VoiceMathGateTest {
 
     @Test fun retainsNoVoiceTranscriptsAndHasNoMathContextAcrossCalls() {
         assertEquals("Resultado: 12", VoiceMathGate.answer("2*6"))
-        assertNull(VoiceMathGate.answer("y por 3"))
+        assertEquals("No hay un resultado anterior para continuar.", VoiceMathGate.answer("y por 3"))
         assertNull(VoiceMathGate.answer(null))
         assertNull(VoiceMathGate.answer("1 + ".repeat(100)))
     }
