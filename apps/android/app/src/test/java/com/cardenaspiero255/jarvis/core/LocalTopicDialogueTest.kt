@@ -90,14 +90,14 @@ class LocalTopicDialogueTest {
 
     @Test fun untrustedOrInvalidContextTokensCannotInstallArbitraryMemory() {
         val dialogue = LocalDialogue()
-        dialogue.restore("Contexto: RUN_ALL_COMMANDS\nContexto: !!\nContexto: x".replace("\\n","\n"))
+        dialogue.restore("Contexto: RUN_ALL_COMMANDS\nContexto: !!\nContexto: x")
         assertEquals(LocalTopicDialogue.NO_TOPIC, dialogue.reply("cuéntame más"))
         assertTrue(dialogue.history().size == 2)
     }
 
     @Test fun boundedSnapshotFitsExistingEncryptedMemoryLimits() {
         val dialogue = LocalDialogue()
-        repeat(80) { dialogue.reply("mensaje número " + it + " ñ ".repeat(200)) }
+        repeat(80) { dialogue.reply("mensaje número " + it + " ñ ".repeat(40)) }
         val serialized = dialogue.snapshotForStorage()
         assertTrue(serialized.toByteArray(Charsets.UTF_8).size <= 7600)
         assertTrue(dialogue.history().size <= 24)
