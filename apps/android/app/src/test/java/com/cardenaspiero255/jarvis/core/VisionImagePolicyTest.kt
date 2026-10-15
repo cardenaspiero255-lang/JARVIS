@@ -45,5 +45,10 @@ class VisionImagePolicyTest {
         assertEquals("Hola mundo", policy.renderPreview("\u0000Hola\u0007 mundo"))
     }
 
+    @Test fun preservesWordBoundariesWhenNormalizingOcrWhitespace() {
+        assertEquals("Hola mundo", policy.renderPreview("Hola\n\t mundo"))
+        assertEquals("Cuenta bancaria", policy.renderPreview("Cuenta\n bancaria"))
+    }
+
     private fun withClue(width: Int, height: Int, test: () -> Unit) = test()
 }
