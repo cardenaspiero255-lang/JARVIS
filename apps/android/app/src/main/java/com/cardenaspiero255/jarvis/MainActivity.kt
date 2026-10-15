@@ -245,7 +245,7 @@ class MainActivity : Activity() {
                 else -> {
                     val answer = localDialogue.reply(message)
                     lastChatReply = answer
-                                chatInput.text.clear()
+                    chatInput.text.clear()
                     chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                     statusText.text = answer
                     if (privateMemory.isEnabled()) {
@@ -262,7 +262,6 @@ class MainActivity : Activity() {
             }
         })
         section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
-            val answer = lastChatReply
             val answer = lastChatReply
             if (answer == null) {
                 statusText.text = "Primero genera una respuesta local en esta sesión."
@@ -653,7 +652,7 @@ class MainActivity : Activity() {
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             },
             SessionLockChannel.LOCAL_CHAT to {
-                                localDialogue.clear()
+                localDialogue.clear()
                 lastChatReply = null
                 chatInput.text.clear()
                 chatLog.text = "Conversación de esta sesión eliminada de pantalla."
