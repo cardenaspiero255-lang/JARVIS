@@ -38,6 +38,7 @@ import com.cardenaspiero255.jarvis.core.ScreenConsentRequestGate
 import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
+import com.cardenaspiero255.jarvis.core.AiGatewayPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.GameReadinessReport
@@ -226,6 +227,21 @@ class MainActivity : Activity() {
             when {
                 message.isBlank() ->
                     statusText.text = "Escribe un mensaje antes de enviarlo."
+                message.equals("estado ia", ignoreCase = true) -> {
+                    chatInput.text.clear()
+                    statusText.text = when {
+                        aiGatewayClient.isConfigured() ->
+                            "IA emparejada con JARVIS Gateway. Puedes enviar " +
+                                "una pregunta escrita para comprobar la respuesta. " +
+                                "La voz en la nube requiere consentimiento aparte."
+                        aiGatewaySettings.hasStoredPairing() ->
+                            "IA no emparejada: hay una configuración cifrada antigua " +
+                                "o ilegible. Escribe conectar ia para repararla."
+                        else ->
+                            "IA no emparejada: JARVIS está respondiendo en modo local. " +
+                                "Escribe conectar ia para activar GPT-6 Astra."
+                    }
+                }
                 message.equals("conectar ia", ignoreCase = true) -> {
                     chatInput.text.clear()
                     showAiSetupDialog()
@@ -251,7 +267,12 @@ class MainActivity : Activity() {
                     lastAiReply = null
                     chatInput.text.clear()
                     chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
-                    statusText.text = answer
+                    statusText.text =
+                        if (answer.startsWith("No tengo una conexión a un modelo conversacional"))
+                            "IA no emparejada. El servidor HTTPS ya está integrado. " +
+                                "Escribe conectar ia para autorizarlo una sola vez. " +
+                                "Si ya lo hiciste, consulta estado ia."
+                        else answer
                     if (privateMemory.isEnabled()) {
                         try {
                             if (!privateMemory.save(localDialogue.snapshotForStorage())) {
@@ -1089,55 +1110,65 @@ class MainActivity : Activity() {
     }
 
     /**
-     * The premium shell stays unchanged. Only the user typing "conectar ia"
-     * in the existing chat opens this native, explicit pairing dialog.
-     * The OpenAI API key is a SERVER secret, never entered in Android.
+     * The public HTTPS endpoint is bundled; only the private gateway token
+     * requires a one-time consented pairing. Do not embed the bearer token in
+     * the APK or ask users to enter an OpenAI API key on Android.
      */
     private fun showAiSetupDialog() {
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
-        val endpointInput = EditText(this).apply {
-            hint = "https://tu-servidor/v1/chat"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine(true)
-        }
+        val serverLabel = label(
+            "Servidor de JARVIS integrado: " +
+                AiGatewayPolicy.DEFAULT_ENDPOINT + "\n" +
+                "No necesitas escribir una dirección HTTPS.",
+            13f, Color.DKGRAY
+        )
         val tokenInput = EditText(this).apply {
-            hint = "Token personal del servidor (NO clave OpenAI)"
+            hint = "Token privado JARVIS_GATEWAY_TOKEN (NO la API key)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
         }
         val voiceConsentBox = CheckBox(this).apply {
-            text = "Permitir enviar también mis preguntas habladas al servidor"
-            isChecked = false
+            text = "Permitir enviar mis preguntas habladas a la IA en la nube"
+            isChecked = aiGatewayClient.voiceEnabled()
         }
-        fields.addView(endpointInput)
+        fields.addView(serverLabel)
         fields.addView(tokenInput)
         fields.addView(voiceConsentBox)
         AlertDialog.Builder(this)
-            .setTitle("Conectar IA GPT-6 Astra")
-            .setMessage("Configuración opcional. Las preguntas que envíes " +
-                "se procesarán en la nube; la voz solo si marcas la casilla. " +
-                "El token se cifra en este dispositivo. " +
-                "No introduzcas aquí tu clave API de OpenAI. " +
-                "Para desconectar escribe: desconectar ia.")
+            .setTitle("JARVIS — conectar IA")
+            .setMessage(
+                "El servidor HTTPS ya está integrado. Solo necesitas " +
+                    "emparejar tu token privado una vez; Android lo cifrará. " +
+                    "Las preguntas escritas se envían cuando pulses ENVIAR, " +
+                    "y la voz solo si marcas su permiso. " +
+                    "No introduzcas aquí tu clave API de OpenAI. " +
+                    "Si el acceso ya está guardado, pulsa Cancelar y escribe estado ia."
+            )
             .setView(fields)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Conectar") { _, _ ->
                 statusText.text = try {
                     val saved = aiGatewaySettings.configureByTap(
-                        endpointInput.text.toString().trim(),
                         tokenInput.text.toString(),
                         voiceConsentBox.isChecked
                     )
                     if (saved) {
                         aiGatewayClient.cancelAndClear()
-                        "IA emparejada. Los mensajes escritos pueden consultar " +
-                            "GPT-6 Astra. La voz requiere consentimiento separado."
-                    } else "Servidor o token inválido. Usa HTTPS y un token personal " +
-                        "de al menos 32 caracteres, no una clave API de OpenAI."
-                } catch (_: Exception) { "No fue posible cifrar el acceso al servidor." }
+                        "IA emparejada con el servidor oficial. Ya puedes enviar " +
+                            "preguntas escritas. La voz solo se enviará si la autorizaste. " +
+                            "Puedes consultar el estado escribiendo estado ia."
+                    } else {
+                        "IA no emparejada. El token debe tener de 32 a 256 caracteres, " +
+                            "sin espacios, y ser JARVIS_GATEWAY_TOKEN, no la API key. " +
+                            "El servidor ya viene configurado."
+                    }
+                } catch (_: Exception) {
+                    "IA no emparejada: Android no pudo guardar el acceso cifrado. " +
+                        "Reintenta conectar ia."
+                }
             }.show()
     }
 
