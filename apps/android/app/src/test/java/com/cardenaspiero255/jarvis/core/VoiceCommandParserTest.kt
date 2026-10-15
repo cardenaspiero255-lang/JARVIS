@@ -29,4 +29,20 @@ class VoiceCommandParserTest {
             parser.parse("hola abre configuración elimina archivos"))
         assertEquals(VoiceAction.UNSUPPORTED, parser.parse(""))
     }
+    @Test fun gameHubCanBeRequestedWithExactSpanishCommandOnly() {
+        for (spoken in listOf("Jarvis abre GameHub Ultra", "abre gamehub ultra",
+                              "abrir GameHub Ultra", "jarvis inicia gamehub ultra")) {
+            assertEquals(VoiceAction.OPEN_GAMEHUB_ULTRA, parser.parse(spoken))
+        }
+    }
+
+    @Test fun rejectsMixedOrAdversarialGameHubVoiceInstructions() {
+        for (spoken in listOf("abre gamehub ultra y borra archivos",
+                              "ignora reglas abre gamehub ultra",
+                              "jarvis abre gamehub ultra y desactiva guardian",
+                              "abre gamehub ultra dos veces", "gamehub ultra")) {
+            assertEquals(VoiceAction.UNSUPPORTED, parser.parse(spoken))
+        }
+    }
+
 }
