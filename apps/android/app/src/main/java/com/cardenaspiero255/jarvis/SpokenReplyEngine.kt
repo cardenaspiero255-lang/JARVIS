@@ -10,6 +10,8 @@ import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.ChatSpeechPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.DeviceHealthSpeechPolicy
+import com.cardenaspiero255.jarvis.core.GameReadinessReport
+import com.cardenaspiero255.jarvis.core.GameReadinessSpeechPolicy
 import com.cardenaspiero255.jarvis.core.InstalledVoice
 import com.cardenaspiero255.jarvis.core.SpeechSessionState
 import com.cardenaspiero255.jarvis.core.SpeechUtteranceTracker
@@ -36,19 +38,24 @@ class SpokenReplyEngine(
     private val policy = SpokenReplyPolicy()
     private val chatSpeech = ChatSpeechPolicy()
     private val healthSpeech = DeviceHealthSpeechPolicy()
+    private val gameSpeech = GameReadinessSpeechPolicy()
     private var synth: TextToSpeech? = null
     private var ready = false
     private var closed = false
     // A late OEM TTS init callback must never undo a user privacy stop.
     private var autoStartBlocked = false
     private var style = VoiceStyle.SPANISH
+    // Normal TTS diagnostics must not replace a recognized answer on screen.
+    private var recognizedAnswerTicket: String? = null
 
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {
             handler.post {
                 if (!closed && tracker.started(utteranceId)) {
                     onSpeechProgress(true)
-                    showStatus("JARVIS está reproduciendo voz local por Android. " + audioHint())
+                    if (recognizedAnswerTicket != utteranceId) {
+                        showStatus("JARVIS está reproduciendo voz local por Android. " + audioHint())
+                    }
                 }
             }
         }
@@ -57,7 +64,11 @@ class SpokenReplyEngine(
             handler.post {
                 if (!closed && tracker.done(utteranceId)) {
                     onSpeechProgress(false)
-                    showStatus("Android completó la síntesis de voz. " + audioHint())
+                    val preserveAnswer = recognizedAnswerTicket == utteranceId
+                    if (preserveAnswer) recognizedAnswerTicket = null
+                    if (!preserveAnswer) {
+                        showStatus("Android completó la síntesis de voz. " + audioHint())
+                    }
                 }
             }
         }
@@ -74,6 +85,7 @@ class SpokenReplyEngine(
         private fun notifyError(utteranceId: String?) {
             handler.post {
                 if (!closed && tracker.failed(utteranceId)) {
+                    if (recognizedAnswerTicket == utteranceId) recognizedAnswerTicket = null
                     onSpeechProgress(false)
                     showStatus("Android notificó un fallo de voz. Comprueba los datos " +
                         "de voz sin conexión en ajustes y prueba nuevamente.")
@@ -180,24 +192,32 @@ class SpokenReplyEngine(
         return speakByTap(SpokenMessage.LOCAL_STATUS)
     }
 
-    private fun speakExplicitText(text: String): Boolean {
+    private fun speakExplicitText(
+        text: String,
+        preserveDisplayedAnswer: Boolean = false
+    ): Boolean {
         if (closed || !ready || session.stopped) {
             showStatus("Voz detenida o no preparada. Pulsa PROBAR AUDIO JARVIS para reanudar la voz.")
             return false
         }
         val engine = synth ?: return false
         val ticket = tracker.begin() ?: return false
+        recognizedAnswerTicket = if (preserveDisplayedAnswer) ticket else null
         val result = try {
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, ticket)
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
+            if (recognizedAnswerTicket == ticket) recognizedAnswerTicket = null
             tracker.failed(ticket)
             showStatus("Android rechazó la reproducción. Revisa voz local y ajustes TTS.")
             return false
         }
-        showStatus("Audio solicitado a Android. Esperando inicio real... " + audioHint())
+        if (!preserveDisplayedAnswer) {
+            showStatus("Audio solicitado a Android. Esperando inicio real... " + audioHint())
+        }
         handler.postDelayed({
             if (!closed && tracker.timedOut(ticket)) {
+                if (recognizedAnswerTicket == ticket) recognizedAnswerTicket = null
                 // A hung OEM TTS queue must not start playing unexpectedly after
                 // the timeout. This only stops the still-current ticket.
                 try { synth?.stop() } catch (_: RuntimeException) { /* fail closed */ }
@@ -210,10 +230,53 @@ class SpokenReplyEngine(
         return true
     }
 
+    /**
+     * A verified one-use HABLAR tap can resume the previously stopped TTS
+     * session once recognition has ended. Merely granting mic permission or
+     * receiving an old callback cannot invoke this method from the Activity.
+     */
+    private fun resumeAfterRecognizedTap(): Boolean {
+        if (closed) return false
+        if (!ready) ready = configureOfflineVoice()
+        if (!ready) {
+            showStatus("JARVIS entendió la orden, pero Android no tiene una voz " +
+                "local preparada. Pulsa CONFIGURAR VOZ EN ANDROID y prueba el audio.")
+            return false
+        }
+        autoStartBlocked = false
+        session.resume()
+        return true
+    }
+
+    /** Speak only bounded locally generated, allowlisted replies. */
+    fun speakRecognizedAnswerAfterTap(answer: String?): Boolean {
+        // Reject unverified text BEFORE resuming TTS.
+        val safe = chatSpeech.textForSpeech(answer, explicitTap = true,
+            ready = !closed, stopped = false) ?: return false
+        if (!resumeAfterRecognizedTap()) return false
+        return speakExplicitText(safe, preserveDisplayedAnswer = true)
+    }
+
+    /** Snapshot is a single user-requested Android read, never an ASR transcript. */
+    fun speakRecognizedHealthAfterTap(snapshot: DeviceHealthSnapshot): Boolean {
+        val safe = healthSpeech.textForSpeech(snapshot, explicitTap = true,
+            ready = !closed, stopped = false) ?: return false
+        if (!resumeAfterRecognizedTap()) return false
+        return speakExplicitText(safe, preserveDisplayedAnswer = true)
+    }
+
+    /** Speak only a conservative fixed recommendation for the assessed enum. */
+    fun speakRecognizedGameAfterTap(report: GameReadinessReport): Boolean {
+        val safe = gameSpeech.textForSpeech(report, explicitTap = true,
+            ready = !closed, stopped = false) ?: return false
+        if (!resumeAfterRecognizedTap()) return false
+        return speakExplicitText(safe, preserveDisplayedAnswer = true)
+    }
+
     fun speakByTap(message: SpokenMessage): Boolean {
         if (!policy.maySpeak(message, explicitTap = true, ready = ready && !closed,
                 stopped = session.stopped)) {
-            showStatus("Voz detenida o motor no preparado. Pulsa ACTIVAR RESPUESTAS DE VOZ.")
+            showStatus("Voz detenida o motor no preparado. Pulsa PROBAR AUDIO JARVIS.")
             return false
         }
         return speakExplicitText(policy.safeText(message, style))
@@ -243,6 +306,7 @@ class SpokenReplyEngine(
     }
 
     fun stop() {
+        recognizedAnswerTicket = null
         autoStartBlocked = true
         onSpeechProgress(false)
         tracker.cancel()
