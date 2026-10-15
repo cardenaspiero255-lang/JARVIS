@@ -32,7 +32,7 @@ object OmegaUiKit {
             setPadding(dp(context, 14), dp(context, 18), dp(context, 14), dp(context, 18))
         }
         root.addView(ImageView(context).apply {
-            setImageResource(R.drawable.ic_jarvis_omega_foreground)
+            setImageResource(R.drawable.jarvis_reference)
             contentDescription = "Símbolo JARVIS OMEGA"
             layoutParams = LinearLayout.LayoutParams(dp(context, 72), dp(context, 72))
         })
@@ -61,6 +61,42 @@ object OmegaUiKit {
         root.addView(column, LinearLayout.LayoutParams(0,
             LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         return root
+    }
+
+    fun quickActions(
+        context: Context, onChat: () -> Unit, onVision: () -> Unit,
+        onGame: () -> Unit
+    ): LinearLayout {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val actions = listOf(
+            Triple("CHAT", "✦", onChat),
+            Triple("VISIÓN", "◉", onVision),
+            Triple("GAMEHUB", "▶", onGame)
+        )
+        for ((label, symbol, action) in actions) {
+            val badge = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(34, 26, 43), Color.rgb(23, 25, 42)))
+                .apply {
+                    cornerRadius = dp(context, 14).toFloat()
+                    setStroke(dp(context, 1), Color.rgb(122, 46, 70))
+                }
+            row.addView(TextView(context).apply {
+                text = "$symbol $label"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(250, 226, 230))
+                gravity = Gravity.CENTER
+                background = badge
+                minHeight = dp(context, 48)
+                setOnClickListener { action() }
+                contentDescription = "Ir a $label"
+            }, LinearLayout.LayoutParams(0, dp(context, 48), 1f)
+                .apply { marginStart = dp(context, 3); marginEnd = dp(context, 3) })
+        }
+        return row
     }
 
     fun createSection(context: Context, parent: LinearLayout): LinearLayout {
