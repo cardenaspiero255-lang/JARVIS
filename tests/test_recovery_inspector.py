@@ -1,8 +1,6 @@
 """Omega Recovery: no unsafe replay after crash or uncertain provider result."""
 import tempfile
 import unittest
-import threading
-from concurrent.futures import ThreadPoolExecutor
 
 from jarvis_contracts.persistence import DurableStore, IdempotencyConflict
 from jarvis_contracts.recovery_inspector import (
@@ -94,26 +92,15 @@ class RecoveryInspectorTests(unittest.TestCase):
             path = tmp + "/race.db"
             with DurableStore(path) as initial:
                 initial.begin(SOURCE, KEY, FP)
-            ready = threading.Event()
-            updated = threading.Event()
             with DurableStore(path) as reading, DurableStore(path) as writer:
                 original_get = reading.get
                 def racing_get(source, key, fingerprint):
                     value = original_get(source, key, fingerprint)
-                    ready.set()
-                    self.assertTrue(updated.wait(timeout=3))
+                    writer.complete(SOURCE, KEY, FP, {"verified": "result"})
                     return value
                 reading.get = racing_get
-
-                def complete():
-                    self.assertTrue(ready.wait(timeout=3))
-                    writer.complete(SOURCE, KEY, FP, {"verified": "result"})
-                    updated.set()
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(complete)
-                    advice = RecoveryInspector(reading).inspect(
-                        SOURCE, KEY, FP, now=NOW, deadline=NOW + 60)
-                    future.result(timeout=5)
+                advice = RecoveryInspector(reading).inspect(
+                    SOURCE, KEY, FP, now=NOW, deadline=NOW + 60)
                 if advice.disposition == ResumeDisposition.COMPLETED:
                     self.assertEqual(advice.completed_result, {"verified": "result"})
                 else:
