@@ -17,9 +17,8 @@ class SpeechManifestTests(unittest.TestCase):
                   for item in root.findall("uses-permission")]
         self.assertIn("android.permission.RECORD_AUDIO", grants)
         self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", grants)
-        speech_services = root.findall("./queries/service/action")
-        self.assertIn("android.speech.RecognitionService",
-                      {a.get(ANDROID + "name") for a in speech_services})
+        self.assertIn("android.speech.RecognitionService", actions)
+        self.assertEqual([], root.findall("./queries/service"))
 
     def test_no_always_listening_service_or_untrusted_text_channel(self):
         src = (ROOT / "java/com/cardenaspiero255/jarvis/SpokenReplyEngine.kt").read_text()
