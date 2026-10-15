@@ -60,6 +60,23 @@ class VisionPickerRequestGateTest {
         assertNull(gate.begin(0L))
     }
 
+    @Test fun restoringAfterRotationAdvancesCodesWithoutRestoringPermission() {
+        val oldGate = VisionPickerRequestGate()
+        val old = oldGate.begin(500L)!!
+        val recreated = VisionPickerRequestGate(oldGate.issuedCount())
+        assertFalse(recreated.consume(old, 550L))
+        val fresh = recreated.begin(600L)!!
+        assertEquals(old + 1, fresh)
+        assertFalse(recreated.consume(old, 601L))
+        assertTrue(recreated.consume(fresh, 602L))
+    }
+
+    @Test fun corruptedRestoredCounterFailsClosed() {
+        assertNull(VisionPickerRequestGate(-1).begin(0L))
+        assertNull(VisionPickerRequestGate(Int.MAX_VALUE).begin(0L))
+        assertNull(VisionPickerRequestGate(VisionPickerRequestGate.REQUEST_COUNT).begin(0L))
+    }
+
     @Test fun canceledRequestDoesNotRearmAfterAndroidLifecycleRestart() {
         val gate = VisionPickerRequestGate()
         val old = gate.begin(5L)!!
