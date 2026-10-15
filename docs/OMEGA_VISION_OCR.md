@@ -18,6 +18,7 @@ El texto reconocido **se considera datos no confiables**: jamás autoriza clics,
 - Decodificación en un hilo de trabajo, OCR asíncrono en dispositivo.
 - Errores de proveedor, formatos inválidos y falta de memoria se convierten en estados visibles sin ejecutar instrucciones.
 - Los documentos son seleccionados desde una app del sistema/proveedor; JARVIS no inicia vigilancia permanente de pantalla.
+- La selección usa códigos de solicitud distintos por pulsación y autorización de un solo uso, con caducidad a los cinco minutos. El bloqueo de privacidad, la destrucción de la Activity o el fallo de lanzamiento revocan la solicitud. Resultados de selecciones antiguas o duplicadas no pueden reactivar OCR; si se agota el espacio reservado de códigos en una Activity, se deniegan nuevos intentos hasta reiniciar la pantalla. La salida del primer plano durante el selector del sistema no concede nuevos permisos.
 
 ## Diferencia con Omega Vision completo
 

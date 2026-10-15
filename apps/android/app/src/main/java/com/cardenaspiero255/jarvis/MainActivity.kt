@@ -41,6 +41,7 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
@@ -61,6 +62,7 @@ class MainActivity : Activity() {
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
+    private lateinit var visionPickerRequest: VisionPickerRequestGate
     private val foregroundGate = VoiceForegroundGate()
     private val capturePrivacyGate = ScreenCapturePrivacyGate()
     private val capturePrivacyHandler = Handler(Looper.getMainLooper())
@@ -81,6 +83,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        visionPickerRequest = VisionPickerRequestGate(
+            savedInstanceState?.getInt(VISION_PICKER_COUNTER_KEY, 0) ?: 0
+        )
         // Protect chat, encrypted-memory controls and system-task thumbnails before
         // creating any UI; a screenshot exception always requires a separate tap.
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -444,6 +449,12 @@ class MainActivity : Activity() {
         setContentView(scroll)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Keep request codes monotonic on rotation; never persist live consent.
+        outState.putInt(VISION_PICKER_COUNTER_KEY, visionPickerRequest.issuedCount())
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStart() {
         super.onStart()
         enforceCapturePrivacy()
@@ -471,6 +482,7 @@ class MainActivity : Activity() {
         revokeCaptureException()
         voiceMathSession.clear()
         recognitionRequest.cancel()
+        visionPickerRequest.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -490,7 +502,10 @@ class MainActivity : Activity() {
                 recognitionRequest.cancel()
             },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
-            SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
+            SessionLockChannel.IMAGE_OCR to {
+                visionPickerRequest.cancel()
+                visionRecognizer.cancel()
+            },
             SessionLockChannel.HANDS to {
                 OmegaHandsService.setEmergencyStop(this, true)
                 check(OmegaHandsService.isStopped(this))
@@ -584,17 +599,29 @@ class MainActivity : Activity() {
     }
 
     private fun pickVisionImage() {
+        // Fresh request code on every picker launch: old OS callbacks cannot
+        // authorize a new image after privacy lock, expiry, or cancellation.
+        val requestCode = visionPickerRequest.begin(SystemClock.elapsedRealtime())
+        if (requestCode == null) {
+            statusText.text = "Hay otra selección en curso o se agotó el cupo de esta sesión."
+            return
+        }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/*"
         }
         try {
             @Suppress("DEPRECATION")
-            startActivityForResult(intent, VISION_REQUEST)
+            startActivityForResult(intent, requestCode)
         } catch (_: ActivityNotFoundException) {
+            visionPickerRequest.cancel()
             statusText.text = "No se encontró un selector de imágenes en Android."
         } catch (_: SecurityException) {
+            visionPickerRequest.cancel()
             statusText.text = "Android no permitió elegir una imagen."
+        } catch (_: RuntimeException) {
+            visionPickerRequest.cancel()
+            statusText.text = "Android no pudo iniciar el selector de imágenes."
         }
     }
 
@@ -628,8 +655,9 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VISION_REQUEST) {
-            if (resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
+        if (visionPickerRequest.owns(requestCode)) {
+            val requested = visionPickerRequest.consume(requestCode, SystemClock.elapsedRealtime())
+            if (requested && resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
                 val selectedUri = data?.data
                 if (selectedUri != null) visionRecognizer.inspectSelectedImage(selectedUri)
             }
@@ -750,6 +778,6 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
-        const val VISION_REQUEST = 7002
+        private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
     }
 }
