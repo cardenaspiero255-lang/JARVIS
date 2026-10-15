@@ -16,7 +16,7 @@ SHA-256 (from official model repository):
 ## Test the actual phone
 
 1. Install the APK produced by Android shell CI on the **Vivo V25 Pro**.
-2. Download the **exact** Q4_K_M file from the official Qwen repository. In
+2. Tap **ABRIR DESCARGA OFICIAL DE QWEN**, download the **exact** Q4_K_M file from the official repository. In
    JARVIS choose **IMPORTAR MODELO GGUF — QWEN 0.5B** and select it. Import
    copies to private storage and verifies the exact pinned SHA-256. A wrong
    model must be rejected.
@@ -24,15 +24,17 @@ SHA-256 (from official model repository):
    CHAT, ask `¿Qué es un agujero negro?`, `Explica la fotosíntesis`, and
    `Dame tres consejos para ahorrar batería`. Verify that answers are genuinely
    generated locally (different from the known deterministic fallback).
-4. Run 5 identical warm prompts (same question and 128-token cap) after an
-   initial cold prompt. Record the reported **tokens/s**, end-to-end elapsed
-   milliseconds, **PSS** and process high-water **VmHWM RSS**. Keep the phone
+4. Press **MEDIR RENDIMIENTO LLM — 5 PRUEBAS**. It runs **1 cold and 4 warm**
+   generations using the same prompt and 128-token cap and reports the first
+   throughput and median of the subsequent four. Record **tokens/s**, end-to-end
+   elapsed milliseconds, **PSS** and process high-water **VmHWM RSS**. Keep the phone
    plugged/unplugged state, OS version and room temperature recorded.
 5. Repeat after opening a game to put pressure on memory. Document which game
    is resident and whether Android killed/recreated either process. This is a
    **co-resident process test** until background/overlay conversation is
    implemented; do not present it as verified simultaneous gameplay + chat.
-6. Capture Android `dumpsys meminfo com.cardenaspiero255.jarvis`,
+6. Five metric-only records are emitted to Android logcat with tag
+   `JARVIS_LLM_BENCH`. Capture Android `dumpsys meminfo com.cardenaspiero255.jarvis`,
    `dumpsys thermalservice`, and `dumpsys battery`, before and after each
    5-prompt series. A successful inference result also shows benchmark data
    inside JARVIS. Record any crashes, ANRs, OOM kills or throttling.
@@ -67,6 +69,7 @@ adb shell getprop ro.build.version.release
 adb shell dumpsys meminfo com.cardenaspiero255.jarvis
 adb shell dumpsys thermalservice
 adb shell dumpsys battery
+adb logcat -d -s JARVIS_LLM_BENCH:I
 # After five prompts, capture these again; never capture actual chat prompts.
 ```
 
