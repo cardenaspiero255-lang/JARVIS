@@ -37,6 +37,20 @@ class VoiceOnboardingContract(unittest.TestCase):
         self.assertIn("destroy()", recognizer)
         self.assertNotIn("RECORD_AUDIO", TTS.read_text())
 
+    def test_stop_voice_button_revokes_pending_microphone_listening(self):
+        activity = MAIN.read_text()
+        block = activity.split('primaryButton("DETENER RESPUESTA DE VOZ")', 1)[1].split("})", 1)[0]
+        self.assertIn("stopForegroundSpeech()", block)
+        self.assertIn("recognitionRequest.cancel()", block)
+        self.assertIn("spokenReplyEngine.stop()", block)
+
+    def test_late_tts_initialization_cannot_rearm_after_privacy_stop(self):
+        engine = TTS.read_text()
+        self.assertIn("private var autoStartBlocked = false", engine)
+        self.assertIn("if (ready && !autoStartBlocked) session.resume()", engine)
+        stop = engine.split("fun stop()", 1)[1].split("fun close()", 1)[0]
+        self.assertIn("autoStartBlocked = true", stop)
+
     def test_no_extra_tts_activation_or_hidden_screen_access(self):
         activity = MAIN.read_text()
         engine = TTS.read_text()
