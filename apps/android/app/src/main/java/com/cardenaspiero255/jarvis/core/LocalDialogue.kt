@@ -42,6 +42,23 @@ class LocalDialogue {
 
     fun history(): List<String> = turns.toList()
 
+    /**
+     * Restore only local dialogue rows from authenticated encrypted storage.
+     * Stored text is data and never dispatched as an Android instruction.
+     */
+    fun restore(plainHistory: String) {
+        clear()
+        for (line in plainHistory.lineSequence().toList().takeLast(48)) {
+            val bounded = line.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ").take(400)
+            if (bounded.startsWith("Tú: ") || bounded.startsWith("JARVIS: ")) {
+                turns.add(bounded)
+            }
+        }
+        while (turns.size > 24) turns.removeAt(0)
+        lastAnswer = turns.lastOrNull { it.startsWith("JARVIS: ") }
+            ?.removePrefix("JARVIS: ")
+    }
+
     fun clear() {
         turns.clear()
         lastAnswer = null
