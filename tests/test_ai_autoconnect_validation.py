@@ -25,11 +25,11 @@ class BundledGatewayContracts(unittest.TestCase):
         self.assertIn('message.equals("estado ia", ignoreCase = true)',main)
         self.assertIn("aiGatewaySettings.hasStoredPairing()",main)
         self.assertIn("IA no emparejada",main)
-        self.assertIn("No tengo una conexión a un modelo conversacional",main)
+        self.assertIn("Modo gratuito y local activo",main)
         self.assertIn("aiGatewaySettings.configureByTap(",main)
         self.assertIn("tokenInput.text.toString()",main)
         self.assertIn("aiGatewayClient.isConfigured()",main)
-        self.assertIn("requestAiReply(message, fromVoice = false)",main)
+        self.assertIn("requestAiReply(paidPrompt, fromVoice = false)",main)
 
     def test_permissions_voice_ui_icon_remain_unchanged(self):
         main=(JAVA/"MainActivity.kt").read_text()
