@@ -72,3 +72,7 @@ Para marcar una mejora **terminada**, exigir comportamiento funcional, pruebas p
 Fusionados hasta este ciclo: PR #6 (Hands), #7 (Brain), #8 (Voice), #9 (Guardian), #10 (Recovery), #11 (seguridad Voice), #13 (lanzador GameHub).
 
 PR #12 **Omega Vision**: OCR local de una imagen elegida desde Android, sin MediaProjection, sin automatización visual, sin lectura continua de pantalla. Esta capacidad es adicional a la detección de botones y no convierte la mejora #12 en completada. Cada afirmación funcional requiere compilación y pruebas del SHA actual.
+
+
+## Visión continua bajo revisión
+El PR #27 sustituye técnicamente la propuesta antigua del PR #16, actualizando su implementación al `main` contemporáneo y conectando el bloqueo de privacidad. **Ambos PR draft/no fusionados no acreditan visión continua en el APK publicado.** La mejora permanece parcial hasta que se ejecuten los ensayos físicos y se revise la privacidad de MediaProjection.
