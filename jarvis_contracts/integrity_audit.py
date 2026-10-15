@@ -11,6 +11,7 @@ import json
 import math
 import re
 import sqlite3
+import time
 
 
 class AuditInvalid(ValueError):
@@ -56,17 +57,27 @@ class IntegrityAudit:
         self.db = sqlite3.connect(path, timeout=10, isolation_level=None)
         try:
             self.db.execute("PRAGMA busy_timeout=10000")
-            self.db.execute("PRAGMA journal_mode=WAL")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS audit_entries (
-                sequence INTEGER PRIMARY KEY,
-                principal_digest TEXT NOT NULL,
-                action TEXT NOT NULL,
-                outcome TEXT NOT NULL,
-                resource_digest TEXT NOT NULL,
-                occurred_at REAL NOT NULL,
-                previous_digest TEXT NOT NULL,
-                digest TEXT NOT NULL
-            )""")
+            # Only first-open schema initialization may be retried.
+            # Concurrent constructors racing to enable WAL can encounter
+            # SQLITE_BUSY even with busy_timeout; never retry audit actions.
+            for attempt in range(20):
+                try:
+                    self.db.execute("PRAGMA journal_mode=WAL")
+                    self.db.execute("""CREATE TABLE IF NOT EXISTS audit_entries (
+                        sequence INTEGER PRIMARY KEY,
+                        principal_digest TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        outcome TEXT NOT NULL,
+                        resource_digest TEXT NOT NULL,
+                        occurred_at REAL NOT NULL,
+                        previous_digest TEXT NOT NULL,
+                        digest TEXT NOT NULL
+                    )""")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or attempt == 19:
+                        raise
+                    time.sleep(min(0.02 * (attempt + 1), 0.2))
         except BaseException:
             self.db.close()
             raise
