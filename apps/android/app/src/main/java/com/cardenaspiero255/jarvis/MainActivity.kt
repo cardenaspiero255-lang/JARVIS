@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.media.projection.MediaProjectionManager
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
@@ -21,6 +22,7 @@ import android.speech.SpeechRecognizer
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -93,6 +95,9 @@ class MainActivity : Activity() {
     private lateinit var visionRecognizer: VisionRecognizer
     private lateinit var handsStatusText: TextView
     private lateinit var privateMemory: PrivateConversationStore
+    private lateinit var aiGatewaySettings: AiGatewaySettings
+    private lateinit var aiGatewayClient: AiGatewayClient
+    private var lastAiReply: String? = null
     private lateinit var chatLog: TextView
     private lateinit var chatInput: EditText
     private lateinit var healthStatusText: TextView
@@ -186,6 +191,8 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
+        aiGatewaySettings = AiGatewaySettings(this)
+        aiGatewayClient = AiGatewayClient(aiGatewaySettings)
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
                 "JARVIS solo permite HOME y abrir GameHub con permiso; no navega otras interfaces.",
@@ -216,29 +223,54 @@ class MainActivity : Activity() {
         section.addView(chatInput)
         section.addView(primaryButton("ENVIAR MENSAJE") {
             val message = chatInput.text.toString()
-            if (message.isBlank()) {
-                statusText.text = "Escribe un mensaje antes de enviarlo."
-            } else {
-                val answer = localDialogue.reply(message)
-                lastChatReply = answer
-                chatInput.text.clear()
-                chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
-                statusText.text = answer
-                if (privateMemory.isEnabled()) {
-                    try {
-                        if (!privateMemory.save(localDialogue.snapshotForStorage())) {
-                            statusText.text = "No se pudo guardar el historial cifrado."
+            when {
+                message.isBlank() ->
+                    statusText.text = "Escribe un mensaje antes de enviarlo."
+                message.equals("conectar ia", ignoreCase = true) -> {
+                    chatInput.text.clear()
+                    showAiSetupDialog()
+                }
+                message.equals("desconectar ia", ignoreCase = true) -> {
+                    chatInput.text.clear()
+                    aiGatewayClient.cancelAndClear()
+                    lastAiReply = null
+                    lastChatReply = null
+                    statusText.text = try {
+                        if (aiGatewaySettings.revokeByTap())
+                            "Conexión de IA revocada y clave cifrada eliminada."
+                        else "No se pudo confirmar la eliminación del acceso a la IA."
+                    } catch (_: Exception) { "No se pudo revocar la conexión de IA." }
+                }
+                aiGatewayClient.isConfigured() -> {
+                    chatInput.text.clear()
+                    requestAiReply(message, fromVoice = false)
+                }
+                else -> {
+                    val answer = localDialogue.reply(message)
+                    lastChatReply = answer
+                    lastAiReply = null
+                    chatInput.text.clear()
+                    chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
+                    statusText.text = answer
+                    if (privateMemory.isEnabled()) {
+                        try {
+                            if (!privateMemory.save(localDialogue.snapshotForStorage())) {
+                                statusText.text = "No se pudo guardar el historial cifrado."
+                            }
+                        } catch (_: Exception) {
+                            privateMemory.stop()
+                            statusText.text = "La memoria cifrada no está disponible; no se guardó."
                         }
-                    } catch (_: Exception) {
-                        privateMemory.stop()
-                        statusText.text = "La memoria cifrada no está disponible; no se guardó."
                     }
                 }
             }
         })
         section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
             val answer = lastChatReply
-            if (answer == null) {
+            val remoteAnswer = lastAiReply
+            if (remoteAnswer != null) {
+                spokenReplyEngine.speakAiReplyByTap(remoteAnswer)
+            } else if (answer == null) {
                 statusText.text = "Primero genera una respuesta local en esta sesión."
             } else spokenReplyEngine.speakChatByTap(answer)
         })
@@ -567,6 +599,8 @@ class MainActivity : Activity() {
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
+        aiGatewayClient.cancelAndClear()
+        lastAiReply = null
         lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
@@ -584,6 +618,7 @@ class MainActivity : Activity() {
         screenConsentRequested = false
         screenConsentGate.cancel()
         ScreenObservationService.stopNow()
+        if (::aiGatewayClient.isInitialized) aiGatewayClient.close()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -625,6 +660,8 @@ class MainActivity : Activity() {
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             },
             SessionLockChannel.LOCAL_CHAT to {
+                aiGatewayClient.cancelAndClear()
+                lastAiReply = null
                 localDialogue.clear()
                 lastChatReply = null
                 chatInput.text.clear()
@@ -1006,6 +1043,13 @@ class MainActivity : Activity() {
                 lockSessionByTap()
             }
             VoiceAction.UNSUPPORTED -> {
+                // Send a one-shot spoken question only after the separate pairing
+                // explicitly opted into voice-to-cloud. Unknown voice text never
+                // becomes an Android action or executable model tool.
+                if (aiGatewayClient.isConfigured() && aiGatewayClient.voiceEnabled()) {
+                    requestAiReply(transcript, fromVoice = true)
+                    return
+                }
                 // Read-only math fallback: no Android actions or saved transcript.
                 val localAnswer = voiceMathSession.answer(transcript,
                     SystemClock.elapsedRealtime())
@@ -1041,6 +1085,81 @@ class MainActivity : Activity() {
                     statusText.text = "Memoria cifrada no disponible; tema no guardado."
                 }
             }
+        }
+    }
+
+    /**
+     * The premium shell stays unchanged. Only the user typing "conectar ia"
+     * in the existing chat opens this native, explicit pairing dialog.
+     * The OpenAI API key is a SERVER secret, never entered in Android.
+     */
+    private fun showAiSetupDialog() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(6), dp(18), dp(6))
+        }
+        val endpointInput = EditText(this).apply {
+            hint = "https://tu-servidor/v1/chat"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        val tokenInput = EditText(this).apply {
+            hint = "Token personal del servidor (NO clave OpenAI)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val voiceConsentBox = CheckBox(this).apply {
+            text = "Permitir enviar también mis preguntas habladas al servidor"
+            isChecked = false
+        }
+        fields.addView(endpointInput)
+        fields.addView(tokenInput)
+        fields.addView(voiceConsentBox)
+        AlertDialog.Builder(this)
+            .setTitle("Conectar IA GPT-6 Astra")
+            .setMessage("Configuración opcional. Las preguntas que envíes " +
+                "se procesarán en la nube; la voz solo si marcas la casilla. " +
+                "El token se cifra en este dispositivo. " +
+                "No introduzcas aquí tu clave API de OpenAI. " +
+                "Para desconectar escribe: desconectar ia.")
+            .setView(fields)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Conectar") { _, _ ->
+                statusText.text = try {
+                    val saved = aiGatewaySettings.configureByTap(
+                        endpointInput.text.toString().trim(),
+                        tokenInput.text.toString(),
+                        voiceConsentBox.isChecked
+                    )
+                    if (saved) {
+                        aiGatewayClient.cancelAndClear()
+                        "IA emparejada. Los mensajes escritos pueden consultar " +
+                            "GPT-6 Astra. La voz requiere consentimiento separado."
+                    } else "Servidor o token inválido. Usa HTTPS y un token personal " +
+                        "de al menos 32 caracteres, no una clave API de OpenAI."
+                } catch (_: Exception) { "No fue posible cifrar el acceso al servidor." }
+            }.show()
+    }
+
+    private fun requestAiReply(message: String, fromVoice: Boolean) {
+        statusText.text = "Consultando GPT-6 Astra mediante el servidor autorizado..."
+        val accepted = aiGatewayClient.request(message, fromVoice) { text, error ->
+            if (text != null) {
+                statusText.text = text
+                if (fromVoice) {
+                    spokenReplyEngine.speakAiReplyAfterRecognizedTap(text)
+                } else {
+                    lastAiReply = text
+                    lastChatReply = null
+                    chatLog.text = "JARVIS IA: " + text.take(1400)
+                }
+            } else {
+                statusText.text = error ?: "No se recibió una respuesta de la IA."
+            }
+        }
+        if (!accepted) {
+            statusText.text = "IA no autorizada para esta solicitud. " +
+                "Escribe conectar ia para configurar o continúa con el chat local."
         }
     }
 
