@@ -12,6 +12,7 @@ class ScreenProjectionPrivacyContracts(unittest.TestCase):
         manifest=ET.parse(BASE/"AndroidManifest.xml").getroot()
         grants={x.get(ANDROID+"name") for x in manifest.findall("uses-permission")}
         self.assertIn("android.permission.FOREGROUND_SERVICE",grants)
+        self.assertIn("android.permission.POST_NOTIFICATIONS",grants)
         self.assertIn("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",grants)
         self.assertNotIn("android.permission.INTERNET",grants)
         self.assertNotIn("android.permission.CAMERA",grants)
@@ -44,3 +45,12 @@ class ScreenProjectionPrivacyContracts(unittest.TestCase):
         self.assertIn("if (!submitted) {",service)
         self.assertIn("pendingBitmap?.recycle()",service)
         self.assertIn("processing.set(false)",service)
+
+    def test_notification_permission_is_required_by_activity_and_service(self):
+        activity=(BASE/"java/com/cardenaspiero255/jarvis/MainActivity.kt").read_text()
+        service=(BASE/"java/com/cardenaspiero255/jarvis/ScreenObservationService.kt").read_text()
+        self.assertIn("ScreenNotificationGate.canBegin(",activity)
+        self.assertIn("ScreenNotificationGate.canBegin(",service)
+        self.assertIn("Manifest.permission.POST_NOTIFICATIONS",activity)
+        self.assertIn("Manifest.permission.POST_NOTIFICATIONS",service)
+        self.assertIn("REQUEST_SCREEN_NOTIFICATIONS",activity)
