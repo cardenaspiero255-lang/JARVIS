@@ -38,6 +38,41 @@ server-side revocation, abuse defenses, quotas, billing caps and monitoring.
 Run tests without OpenAI traffic:
 node --test services/ai-gateway/test/*.test.mjs
 
+## Deploy with the connected Vercel account
+
+This repository currently keeps these files on JARVIS PR #27 (a draft).
+The Vercel project needs the source to exist in the deployment branch;
+do not assume the current main branch contains the gateway.
+
+1. Import the GitHub repository `cardenaspiero255-lang/JARVIS` into Vercel.
+   Choose **Root Directory: services/ai-gateway**, **Framework: Other**,
+   and use Node.js 22. The checked-in `vercel.json` routes the public
+   `/v1/chat` URL to a Node serverless function in `api/chat.mjs`.
+2. Under **Project > Settings > Environment Variables**, add
+   `OPENAI_API_KEY` as a **sensitive server-side secret**. Do not put it
+   into the Vercel Git repository, frontend variables or Android source.
+3. Add a different **sensitive** `JARVIS_GATEWAY_TOKEN` with at least
+   32 random characters. Generate with `openssl rand -hex 32` locally.
+   This token is copied only into JARVIS's password-protected pairing
+   dialog; it is not your OpenAI API key.
+4. Select the relevant environment (Preview for branch tests, Production
+   after a reviewed merge). **Redeploy** after environment variables are
+   configured. A request to the undeployed or unconfigured server cannot
+   use Astra.
+5. Open the protected URL `https://YOUR_PROJECT.vercel.app/v1/chat`
+   from JARVIS's pairing dialog. Verify one authorized request and the
+   server's model reply. Requests without the gateway bearer token should
+   be rejected (HTTP 401). Avoid publishing the real token in tickets,
+   commit messages or chat transcripts.
+
+Vercel Functions do not run the persistent `gateway.mjs` loopback
+listener; instead they export the Node handler. The in-process rate
+limiter is **instance-local only** and must be replaced or backed by a
+shared rate limiter plus reliable spend caps before production use.
+Public deployments also require monitoring, identity lifecycle and
+token rotation. Vercel usage can incur hosting charges; OpenAI API
+charges are separate. Verify limits and set a cost budget before tests.
+
 ## Pair from Android without changing the approved interface
 
 1. Deploy the backend with an HTTPS domain and set BOTH server secrets.
