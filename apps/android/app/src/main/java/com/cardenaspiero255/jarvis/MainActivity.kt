@@ -12,6 +12,7 @@ import android.text.InputType
 import android.widget.EditText
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -19,6 +20,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.LocalDialogue
+import com.cardenaspiero255.jarvis.core.GameHubLaunchPolicy
+import com.cardenaspiero255.jarvis.core.LocalCapabilityDiagnostics
+import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
@@ -211,6 +215,18 @@ class MainActivity : Activity() {
             refreshHandsStatus()
         })
 
+        layout.addView(label("OMEGA DIAGNÓSTICO — SOLO LECTURA", 20f,
+            Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        val capabilityStatusText = label("Sin diagnóstico. Consulta manual y privada.", 13f,
+            Color.rgb(211, 213, 220))
+        layout.addView(capabilityStatusText)
+        layout.addView(primaryButton("DIAGNÓSTICO LOCAL DE JARVIS") {
+            capabilityStatusText.text = LocalCapabilityDiagnostics.format(readCapabilities())
+        })
+
         layout.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
@@ -352,6 +368,25 @@ class MainActivity : Activity() {
             "Bloqueo parcial: no se pudo confirmar " +
                 report.failed.joinToString() + ". Comprueba los controles."
         }
+    }
+
+    private fun readCapabilities(): LocalCapabilitySnapshot {
+        val gameHub = GameHubLaunchPolicy().packageName
+        val launchable = try {
+            packageManager.getLaunchIntentForPackage(gameHub)?.component?.packageName == gameHub
+        } catch (_: RuntimeException) { false }
+        val recognitionAvailable = try {
+            SpeechRecognizer.isRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        return LocalCapabilitySnapshot(
+            androidApi = android.os.Build.VERSION.SDK_INT,
+            gameHubLaunchable = launchable,
+            handsConnected = OmegaHandsService.isConnected(),
+            handsStopped = OmegaHandsService.isStopped(this),
+            offlineSpeechReady = spokenReplyEngine.offlineVoiceReady(),
+            speechRecognizerAvailable = recognitionAvailable,
+            encryptedMemoryUnlocked = privateMemory.isEnabled()
+        )
     }
 
     private fun handsStatus(): String = HandsStatus.present(
