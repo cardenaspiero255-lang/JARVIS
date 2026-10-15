@@ -37,7 +37,7 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_sentinel_health*.py' -v
       - name: Inspect Ultra Sentinel GitHub Actions status
         env:
-          GITHUB_TOKEN: ${expr}
+          GITHUB_TOKEN: ${{ github.token }}
           JARVIS_SENTINEL_PUBLIC_REPORT: ${{ runner.temp }}/sentinel-health.json
         shell: bash
         run: |
