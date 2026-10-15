@@ -1009,7 +1009,7 @@ class MainActivity : Activity() {
                 // Read-only math fallback: no Android actions or saved transcript.
                 val localAnswer = voiceMathSession.answer(transcript,
                     SystemClock.elapsedRealtime())
-                    ?: VoiceFaqRouter.answer(transcript)
+                    ?: localDialogue.replyVoice(transcript)
                 if (localAnswer != null) lastChatReply = localAnswer
                 statusText.text = localAnswer ?:
                     "Orden no disponible. No se realizó ninguna acción."
