@@ -1,5 +1,9 @@
 package com.cardenaspiero255.jarvis
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.media.projection.MediaProjectionManager
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -19,6 +23,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.LocalDialogue
+import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
@@ -40,6 +45,7 @@ import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
  */
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
+    private var screenConsentRequested = false
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
@@ -238,6 +244,21 @@ class MainActivity : Activity() {
             13f, Color.rgb(164, 166, 174)
         ))
         layout.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
+        layout.addView(label(
+            "Observación temporal: Android solicitará permiso para CADA sesión, " +
+                "con notificación visible, cierre tras 10 minutos y OCR local sin clics.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("INICIAR VISIÓN DE PANTALLA") { requestScreenObservation() })
+        layout.addView(primaryButton("DETENER VISIÓN DE PANTALLA") {
+            screenConsentRequested = false
+            statusText.text = if (ScreenObservationService.stopNow())
+                "Observación detenida; también se revocaron inicios pendientes."
+            else "No se pudo confirmar la detención de la observación."
+        })
+        layout.addView(primaryButton("ESTADO VISIÓN DE PANTALLA") {
+            statusText.text = ScreenObservationService.status()
+        })
         layout.addView(primaryButton("ABRIR GAMEHUB ULTRA") {
             val launched = GameHubLauncher(this).launchOnTap()
             statusText.text = if (launched) "GameHub Ultra se abrió mediante Android."
@@ -331,6 +352,10 @@ class MainActivity : Activity() {
             SessionLockChannel.VOICE_REQUEST to { voiceConsent.cancel() },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
+            SessionLockChannel.SCREEN_PROJECTION to {
+                screenConsentRequested = false
+                check(ScreenObservationService.stopNow())
+            },
             SessionLockChannel.HANDS to {
                 OmegaHandsService.setEmergencyStop(this, true)
                 check(OmegaHandsService.isStopped(this))
@@ -361,6 +386,47 @@ class MainActivity : Activity() {
 
     private fun refreshHandsStatus() {
         handsStatusText.text = handsStatus()
+    }
+
+    private fun requestScreenObservation() {
+        val notificationGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationGranted)) {
+            statusText.text = "Activa notificaciones para disponer de un aviso de " +
+                "detención visible. Pulsa INICIAR VISIÓN nuevamente tras autorizarlas."
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_SCREEN_NOTIFICATIONS)
+            return
+        }
+        if (screenConsentRequested) {
+            statusText.text = "Ya se está solicitando autorización de pantalla."
+            return
+        }
+        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        if (manager == null) {
+            statusText.text = "Este Android no admite la captura consentida."
+            return
+        }
+        try {
+            screenConsentRequested = true
+            @Suppress("DEPRECATION")
+            startActivityForResult(manager.createScreenCaptureIntent(), SCREEN_REQUEST)
+        } catch (_: RuntimeException) {
+            screenConsentRequested = false
+            statusText.text = "No se pudo solicitar autorización a Android."
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_SCREEN_NOTIFICATIONS) {
+            statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+                "Notificaciones autorizadas. Pulsa INICIAR VISIÓN y acepta el permiso de Android."
+            else "Sin notificaciones, la observación no se inició."
+        }
     }
 
     private fun pickVisionImage() {
@@ -400,6 +466,33 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == SCREEN_REQUEST) {
+            val requestedByTap = screenConsentRequested
+            screenConsentRequested = false
+            val notificationsAllowed = Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+            if (!requestedByTap || resultCode != RESULT_OK || data == null ||
+                !foregroundGate.canAcceptRecognitionResult() ||
+                !ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationsAllowed) ||
+                !ScreenObservationService.authorizeOneStart()) {
+                statusText.text = "Observación no autorizada; no se inició."
+                return
+            }
+            val service = Intent(this, ScreenObservationService::class.java).apply {
+                action = ScreenObservationService.ACTION_START
+                putExtra(ScreenObservationService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenObservationService.EXTRA_RESULT_DATA, data)
+            }
+            try {
+                startForegroundService(service)
+                statusText.text = "Permiso recibido. Comprueba la notificación de captura visible."
+            } catch (_: RuntimeException) {
+                ScreenObservationService.stopNow()
+                statusText.text = "Android no pudo iniciar la observación."
+            }
+            return
+        }
         if (requestCode == VISION_REQUEST) {
             if (resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
                 val selectedUri = data?.data
@@ -498,5 +591,7 @@ class MainActivity : Activity() {
     private companion object {
         const val SPEECH_REQUEST = 7001
         const val VISION_REQUEST = 7002
+        const val SCREEN_REQUEST = 7003
+        const val REQUEST_SCREEN_NOTIFICATIONS = 7004
     }
 }
