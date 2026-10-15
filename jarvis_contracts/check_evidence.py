@@ -60,6 +60,9 @@ def summarize_checks(checks, head_sha, *, complete=True) -> CheckEvidence:
             unverified.append(name)
             continue
         status, conclusion = item.get("status"), item.get("conclusion")
+        if type(status) is not str or (conclusion is not None and type(conclusion) is not str):
+            unverified.append(name)
+            continue
         if status in _WAITING:
             pending.append(name)
         elif status == "completed":
