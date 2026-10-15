@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import com.cardenaspiero255.jarvis.core.ChatSpeechPolicy
 import com.cardenaspiero255.jarvis.core.InstalledVoice
 import com.cardenaspiero255.jarvis.core.SpeechSessionState
 import com.cardenaspiero255.jarvis.core.SpokenMessage
@@ -23,6 +24,7 @@ class SpokenReplyEngine(
     private val handler = Handler(Looper.getMainLooper())
     private val session = SpeechSessionState()
     private val policy = SpokenReplyPolicy()
+    private val chatSpeech = ChatSpeechPolicy()
     private var synth: TextToSpeech? = null
     private var ready = false
     private var closed = false
@@ -109,6 +111,29 @@ class SpokenReplyEngine(
         }
         showStatus(if (accepted) "Android aceptó la respuesta de voz local."
             else "Android no pudo iniciar la respuesta de voz.")
+        return accepted
+    }
+
+    /**
+     * Reads only locally generated, allowlisted chat responses. A button press
+     * AND an already enabled offline voice session are mandatory. Never accept
+     * OCR, arbitrary prompts or restored chat rows as speech commands.
+     */
+    fun speakChatByTap(answer: String?): Boolean {
+        val safe = chatSpeech.textForSpeech(answer, explicitTap = true,
+            ready = ready && !closed, stopped = session.stopped)
+        if (safe == null) {
+            showStatus("Respuesta de chat no autorizada para voz. Activa la voz y genera una respuesta local.")
+            return false
+        }
+        val accepted = try {
+            synth?.speak(safe, TextToSpeech.QUEUE_FLUSH, null,
+                "jarvis-local-chat-offline") == TextToSpeech.SUCCESS
+        } catch (_: RuntimeException) {
+            false
+        }
+        showStatus(if (accepted) "Android aceptó la respuesta de chat para voz local."
+            else "Android no pudo hablar la respuesta local.")
         return accepted
     }
 
