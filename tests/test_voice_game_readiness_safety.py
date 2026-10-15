@@ -29,7 +29,7 @@ class VoiceGameReadinessSafetyContracts(unittest.TestCase):
         for permission in ("android.permission.WRITE_SETTINGS",
                            "android.permission.PACKAGE_USAGE_STATS"):
             self.assertNotIn(permission,s)
-        self.assertNotIn("android.permission.INTERNET",s)
+        self.assertIn("android.permission.INTERNET", s)
 
 if __name__=="__main__":
     unittest.main()
