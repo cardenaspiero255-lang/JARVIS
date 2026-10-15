@@ -108,7 +108,7 @@ class MainActivity : Activity() {
         )
         layout.addView(statusText)
         layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
-            lockSessionByUserRequest()
+            lockSessionByTap()
         })
         layout.addView(label(
             "Pantalla protegida contra capturas por defecto. Si necesitas compartir " +
@@ -482,7 +482,7 @@ class MainActivity : Activity() {
     }
 
     /** Revoke local modules on a visible tap or a one-shot foreground speech request. */
-    private fun lockSessionByUserRequest() {
+    private fun lockSessionByTap() {
         val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
             SessionLockChannel.VOICE_REQUEST to {
                 voiceConsent.cancel()
@@ -696,7 +696,7 @@ class MainActivity : Activity() {
             VoiceAction.STOP_SESSION -> {
                 // A single-use recognition request was consumed and foreground-checked
                 // above. Emergency stop only revokes capabilities; it grants none.
-                lockSessionByUserRequest()
+                lockSessionByTap()
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
