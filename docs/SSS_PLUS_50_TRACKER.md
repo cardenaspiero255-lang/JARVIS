@@ -51,7 +51,7 @@ Fuente: issue #1. La tabla refleja **evidencia parcial**, no la certificación S
 | 45 | Experiencia SSS+ | Sincronización multidispositivo | Pendiente |
 | 46 | Experiencia SSS+ | Integración PC | Pendiente |
 | 47 | Experiencia SSS+ | Privacidad local | Parcial — PR #4 — voz/estado local |
-| 48 | Experiencia SSS+ | Métricas de batería | Pendiente |
+| 48 | Experiencia SSS+ | Métricas de batería | Parcial — PR #23: batería/carga, estado térmico y RAM manuales; pendiente validación física y mediciones de rendimiento |
 | 49 | Experiencia SSS+ | Personalidad y voz configurables | Parcial — PR #8: perfiles TTS local español/británico |
 | 50 | Experiencia SSS+ | Pruebas adversariales continuas | Parcial — PR #2, #6, #7 — cobertura parcial |
 

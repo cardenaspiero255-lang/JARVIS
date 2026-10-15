@@ -19,6 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.LocalDialogue
+import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
 import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
@@ -202,6 +203,23 @@ class MainActivity : Activity() {
             statusText.text = "HANDS detenido. No se ejecutarán nuevas acciones."
             refreshHandsStatus()
         })
+
+        layout.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
+            Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        val healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
+            Color.rgb(211, 213, 220))
+        layout.addView(healthStatusText)
+        layout.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
+            healthStatusText.text = DeviceHealthFormatter.format(DeviceHealthReader(this).read())
+        })
+        layout.addView(label(
+            "Datos locales consultados una sola vez al pulsar. El estado térmico " +
+                "no es una temperatura en grados. No se guardan ni transmiten lecturas.",
+            12f, Color.rgb(159, 161, 171)
+        ))
 
         layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
