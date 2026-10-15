@@ -32,6 +32,8 @@ import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
+import com.cardenaspiero255.jarvis.core.GameHubPreflightGate
+import com.cardenaspiero255.jarvis.core.GameReadinessLevel
 import com.cardenaspiero255.jarvis.core.GameReadinessAdvisor
 import com.cardenaspiero255.jarvis.core.GamingPreference
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
@@ -64,6 +66,7 @@ class MainActivity : Activity() {
     private val capturePrivacyHandler = Handler(Looper.getMainLooper())
     private val capturePrivacyExpiry = Runnable { enforceCapturePrivacy() }
     private var gamingPreference = GamingPreference.BALANCED
+    private val gameHubPreflight = GameHubPreflightGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var visionRecognizer: VisionRecognizer
@@ -310,14 +313,17 @@ class MainActivity : Activity() {
         )
         layout.addView(gameReadinessText)
         layout.addView(primaryButton("PERFIL JUEGO: EQUILIBRADO") {
+            gameHubPreflight.cancel()
             gamingPreference = GamingPreference.BALANCED
             gameReadinessText.text = "Perfil equilibrado seleccionado. Evalúa de nuevo."
         })
         layout.addView(primaryButton("PERFIL JUEGO: COMPETITIVO") {
+            gameHubPreflight.cancel()
             gamingPreference = GamingPreference.COMPETITIVE
             gameReadinessText.text = "Perfil competitivo seleccionado. Evalúa de nuevo."
         })
         layout.addView(primaryButton("PERFIL JUEGO: CALIDAD VISUAL") {
+            gameHubPreflight.cancel()
             gamingPreference = GamingPreference.VISUAL_QUALITY
             gameReadinessText.text = "Perfil calidad visual seleccionado. Evalúa de nuevo."
         })
@@ -325,6 +331,46 @@ class MainActivity : Activity() {
             val snapshot = DeviceHealthReader(this).read()
             val result = GameReadinessAdvisor.assess(snapshot, gamingPreference)
             gameReadinessText.text = GameReadinessAdvisor.format(result)
+        })
+
+        layout.addView(primaryButton("PREPARAR APERTURA SEGURA DE GAMEHUB") {
+            val latest = GameReadinessAdvisor.assess(
+                DeviceHealthReader(this).read(), gamingPreference)
+            gameReadinessText.text = GameReadinessAdvisor.format(latest)
+            val staged = gameHubPreflight.stageByTap(
+                latest.level, gamingPreference, SystemClock.elapsedRealtime())
+            statusText.text = if (staged) {
+                "GameHub preparado con lectura local. Pulsa CONFIRMAR APERTURA " +
+                    "SEGURA DE GAMEHUB en menos de 30 segundos para revalidar y abrir."
+            } else {
+                "No se preparó la apertura: precaución térmica crítica, datos " +
+                    "insuficientes o solicitud previa aún vigente. Reevalúa manualmente."
+            }
+        })
+        layout.addView(primaryButton("CONFIRMAR APERTURA SEGURA DE GAMEHUB") {
+            val authorized = gameHubPreflight.consumeByTap(
+                gamingPreference, SystemClock.elapsedRealtime())
+            if (!authorized) {
+                statusText.text = "Sin autorización vigente: vuelve a preparar la apertura segura."
+            } else {
+                // Avoid using the old snapshot for a launch decision.
+                val latest = GameReadinessAdvisor.assess(
+                    DeviceHealthReader(this).read(), gamingPreference)
+                gameReadinessText.text = GameReadinessAdvisor.format(latest)
+                if (latest.level == GameReadinessLevel.READY ||
+                    latest.level == GameReadinessLevel.CAUTION
+                ) {
+                    val launched = GameHubLauncher(this).launchOnTap()
+                    statusText.text = if (launched) {
+                        "GameHub abierto con confirmación y nueva lectura del dispositivo."
+                    } else {
+                        "Android no pudo abrir GameHub. Verifica que esté instalado."
+                    }
+                } else {
+                    statusText.text = "Apertura segura cancelada: el estado actual ya " +
+                        "no permite confirmar el inicio asistido."
+                }
+            }
         })
 
         layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
@@ -405,6 +451,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        gameHubPreflight.cancel()
         revokeCaptureException()
         foregroundGate.onStop()
         clearVisibleReadouts()
@@ -420,6 +467,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        gameHubPreflight.cancel()
         revokeCaptureException()
         voiceMathSession.clear()
         recognitionRequest.cancel()
@@ -449,6 +497,7 @@ class MainActivity : Activity() {
             },
             SessionLockChannel.PRIVATE_MEMORY to { privateMemory.stop() },
             SessionLockChannel.LOCAL_DIAGNOSTICS to { clearVisibleReadouts() },
+            SessionLockChannel.GAMEHUB_PREFLIGHT to { gameHubPreflight.cancel() },
             SessionLockChannel.SCREEN_CAPTURE to {
                 revokeCaptureException()
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
