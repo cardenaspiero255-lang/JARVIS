@@ -89,6 +89,7 @@ class SpokenReplyEngine(
                     if (result == TextToSpeech.SUCCESS) {
                         synth?.setOnUtteranceProgressListener(listener)
                         ready = configureOfflineVoice()
+                        if (ready) session.resume() // TTS readiness requires no microphone permission.
                     } else {
                         ready = false
                     }
@@ -150,25 +151,15 @@ class SpokenReplyEngine(
         stop()
         style = next
         ready = configureOfflineVoice()
+        if (ready) session.resume() // The profile change was an explicit tap.
         showStatus(
             if (ready) when (next) {
                 VoiceStyle.SPANISH -> "Voz española local preparada. Pulsa PROBAR AUDIO JARVIS."
                 VoiceStyle.BRITISH_ASSISTANT ->
-                    "Voz británica local preparada. Pulsa ACTIVAR RESPUESTAS DE VOZ."
+                    "Voz británica local preparada. Pulsa PROBAR AUDIO JARVIS."
             } else "No se encontró voz compatible SIN conexión para ese perfil. " +
                 "Revisa los datos de síntesis de Android."
         )
-    }
-
-    fun enableByTap() {
-        if (closed) return
-        if (!ready) ready = configureOfflineVoice()
-        if (!ready) {
-            showStatus("Motor de voz no preparado. Instala una voz local o cambia el perfil.")
-            return
-        }
-        session.resume()
-        showStatus("Voz local activada para esta sesión. Pulsa LEER ESTADO EN VOZ ALTA.")
     }
 
     /** One visible tap grants only a single local canned speech attempt. */
@@ -185,7 +176,7 @@ class SpokenReplyEngine(
 
     private fun speakExplicitText(text: String): Boolean {
         if (closed || !ready || session.stopped) {
-            showStatus("Voz detenida o no preparada. Pulsa ACTIVAR RESPUESTAS DE VOZ.")
+            showStatus("Voz detenida o no preparada. Pulsa PROBAR AUDIO JARVIS para reanudar la voz.")
             return false
         }
         val engine = synth ?: return false
@@ -227,7 +218,7 @@ class SpokenReplyEngine(
             ready = ready && !closed, stopped = session.stopped)
         if (safe == null) {
             showStatus("Respuesta de chat no autorizada para voz. " +
-                "Activa la voz y genera una respuesta local.")
+                "Pulsa PROBAR AUDIO para reanudarla y genera una respuesta local.")
             return false
         }
         return speakExplicitText(safe)
@@ -239,7 +230,7 @@ class SpokenReplyEngine(
         val safe = healthSpeech.textForSpeech(snapshot, explicitTap = true,
             ready = ready && !closed, stopped = session.stopped)
         if (safe == null) {
-            showStatus("Voz local detenida o no preparada. Actívala antes de leer el estado.")
+            showStatus("Voz local detenida o no preparada. Pulsa PROBAR AUDIO para reanudarla antes de leer el estado.")
             return false
         }
         return speakExplicitText(safe)
