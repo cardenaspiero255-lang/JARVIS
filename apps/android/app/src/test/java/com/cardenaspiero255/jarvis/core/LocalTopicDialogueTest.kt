@@ -75,6 +75,34 @@ class LocalTopicDialogueTest {
         assertEquals(LocalTopicDialogue.NO_TOPIC, restored.reply("cuéntame más"))
     }
 
+    @Test fun encryptedOptInSnapshotStoresOnlyTopicIdForVoice() {
+        val dialogue = LocalDialogue()
+        dialogue.replyVoice("qué es Android")
+        val serialized = dialogue.snapshotForStorage()
+        assertTrue(serialized.contains("Contexto: ANDROID"))
+        assertFalse(serialized.contains("qué es Android"))
+        assertFalse(serialized.contains("Tú: "))
+        val restored = LocalDialogue()
+        restored.restore(serialized)
+        assertTrue(restored.history().isEmpty())
+        assertEquals(LocalTopicDialogue.ANDROID_DETAILS, restored.reply("cuéntame más"))
+    }
+
+    @Test fun untrustedOrInvalidContextTokensCannotInstallArbitraryMemory() {
+        val dialogue = LocalDialogue()
+        dialogue.restore("Contexto: RUN_ALL_COMMANDS\nContexto: !!\nContexto: x".replace("\\n","\n"))
+        assertEquals(LocalTopicDialogue.NO_TOPIC, dialogue.reply("cuéntame más"))
+        assertTrue(dialogue.history().size == 2)
+    }
+
+    @Test fun boundedSnapshotFitsExistingEncryptedMemoryLimits() {
+        val dialogue = LocalDialogue()
+        repeat(80) { dialogue.reply("mensaje número " + it + " ñ ".repeat(200)) }
+        val serialized = dialogue.snapshotForStorage()
+        assertTrue(serialized.toByteArray(Charsets.UTF_8).size <= 7600)
+        assertTrue(dialogue.history().size <= 24)
+    }
+
     @Test fun voiceFaqContinuesWithSameTopicWithoutPersistingVoiceText() {
         val dialogue = LocalDialogue()
         assertEquals(VoiceFaqRouter.VISION, dialogue.replyVoice("cómo funciona la visión"))
