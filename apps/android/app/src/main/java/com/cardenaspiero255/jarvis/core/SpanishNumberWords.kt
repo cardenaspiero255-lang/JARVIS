@@ -101,7 +101,7 @@ object SpanishNumberWords {
     private fun parseUnderHundred(tokens: List<String>): Long? {
         if (tokens.size == 1) return units[tokens[0]] ?: tens[tokens[0]]
         if (tokens.size == 3 && tokens[1] == "y") {
-            val ten = tens[tokens[0]] ?: return null
+            val ten = tens[tokens[0]] ?: if (tokens[0] == "veinte") 20L else return null
             val unit = units[tokens[2]] ?: return null
             if (unit in 1..9) return ten + unit
         }
