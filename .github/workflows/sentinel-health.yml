@@ -1,0 +1,59 @@
+name: JARVIS — Ultra Sentinel read-only health
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/sentinel-health.yml"
+      - "scripts/sentinel_health_check.py"
+      - "jarvis_contracts/sentinel_health.py"
+  workflow_dispatch:
+  schedule:
+    - cron: '27,57 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: jarvis-sentinel-health-main
+  cancel-in-progress: false
+
+jobs:
+  sentinel-observer:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out trusted main only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Python runtime
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Validate read-only health observer
+        run: python -m unittest discover -s tests -p 'test_sentinel_health*.py' -v
+      - name: Inspect Ultra Sentinel GitHub Actions status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JARVIS_SENTINEL_PUBLIC_REPORT: ${{ runner.temp }}/sentinel-health.json
+        shell: bash
+        run: |
+          set +e
+          python -m scripts.sentinel_health_check
+          result=$?
+          set -e
+          if [ -f "$JARVIS_SENTINEL_PUBLIC_REPORT" ]; then
+            cat "$JARVIS_SENTINEL_PUBLIC_REPORT" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$result"
+      - name: Upload public-only status artifact
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: jarvis-sentinel-readonly-status
+          path: ${{ runner.temp }}/sentinel-health.json
+          retention-days: 7
+          if-no-files-found: warn
