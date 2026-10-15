@@ -9,3 +9,6 @@ Un coordinador Kotlin invoca cada cierre una vez y **notifica fallos** en vez de
 **Límite explícito:** el PR #16 de MediaProjection todavía no está fusionado en `main`. Este botón no detiene una futura sesión de MediaProjection hasta conectar su servicio; esa integración y su prueba física son un bloqueo obligatorio de ese PR. No presentar este botón como parada global de funciones aún no incluidas.
 
 **Pruebas:** JUnit cubre orden, acciones faltantes, fallos de un módulo e idempotencia. Contratos Python comprueban la presencia de todos los cierres en la UI y ausencia de borrado implícito. CI compila la APK, pero no demuestra interrupción perceptible de voz/OCR en teléfono físico.
+
+## Integración futura de MediaProjection (PR #27)
+En la rama de visión renovada, el canal `SCREEN_PROJECTION` revoca inicios de captura pendientes mediante `ProjectionStartPermit` y detiene el servicio activo cuando se pulsa **BLOQUEAR SESIÓN — PRIVACIDAD**. Los botones DETENER OBSERVACIÓN (notificación) y DETENER VISIÓN DE PANTALLA también solicitan detenerla. Esta integración sigue **sin validación física** y permanece en PR draft, no disponible en la versión fusionada hasta superar las pruebas del teléfono.
