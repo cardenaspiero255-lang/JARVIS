@@ -39,10 +39,15 @@ class ScreenProjectionPrivacyInstrumentedTest {
                 assertNotNull(stop)
                 assertNotNull(lock)
                 assertNotNull(status)
-                assertTrue(ScreenObservationService.authorizeOneStart())
+                // Release gate must deny the experimental projection capability.
+                val start = button(activity.window.decorView, "INICIAR VISIÓN DE PANTALLA")
+                assertNotNull(start)
+                start!!.performClick()
+                assertTrue(ScreenObservationService.status().contains("detenida"))
+                assertFalse(ScreenObservationService.authorizeOneStart())
                 stop!!.performClick()
                 assertTrue(ScreenObservationService.status().contains("detenida"))
-                assertTrue(ScreenObservationService.authorizeOneStart())
+                assertFalse(ScreenObservationService.authorizeOneStart())
                 lock!!.performClick()
                 assertTrue(ScreenObservationService.status().contains("detenida"))
                 // Privacy lock must never erase the separate encrypted disk history.
