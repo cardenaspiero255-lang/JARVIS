@@ -1,0 +1,41 @@
+name: JARVIS AI Gateway
+
+on:
+  pull_request:
+    paths:
+      - "services/ai-gateway/**"
+      - ".github/workflows/ai-gateway.yml"
+  push:
+    paths:
+      - "services/ai-gateway/**"
+      - ".github/workflows/ai-gateway.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test gateway and Vercel deployment contracts
+        run: node --test services/ai-gateway/test/*.test.mjs
+      - name: Verify no OpenAI secrets are committed
+        run: |
+          if grep -R -n -E 'sk-proj-[A-Za-z0-9_-]{12}|sk-[A-Za-z0-9]{32,}' services/ai-gateway --exclude='*.md'; then
+            echo "Possible credential in gateway source" >&2
+            exit 1
+          fi
