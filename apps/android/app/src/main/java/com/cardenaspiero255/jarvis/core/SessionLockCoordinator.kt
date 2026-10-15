@@ -9,6 +9,7 @@ enum class SessionLockChannel {
     PRIVATE_MEMORY,
     LOCAL_DIAGNOSTICS,
     SCREEN_CAPTURE,
+    GAMEHUB_PREFLIGHT,
     LOCAL_CHAT
 }
 

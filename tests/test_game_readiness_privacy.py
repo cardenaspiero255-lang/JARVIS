@@ -20,8 +20,10 @@ class GameReadinessPrivacyContracts(unittest.TestCase):
     def test_only_tap_triggers_one_time_read_and_no_game_launch(self):
         src=(JAVA/"MainActivity.kt").read_text()
         self.assertIn('primaryButton("EVALUAR ANTES DE JUGAR")',src)
+        # Scope this assertion to the original advice button, not to the
+        # separate two-tap GameHub confirmation action placed afterward.
         block=src.split('primaryButton("EVALUAR ANTES DE JUGAR")',1)[1].split(
-            'layout.addView(label("OMEGA VISION',1)[0]
+            'primaryButton("PREPARAR APERTURA SEGURA DE GAMEHUB")',1)[0]
         self.assertIn("DeviceHealthReader(this).read()",block)
         self.assertIn("GameReadinessAdvisor.assess(snapshot, gamingPreference)",block)
         self.assertIn("GameReadinessAdvisor.format(result)",block)
