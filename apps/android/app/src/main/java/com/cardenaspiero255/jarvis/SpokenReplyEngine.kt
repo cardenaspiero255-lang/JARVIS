@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import com.cardenaspiero255.jarvis.core.ChatSpeechPolicy
+import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
+import com.cardenaspiero255.jarvis.core.DeviceHealthSpeechPolicy
 import com.cardenaspiero255.jarvis.core.InstalledVoice
 import com.cardenaspiero255.jarvis.core.SpeechSessionState
 import com.cardenaspiero255.jarvis.core.SpokenMessage
@@ -25,6 +27,7 @@ class SpokenReplyEngine(
     private val session = SpeechSessionState()
     private val policy = SpokenReplyPolicy()
     private val chatSpeech = ChatSpeechPolicy()
+    private val healthSpeech = DeviceHealthSpeechPolicy()
     private var synth: TextToSpeech? = null
     private var ready = false
     private var closed = false
@@ -139,6 +142,28 @@ class SpokenReplyEngine(
 
     /** Snapshot of Android's local TTS readiness, not proof that sound is audible. */
     fun offlineVoiceReady(): Boolean = ready && !closed
+
+    /**
+     * Speak only a newly read local Android health snapshot, never voice/OCR text.
+     * Explicit button and previously enabled offline TTS are both mandatory.
+     */
+    fun speakHealthByTap(snapshot: DeviceHealthSnapshot): Boolean {
+        val safe = healthSpeech.textForSpeech(snapshot, explicitTap = true,
+            ready = ready && !closed, stopped = session.stopped)
+        if (safe == null) {
+            showStatus("Voz local detenida o no preparada. Actívala antes de leer el estado.")
+            return false
+        }
+        val accepted = try {
+            synth?.speak(safe, TextToSpeech.QUEUE_FLUSH, null,
+                "jarvis-device-health-local") == TextToSpeech.SUCCESS
+        } catch (_: RuntimeException) {
+            false
+        }
+        showStatus(if (accepted) "Android aceptó la lectura local de salud del dispositivo."
+            else "Android no pudo leer el diagnóstico de forma audible.")
+        return accepted
+    }
 
     fun stop() {
         session.stop()
