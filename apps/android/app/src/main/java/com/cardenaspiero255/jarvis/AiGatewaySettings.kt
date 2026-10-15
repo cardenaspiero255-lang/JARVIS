@@ -27,8 +27,13 @@ class AiGatewaySettings(context: Context) {
         val allowVoice: Boolean
     )
 
+    /** Server URL is built in. Only a separately issued secret is paired once. */
+    fun configureByTap(token: String, allowVoice: Boolean): Boolean =
+        configureByTap(AiGatewayPolicy.DEFAULT_ENDPOINT, token, allowVoice)
+
+    /** Also validates any old saved pairing created before URL was bundled. */
     fun configureByTap(endpoint: String, token: String, allowVoice: Boolean): Boolean {
-        if (!AiGatewayPolicy.endpointAllowed(endpoint) ||
+        if (!AiGatewayPolicy.officialEndpointAllowed(endpoint) ||
             !AiGatewayPolicy.tokenAllowed(token)) return false
         val data = JSONObject().apply {
             put("endpoint", endpoint)
@@ -38,11 +43,16 @@ class AiGatewaySettings(context: Context) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val sealed = cipher.doFinal(data)
-        return prefs.edit()
+        val persisted = prefs.edit()
             .putString("nonce", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString("sealed", Base64.encodeToString(sealed, Base64.NO_WRAP))
             .commit()
+        return persisted && get() != null
     }
+
+    /** No credentials are returned; used only to distinguish missing/corrupt pairs. */
+    fun hasStoredPairing(): Boolean =
+        prefs.contains("nonce") || prefs.contains("sealed")
 
     fun get(): Pairing? {
         val nonce = prefs.getString("nonce", null) ?: return null
@@ -59,7 +69,7 @@ class AiGatewaySettings(context: Context) {
             )
             val endpoint = payload.optString("endpoint")
             val token = payload.optString("token")
-            if (!AiGatewayPolicy.endpointAllowed(endpoint) ||
+            if (!AiGatewayPolicy.officialEndpointAllowed(endpoint) ||
                 !AiGatewayPolicy.tokenAllowed(token)) return null
             Pairing(endpoint,token,payload.optBoolean("voice", false))
         } catch (_: Exception) { null }
