@@ -7,6 +7,12 @@ class ChatSpeechPolicy {
         VoiceFaqRouter.VISION,
         VoiceFaqRouter.GAMEHUB,
         VoiceFaqRouter.STOP,
+        // Only deterministic Android-local messages produced after verified
+        // recognition; never read out the raw ASR transcript or screen OCR.
+        "JARVIS operativo en modo observador. Integraciones remotas y automatización aún no habilitadas.",
+        "Solicitud recibida. Pulsa CONFIRMAR AJUSTES antes de 30 segundos.",
+        "GameHub solicitado. Pulsa CONFIRMAR APERTURA antes de 30 segundos. La voz no abre apps por sí sola.",
+        "Orden no disponible. No se realizó ninguna acción.",
         "Escribe una pregunta para conversar.",
         "No hay una respuesta anterior todavía.",
         "No hay un resultado anterior para continuar.",
