@@ -26,7 +26,7 @@ object VoiceFaqRouter {
 
     fun answer(transcript: String?): String? {
         if (transcript == null || transcript.isBlank() || transcript.length > 160 ||
-            transcript.any { it.isISOControl() }) return null
+            transcript.any { Character.isISOControl(it) }) return null
         val ascii = Normalizer.normalize(
             transcript.lowercase(Locale.ROOT), Normalizer.Form.NFD
         ).replace(Regex("""\p{M}+"""), "")
