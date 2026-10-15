@@ -63,6 +63,24 @@ object OmegaUiKit {
         return root
     }
 
+    fun createSection(context: Context, parent: LinearLayout): LinearLayout {
+        val bg = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(21, 24, 37), Color.rgb(13, 17, 27)))
+        bg.cornerRadius = dp(context, 22).toFloat()
+        bg.setStroke(dp(context, 1), Color.rgb(53, 56, 76))
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = bg
+            setPadding(dp(context, 14), dp(context, 14),
+                dp(context, 14), dp(context, 18))
+        }
+        parent.addView(content, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(context, 20) })
+        return content
+    }
+
     fun statusSurface(context: Context): GradientDrawable =
         GradientDrawable().apply {
             setColor(Color.rgb(20, 29, 44))
