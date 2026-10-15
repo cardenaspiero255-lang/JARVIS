@@ -77,6 +77,15 @@ class MainActivity : Activity() {
     private var gamingPreference = GamingPreference.BALANCED
     private val gameHubPreflight = GameHubPreflightGate()
     private lateinit var statusText: TextView
+    private lateinit var omegaCore: OmegaPulseCore
+    private lateinit var omegaScroll: ScrollView
+    private lateinit var chatCard: LinearLayout
+    private lateinit var visionCard: LinearLayout
+    private lateinit var gameCard: LinearLayout
+    private val scrollUiHandler = Handler(Looper.getMainLooper())
+    private val scrollResumeRunnable = Runnable {
+        if (::omegaCore.isInitialized) omegaCore.resumeMotion()
+    }
     private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var visionRecognizer: VisionRecognizer
     private lateinit var handsStatusText: TextView
@@ -106,6 +115,19 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(9, 11, 19))
         }
         layout.addView(OmegaUiKit.hero(this))
+        omegaCore = OmegaPulseCore(this)
+        layout.addView(omegaCore)
+        layout.addView(label("NÚCLEO OMEGA  /  SISTEMA EN OBSERVACIÓN", 11f,
+            Color.rgb(235, 112, 131)).apply {
+            gravity = android.view.Gravity.CENTER
+            letterSpacing = .16f
+            setPadding(0, dp(0), 0, dp(18))
+        })
+        layout.addView(OmegaUiKit.quickActions(this,
+            onChat = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, chatCard.top) },
+            onVision = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, visionCard.top) },
+            onGame = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, gameCard.top) }
+        ))
         layout.addView(label("OBJETIVO SSS+ | PROTOTIPO ANDROID", 12f,
             Color.rgb(163, 165, 176)))
         layout.addView(label("SIN CERTIFICACIÓN — validación física pendiente", 12f,
@@ -148,7 +170,10 @@ class MainActivity : Activity() {
             revokeCaptureException()
             statusText.text = "Pantalla protegida contra capturas y vista previa de recientes."
         })
-        spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
+        spokenReplyEngine = SpokenReplyEngine(this,
+            showStatus = { statusText.text = it },
+            onSpeechProgress = { omegaCore.setSpeaking(it) }
+        )
         layout.addView(primaryButton("PROBAR AUDIO JARVIS") {
             spokenReplyEngine.testVoiceByTap()
         })
@@ -165,6 +190,7 @@ class MainActivity : Activity() {
 
         var section: LinearLayout
         section = OmegaUiKit.createSection(this, layout)
+        chatCard = section
         section.addView(label("OMEGA CHAT — CONVERSACIÓN LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(20), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
@@ -324,6 +350,7 @@ class MainActivity : Activity() {
         ))
 
         section = OmegaUiKit.createSection(this, layout)
+        gameCard = section
         section.addView(label("OMEGA GAME READINESS — ASESOR PARA JUGAR", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
@@ -401,6 +428,7 @@ class MainActivity : Activity() {
         })
 
         section = OmegaUiKit.createSection(this, layout)
+        visionCard = section
         section.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
@@ -484,9 +512,19 @@ class MainActivity : Activity() {
             12f, Color.rgb(159, 161, 171)
         ).apply { setPadding(0, dp(24), 0, 0) })
 
-        val scroll = ScrollView(this).apply { isFillViewport = true }
-        scroll.addView(layout)
-        setContentView(scroll)
+        omegaScroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
+            setBackgroundColor(Color.rgb(9, 11, 19))
+        }
+        omegaScroll.setOnScrollChangeListener { _, _, _, _, _ ->
+            omegaCore.pauseMotion()
+            scrollUiHandler.removeCallbacks(scrollResumeRunnable)
+            scrollUiHandler.postDelayed(scrollResumeRunnable, 250L)
+        }
+        omegaScroll.addView(layout)
+        setContentView(omegaScroll)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -498,11 +536,17 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        if (::omegaCore.isInitialized) omegaCore.resumeMotion()
         enforceCapturePrivacy()
         foregroundGate.onStart()
     }
 
     override fun onStop() {
+        scrollUiHandler.removeCallbacks(scrollResumeRunnable)
+        if (::omegaCore.isInitialized) {
+            omegaCore.pauseMotion()
+            omegaCore.setSpeaking(false)
+        }
         gameHubPreflight.cancel()
         revokeCaptureException()
         foregroundGate.onStop()
@@ -519,6 +563,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        scrollUiHandler.removeCallbacks(scrollResumeRunnable)
         gameHubPreflight.cancel()
         revokeCaptureException()
         voiceMathSession.clear()
