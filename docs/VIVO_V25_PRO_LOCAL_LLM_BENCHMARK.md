@@ -16,10 +16,15 @@ SHA-256 (from official model repository):
 ## Test the actual phone
 
 1. Install the APK produced by Android shell CI on the **Vivo V25 Pro**.
-2. Tap **ABRIR DESCARGA OFICIAL DE QWEN**, download the **exact** Q4_K_M file from the official repository. In
-   JARVIS choose **IMPORTAR MODELO GGUF — QWEN 0.5B** and select it. Import
-   copies to private storage and verifies the exact pinned SHA-256. A wrong
-   model must be rejected.
+2. **Preferred, direct installation:** tap **INSTALAR QWEN OFICIAL — 491 MB**,
+   review the size/network notice and confirm **INSTALAR**. JARVIS downloads
+   the exact 491,400,032-byte GGUF from the official Qwen/Hugging Face pinned
+   revision, checks its SHA-256 and atomically installs it into private
+   storage. No browser, file picker or API key is needed. Keep the app open
+   for the first download, ideally using Wi-Fi.
+   **Offline/manual fallback:** tap **ABRIR DESCARGA OFICIAL DE QWEN**,
+   download Q4_K_M and choose **IMPORTAR MODELO GGUF — QWEN 0.5B**.
+   The same digest is checked and untrusted weights are rejected.
 3. Switch the phone to **airplane mode** (Wi-Fi and mobile data off). In OMEGA
    CHAT, ask `¿Qué es un agujero negro?`, `Explica la fotosíntesis`, and
    `Dame tres consejos para ahorrar batería`. Verify that answers are genuinely
@@ -75,3 +80,22 @@ adb logcat -d -s JARVIS_LLM_BENCH:I
 
 No device metrics are claimed until this protocol has been executed on the
 physical Vivo V25 Pro and the resulting evidence reviewed.
+
+## Network privacy boundary (opt-in installer)
+
+The base Android application now requests `android.permission.INTERNET` **solely**
+for a confirmed initial model download. It uses HTTPS to the pinned official
+Qwen file URL (whose server may redirect to Hugging Face's delivery CDN).
+The app does not submit conversation prompts, images, microphone transcripts,
+private memory, or device identifiers to an online model provider.
+The model is checked against its fixed SHA-256 before being used. The local
+llama.cpp inference path does not make network requests. Legacy cloud billing
+clients remain absent. The new network permission is a deliberate change from
+the previous strictly no-Internet manifest; regression tests explicitly
+verify the narrow download-only network boundary.
+
+For a 491 MB first install, allow at least 550 MB free. Download can be
+cancelled by leaving JARVIS: it is not a persistent background service. If
+connectivity fails or integrity verification rejects the file, no new model
+is activated. Reopen JARVIS and retry. The original offline FAQ and math chat
+are available without model installation.
