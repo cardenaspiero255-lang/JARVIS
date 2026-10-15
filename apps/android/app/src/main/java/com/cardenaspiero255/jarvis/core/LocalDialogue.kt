@@ -14,12 +14,18 @@ class LocalDialogue {
     private var lastNumericResult: BigDecimal? = null
 
     fun reply(input: String): String {
+        // Reject rather than silently truncate an expression or mixed instruction.
+        // Rejected inputs are not persisted or eligible for voice readout.
+        if (input.length > MAX_INPUT_LENGTH) {
+            return "Mensaje demasiado largo: escribe hasta 280 caracteres para JARVIS."
+        }
         val sanitized = input.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
-            .replace(Regex("\\s+"), " ").trim().take(280)
+            .replace(Regex("\\s+"), " ").trim()
         val normalized = Normalizer.normalize(sanitized.lowercase(Locale.ROOT),
             Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
         val math = if (normalized == "repitelo" || normalized == "repite") null
             else OfflineArithmetic.evaluate(sanitized, lastNumericResult)
+        val offlineHelp = VoiceFaqRouter.answer(sanitized)
         val answer = when {
             sanitized.isBlank() -> "Escribe una pregunta para conversar."
             normalized == "repitelo" || normalized == "repite" ->
@@ -28,16 +34,11 @@ class LocalDialogue {
                 if (math.value != null) lastNumericResult = math.value
                 math.answer
             }
-            normalized.startsWith("hola") || normalized == "buenas" ->
+            offlineHelp != null -> offlineHelp
+            normalized == "buenas" ->
                 "Hola. Soy JARVIS en modo observador. Puedo explicar mis funciones locales."
-            normalized.contains("privacidad") || normalized.contains("memoria") ->
-                "La conversación es local. Tu historial puede cifrarse en este dispositivo solo si activas la memoria, y puedes borrarlo."
-            normalized.contains("estado") ->
+            normalized in setOf("estado", "jarvis estado", "estado jarvis") ->
                 "JARVIS funciona en modo observador. Las acciones sensibles necesitan permiso visible."
-            normalized.contains("ayuda") || normalized.contains("que puedes hacer") ->
-                "Puedo consultar el estado en modo observador, conversar sobre funciones disponibles, reconocer texto de imágenes elegidas y abrir GameHub por pulsación."
-            normalized.contains("quien eres") ->
-                "Soy JARVIS OMEGA, un prototipo de asistente Android. No soy una IA general conectada."
             else ->
                 "No tengo una conexión a un modelo conversacional general en esta versión. Puedo ayudarte con estado, privacidad y funciones de JARVIS."
         }.take(300)
@@ -72,4 +73,8 @@ class LocalDialogue {
         lastAnswer = null
         lastNumericResult = null
     }
+    private companion object {
+        const val MAX_INPUT_LENGTH = 280
+    }
+
 }
