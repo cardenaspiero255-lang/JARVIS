@@ -6,6 +6,13 @@ Un coordinador Kotlin invoca cada cierre una vez y **notifica fallos** en vez de
 
 **No borra el historial cifrado guardado**: eso requiere el botón separado BORRAR HISTORIAL Y CLAVE CIFRADA. Tampoco apaga el micrófono de servicios externos a JARVIS ni revoca permisos Android del sistema. No hay privilegios especiales, nuevas redes o registros.
 
-**Límite explícito:** el PR #16 de MediaProjection todavía no está fusionado en `main`. Este botón no detiene una futura sesión de MediaProjection hasta conectar su servicio; esa integración y su prueba física son un bloqueo obligatorio de ese PR. No presentar este botón como parada global de funciones aún no incluidas.
+**Límite explícito:** el PR #16 de MediaProjection fue cerrado sin fusionar. Su sustituto, el PR #27, sigue en borrador y tampoco está disponible en `main`. Este botón no controla una sesión futura de MediaProjection hasta que #27 incorpore las funciones y supere sus pruebas físicas. No presentar este botón como parada global de funciones aún no fusionadas.
 
 **Pruebas:** JUnit cubre orden, acciones faltantes, fallos de un módulo e idempotencia. Contratos Python comprueban la presencia de todos los cierres en la UI y ausencia de borrado implícito. CI compila la APK, pero no demuestra interrupción perceptible de voz/OCR en teléfono físico.
+
+
+## Redacción de diagnósticos visibles (PR #35)
+
+Al pulsar **BLOQUEAR SESIÓN — PRIVACIDAD**, JARVIS también reemplaza el contenido visible de los paneles de autodiagnóstico, batería/RAM/térmicas y Game Readiness por etiquetas neutras. El canal **LOCAL_DIAGNOSTICS** es independiente: si falla su limpieza se muestra el bloqueo parcial, sin impedir los otros pasos. Las etiquetas también se sustituyen cuando MainActivity pasa a segundo plano para no conservar lecturas antiguas en la vista al volver.
+
+Esta medida elimina los informes **de los TextView de la aplicación**; no equivale a borrar capturas del sistema, backups, logs ajenos, el historial cifrado (que requiere su control independiente) ni a cerrar todos los servicios Android. Se deben seguir verificando recents/snapshots, lifecycle y privacidad física en dispositivos reales. No se añaden permisos ni telemetría.

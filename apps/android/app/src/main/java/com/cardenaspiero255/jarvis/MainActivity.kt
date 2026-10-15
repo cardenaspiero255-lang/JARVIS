@@ -23,6 +23,8 @@ import com.cardenaspiero255.jarvis.core.LocalDialogue
 import com.cardenaspiero255.jarvis.core.GameHubLaunchPolicy
 import com.cardenaspiero255.jarvis.core.LocalCapabilityDiagnostics
 import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
+import com.cardenaspiero255.jarvis.core.ReadoutRedactionPolicy
+import com.cardenaspiero255.jarvis.core.SensitiveReadout
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
@@ -62,6 +64,9 @@ class MainActivity : Activity() {
     private lateinit var privateMemory: PrivateConversationStore
     private lateinit var chatLog: TextView
     private lateinit var chatInput: EditText
+    private lateinit var healthStatusText: TextView
+    private lateinit var capabilityStatusText: TextView
+    private lateinit var gameReadinessText: TextView
     private var lastChatReply: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -227,7 +232,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        val capabilityStatusText = label("Sin diagnóstico. Consulta manual y privada.", 13f,
+        capabilityStatusText = label("Sin diagnóstico. Consulta manual y privada.", 13f,
             Color.rgb(211, 213, 220))
         layout.addView(capabilityStatusText)
         layout.addView(primaryButton("DIAGNÓSTICO LOCAL DE JARVIS") {
@@ -239,7 +244,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        val healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
+        healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
             Color.rgb(211, 213, 220))
         layout.addView(healthStatusText)
         layout.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
@@ -266,7 +271,7 @@ class MainActivity : Activity() {
                 "de jugar. Solo recomendaciones: no modifica el hardware ni inicia juegos.",
             13f, Color.rgb(164, 166, 174)
         ))
-        val gameReadinessText = label(
+        gameReadinessText = label(
             "Elige un perfil y pulsa EVALUAR ANTES DE JUGAR.",
             13f, Color.rgb(211, 213, 220)
         )
@@ -367,6 +372,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         foregroundGate.onStop()
+        clearVisibleReadouts()
         // The system recognizer may be another Activity: preserve only a short-lived
         // numeric answer while our explicitly started recognition is pending.
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
@@ -406,6 +412,7 @@ class MainActivity : Activity() {
                 check(OmegaHandsService.isStopped(this))
             },
             SessionLockChannel.PRIVATE_MEMORY to { privateMemory.stop() },
+            SessionLockChannel.LOCAL_DIAGNOSTICS to { clearVisibleReadouts() },
             SessionLockChannel.LOCAL_CHAT to {
                 localDialogue.clear()
                 lastChatReply = null
@@ -421,6 +428,26 @@ class MainActivity : Activity() {
         } else {
             "Bloqueo parcial: no se pudo confirmar " +
                 report.failed.joinToString() + ". Comprueba los controles."
+        }
+    }
+
+    /**
+     * Hide all one-shot hardware/availability evaluations when the app leaves the
+     * foreground or the user invokes the privacy lock. Never erase encrypted disk
+     * memory or leave an old diagnostic in the visible UI.
+     */
+    private fun clearVisibleReadouts() {
+        if (::capabilityStatusText.isInitialized) {
+            capabilityStatusText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.CAPABILITIES)
+        }
+        if (::healthStatusText.isInitialized) {
+            healthStatusText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.DEVICE_HEALTH)
+        }
+        if (::gameReadinessText.isInitialized) {
+            gameReadinessText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.GAME_READINESS)
         }
     }
 

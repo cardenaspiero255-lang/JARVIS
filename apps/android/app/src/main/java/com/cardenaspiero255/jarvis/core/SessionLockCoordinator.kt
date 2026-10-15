@@ -7,6 +7,7 @@ enum class SessionLockChannel {
     IMAGE_OCR,
     HANDS,
     PRIVATE_MEMORY,
+    LOCAL_DIAGNOSTICS,
     LOCAL_CHAT
 }
 
