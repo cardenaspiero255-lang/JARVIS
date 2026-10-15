@@ -15,7 +15,7 @@ class PrivateMemoryContracts(unittest.TestCase):
         self.assertIn('android:allowBackup="false"', manifest)
 
     def test_memory_cannot_be_enabled_by_voice_or_vision(self):
-        core=(ROOT / "java/com/cardenaspiero255/jarvis/LocalDialogue.kt").read_text()
+        core=(ROOT / "java/com/cardenaspiero255/jarvis/core/LocalDialogue.kt").read_text()
         self.assertNotIn("OmegaHandsService", core)
         self.assertNotIn("ProviderBridge", core)
         self.assertNotIn("GameHubLauncher", core)
