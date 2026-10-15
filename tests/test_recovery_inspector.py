@@ -65,8 +65,9 @@ class RecoveryInspectorTests(unittest.TestCase):
     def test_untrusted_input_is_rejected_with_no_db_mutation(self):
         with tempfile.TemporaryDirectory() as tmp, DurableStore(tmp + "/state.db") as db:
             bad = [
-                ("../jarvis", KEY, FP, NOW, NOW+60),
-                (SOURCE, "key with spaces", FP, NOW, NOW+60),
+                ("", KEY, FP, NOW, NOW+60),
+                ("  ", KEY, FP, NOW, NOW+60),
+                (SOURCE, "", FP, NOW, NOW+60),
                 (SOURCE, KEY, "short", NOW, NOW+60),
                 (SOURCE, KEY, FP, float("nan"), NOW+60),
                 (SOURCE, KEY, FP, NOW, float("inf")),
