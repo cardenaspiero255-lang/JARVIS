@@ -25,6 +25,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.ButtonHintDetector
 import com.cardenaspiero255.jarvis.core.OcrLine
+import com.cardenaspiero255.jarvis.core.ProjectionStartPermit
 import com.cardenaspiero255.jarvis.core.ScreenObservationPolicy
 import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.google.mlkit.vision.common.InputImage
@@ -62,11 +63,13 @@ class ScreenObservationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            terminate(stopProjection = true)
+            stopNow()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         if (intent?.action != ACTION_START || !shuttingDown.get() ||
-            !pendingStart.compareAndSet(true, false)) {
+            !pendingStart.consume()) {
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -269,20 +272,20 @@ class ScreenObservationService : Service() {
         private const val CHANNEL_ID = "jarvis_omega_screen_capture"
         private const val NOTIFICATION_ID = 1241
 
-        private val pendingStart = AtomicBoolean(false)
+        private val pendingStart = ProjectionStartPermit()
 
         /** User/OS consent is only good for ONE queued service start. */
         fun authorizeOneStart(): Boolean {
             if (live != null) return false
-            return pendingStart.compareAndSet(false, true)
+            return pendingStart.arm()
         }
 
         /** Immediately revoke both queued starts and any live MediaProjection. */
         fun stopNow(): Boolean {
-            pendingStart.set(false)
+            pendingStart.revoke()
             return try {
                 live?.terminate(stopProjection = true)
-                live == null && !pendingStart.get()
+                live == null && !pendingStart.pending()
             } catch (_: RuntimeException) {
                 false
             }
