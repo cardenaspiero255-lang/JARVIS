@@ -14,5 +14,12 @@ export default async function handler(req, res) {
     return;
   }
   if (!gateway) gateway = createGateway({apiKey, accessToken});
+  // The hosting platform has already matched this *specific* Vercel
+  // function through /api/chat or the public /v1/chat rewrite. Vercel may
+  // preserve its original URL with internal query parameters on req.url.
+  // Normalize only inside this function so the core gateway still performs
+  // strict POST, bearer-token and payload validation. Do not loosen its
+  // own route allowlist for an arbitrary standalone server.
+  req.url = "/api/chat";
   return gateway(req, res);
 }
