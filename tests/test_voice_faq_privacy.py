@@ -26,7 +26,11 @@ class VoiceFaqPrivacyContract(unittest.TestCase):
     def test_unsupported_voice_branch_fails_closed_without_history_save(self):
         activity=(BASE/"MainActivity.kt").read_text()
         block=activity.split("VoiceAction.UNSUPPORTED -> {",1)[1].split("\n            }",1)[0]
-        self.assertIn("VoiceFaqRouter.answer(transcript)",block)
+        self.assertIn("localDialogue.replyVoice(transcript)",block)
+        local=(BASE/"core/LocalDialogue.kt").read_text()
+        voice=local.split("fun replyVoice(",1)[1].split("fun history()",1)[0]
+        self.assertIn("VoiceFaqRouter.answer(input)",voice)
+        self.assertNotIn("turns.add(",voice)
         self.assertIn("voiceMathSession.answer(transcript,",block)
         self.assertNotIn("localDialogue.reply(",block)
         self.assertNotIn("privateMemory.save(",block)
