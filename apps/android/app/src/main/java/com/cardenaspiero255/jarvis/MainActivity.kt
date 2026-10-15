@@ -63,7 +63,9 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         }
         layout.addView(heading)
-        layout.addView(label("SSS+  |  NÚCLEO ANDROID 0.1", 12f,
+        layout.addView(label("OBJETIVO SSS+ | PROTOTIPO ANDROID", 12f,
+            Color.rgb(163, 165, 176)))
+        layout.addView(label("SIN CERTIFICACIÓN — validación física pendiente", 12f,
             Color.rgb(163, 165, 176)))
         layout.addView(label("Modo observador", 22f, Color.WHITE).apply {
             setPadding(0, dp(36), 0, dp(10))
@@ -79,7 +81,7 @@ class MainActivity : Activity() {
         privateMemory = PrivateConversationStore(this)
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
-                "JARVIS todavía no controla otras aplicaciones.",
+                "JARVIS solo permite HOME y abrir GameHub con permiso; no navega otras interfaces.",
             14f, Color.rgb(164, 166, 174)
         ).apply { setPadding(0, dp(24), 0, dp(16)) })
 
