@@ -22,7 +22,7 @@ class AiGatewayAndroidContracts(unittest.TestCase):
     def test_pairing_stays_encrypted_not_baked_into_apk(self):
         store=(SRC/"AiGatewaySettings.kt").read_text()
         for item in ("AndroidKeyStore","AES/GCM/NoPadding","GCMParameterSpec",
-                     "AiGatewayPolicy.endpointAllowed", "AiGatewayPolicy.tokenAllowed",
+                     "AiGatewayPolicy.officialEndpointAllowed", "AiGatewayPolicy.tokenAllowed",
                      "configureByTap(", "revokeByTap("):
             self.assertIn(item,store)
         self.assertNotIn("OPENAI_API_KEY",store)
