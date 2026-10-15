@@ -34,6 +34,7 @@ object OfflineArithmetic {
             }
             "(${previous!!.toPlainString()}) $op ${following.groupValues[2]}"
         } else request.replaceFirst(text, "")
+        expr = SpanishNumberWords.rewrite(expr)
         if (!contextual && !explicit && !Regex("""^[\d(\-+]""").containsMatchIn(expr)) return null
         if (expr.length > 160) return Calculation("La expresión es demasiado larga para el cálculo local.", null)
         expr = thousands.replace(expr) { it.value.replace(".", "") }
@@ -42,8 +43,12 @@ object OfflineArithmetic {
             "*" + if (it.groupValues[1] == "mil") "1000" else "1000000"
         }
         expr = expr.replace('×', '*').replace('x', '*').replace('÷', '/')
+            .replace(Regex("""\bmultiplicado\s+por\b"""), "*")
+            .replace(Regex("""\bdividido\s+por\b"""), "/")
             .replace(Regex("""\bpor\b"""), "*")
             .replace(Regex("""\bentre\b"""), "/")
+            .replace(Regex("""\bmas\b"""), "+")
+            .replace(Regex("""\bmenos\b"""), "-")
         if (!allowed.matches(expr) || expr.isBlank() || !expr.any(Char::isDigit)) {
             return if (explicit || contextual) Calculation("No pude interpretar esa expresión matemática.", null)
             else null
