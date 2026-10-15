@@ -12,6 +12,7 @@ class LocalDialogue {
     private val turns = mutableListOf<String>()
     private var lastAnswer: String? = null
     private var lastNumericResult: BigDecimal? = null
+    private val topicDialogue = LocalTopicDialogue()
 
     fun reply(input: String): String {
         // Reject rather than silently truncate an expression or mixed instruction.
@@ -26,6 +27,9 @@ class LocalDialogue {
         val math = if (normalized == "repitelo" || normalized == "repite") null
             else OfflineArithmetic.evaluate(sanitized, lastNumericResult)
         val offlineHelp = VoiceFaqRouter.answer(sanitized)
+        if (offlineHelp != null) topicDialogue.observeKnownFaq(sanitized)
+        val topicHelp = if (math == null && offlineHelp == null)
+            topicDialogue.answer(sanitized) else null
         val answer = when {
             sanitized.isBlank() -> "Escribe una pregunta para conversar."
             normalized == "repitelo" || normalized == "repite" ->
@@ -35,6 +39,7 @@ class LocalDialogue {
                 math.answer
             }
             offlineHelp != null -> offlineHelp
+            topicHelp != null -> topicHelp
             normalized == "buenas" ->
                 "Hola. Soy JARVIS en modo observador. Puedo explicar mis funciones locales."
             normalized in setOf("estado", "jarvis estado", "estado jarvis") ->
@@ -49,6 +54,14 @@ class LocalDialogue {
         return answer
     }
 
+    /** Voice stays ephemeral: only a known topic enum is updated, never the transcript. */
+    fun replyVoice(input: String): String? {
+        if (input.length > 160) return null
+        val faq = VoiceFaqRouter.answer(input)
+        if (faq != null) topicDialogue.observeKnownFaq(input)
+        return faq ?: topicDialogue.answer(input)
+    }
+
     fun history(): List<String> = turns.toList()
 
     /**
@@ -61,6 +74,9 @@ class LocalDialogue {
             val bounded = line.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ").take(400)
             if (bounded.startsWith("Tú: ") || bounded.startsWith("JARVIS: ")) {
                 turns.add(bounded)
+                if (bounded.startsWith("Tú: ")) {
+                    topicDialogue.restoreTopicHint(bounded.removePrefix("Tú: "))
+                }
             }
         }
         while (turns.size > 24) turns.removeAt(0)
@@ -72,6 +88,7 @@ class LocalDialogue {
         turns.clear()
         lastAnswer = null
         lastNumericResult = null
+        topicDialogue.clear()
     }
     private companion object {
         const val MAX_INPUT_LENGTH = 280
