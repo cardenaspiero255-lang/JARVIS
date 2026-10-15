@@ -13,7 +13,7 @@ class LocalCapabilityDiagnosticsTest {
             encryptedMemoryUnlocked = false
         ))
         assertTrue(result.contains("Android API: 34"))
-        assertTrue(result.contains("GameHub Ultra: instalable no; lanzamiento detectado"))
+        assertTrue(result.contains("GameHub Ultra: lanzador detectado"))
         assertTrue(result.contains("Hands: conectado, autorizado en esta sesión"))
         assertTrue(result.contains("Voz TTS local: motor preparado"))
         assertTrue(result.contains("Memoria privada: cerrada"))
