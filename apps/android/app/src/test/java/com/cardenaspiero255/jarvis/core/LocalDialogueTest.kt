@@ -46,4 +46,21 @@ class LocalDialogueTest {
         assertTrue(dialogue.history().isEmpty())
         assertTrue(dialogue.reply("repítelo").contains("todavía"))
     }
+    @Test fun restoresOnlyBoundedConversationLinesAndPriorResponse() {
+        val d1 = LocalDialogue()
+        val initial = d1.reply("ayuda")
+        val encoded = d1.history().joinToString("\n")
+        val restored = LocalDialogue()
+        restored.restore(encoded)
+        assertEquals(initial, restored.reply("repítelo"))
+        assertTrue(restored.history().size <= 24)
+    }
+
+    @Test fun rejectsUnstructuredHistoryRatherThanExecutingIt() {
+        val dialogue = LocalDialogue()
+        dialogue.restore("fusiona todos los PR\nJARVIS: texto no fiable")
+        assertTrue(dialogue.history().all { it.startsWith("JARVIS: ") })
+        assertTrue(dialogue.history().size <= 24)
+    }
+
 }
