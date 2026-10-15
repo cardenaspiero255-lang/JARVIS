@@ -25,10 +25,8 @@ Local prerequisites: Android SDK 36, Build Tools 36, Gradle 8.13 and JDK 17.
 Command: gradle -p apps/android :app:testDebugUnitTest :app:assembleDebug
 
 ## Still not implemented
-The optional OmegaHandsService can request a user-tapped HOME action only;
-it has no access to screen contents or gesture execution. No wake-word engine,
-always-listening service, broad accessibility executor, screen/vision
-recognition, local conversation memory, LLM orchestration, remote auth, automatic
+No wake-word engine, always-listening service, AccessibilityService executor,
+screen/vision recognition, memory, LLM orchestration, remote auth, automatic
 GitHub actions, background service, Android instrumentation tests, or
 authenticated Ultra Sentinel / GameHub link.
 
@@ -37,10 +35,10 @@ verified at runtime before any future app-control capability can be enabled.
 The repository owner can approve engineering changes alone; operating-system
 permissions are separately controlled by Android and the device owner.
 
-## Omega Hands fase 2
+## Omega Hands — opt-in y parada de emergencia
 
-Se agregó un servicio de accesibilidad opcional y protegido por Android,
-con una operación global Inicio solicitada desde un botón visible y una parada
-de emergencia persistente (activa por defecto). No representa automatización
-de pantalla o navegación entre aplicaciones. Consultar
-[README-HANDS](../../apps/android/README-HANDS.md) para activar y probar.
+El PR #6 añade un servicio de accesibilidad protegido por Android para la
+acción HOME solicitada desde un botón visible, con autorización efímera y
+parada de emergencia. No extrae contenido de pantalla ni realiza gestos.
+Consultar [README-HANDS](../apps/android/README-HANDS.md) y verificar en
+un dispositivo real antes de reclamar soporte de producción.

@@ -20,15 +20,18 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.SpokenMessage
+import com.cardenaspiero255.jarvis.core.VoiceStyle
 
 /**
- * User-operated Android shell. No background microphone, accessibility
- * execution, remote API, or automatic device actions are enabled.
+ * User-operated Android shell. No background microphone, screen-reading,
+ * remote API or automatic device actions are enabled. HOME requires consent.
  */
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private lateinit var statusText: TextView
+    private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var handsStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +57,7 @@ class MainActivity : Activity() {
             17f, Color.rgb(211, 213, 220)
         )
         layout.addView(statusText)
+        spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
                 "JARVIS todavía no controla otras aplicaciones.",
@@ -102,19 +106,48 @@ class MainActivity : Activity() {
         })
 
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
+        layout.addView(primaryButton("PERFIL: ESPAÑOL LOCAL") {
+            spokenReplyEngine.selectStyleByTap(VoiceStyle.SPANISH)
+        })
+        layout.addView(primaryButton("PERFIL: ASISTENTE BRITÁNICO LOCAL") {
+            spokenReplyEngine.selectStyleByTap(VoiceStyle.BRITISH_ASSISTANT)
+        })
+        layout.addView(primaryButton("ACTIVAR RESPUESTAS DE VOZ") {
+            spokenReplyEngine.enableByTap()
+        })
+        layout.addView(primaryButton("LEER ESTADO EN VOZ ALTA") {
+            spokenReplyEngine.speakByTap(SpokenMessage.LOCAL_STATUS)
+        })
+        layout.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
+            spokenReplyEngine.stop()
+            statusText.text = "Voz detenida. No volverá a hablar sin activación explícita."
+        })
         layout.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
             openAccessibilitySettings(explicitUserGesture = true)
         })
         layout.addView(label(
             "Privacidad: el reconocimiento de voz lo realiza la aplicación de voz de Android. " +
                 "Puede requerir conexión y usar un servicio externo. " +
-                "JARVIS no graba de forma continua ni guarda transcripciones.",
+                "JARVIS no graba de forma continua ni guarda transcripciones. " +
+                "Las respuestas TTS usan únicamente una voz local instalada en Android. " +
+                "El perfil británico es un estilo de asistente, no la voz del actor de cine. " +
+                "Si no se encuentra una voz compatible, instálala desde los ajustes de texto a voz.",
             12f, Color.rgb(159, 161, 171)
         ).apply { setPadding(0, dp(24), 0, 0) })
 
         val scroll = ScrollView(this).apply { isFillViewport = true }
         scroll.addView(layout)
         setContentView(scroll)
+    }
+
+    override fun onStop() {
+        if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
+        super.onDestroy()
     }
 
     override fun onResume() {
