@@ -1139,8 +1139,9 @@ class MainActivity : Activity() {
             setSingleLine(true)
         }
         val voiceConsentBox = CheckBox(this).apply {
-            text = "Permitir enviar mis preguntas habladas a la IA en la nube"
-            isChecked = aiGatewayClient.voiceEnabled()
+            text = "Preguntas habladas solo en modo local gratuito"
+            isChecked = false
+            isEnabled = false
         }
         fields.addView(serverLabel)
         fields.addView(tokenInput)
@@ -1150,8 +1151,8 @@ class MainActivity : Activity() {
             .setMessage(
                 "El servidor HTTPS ya está integrado. Solo necesitas " +
                     "emparejar tu token privado una vez; Android lo cifrará. " +
-                    "Las preguntas escritas se envían cuando pulses ENVIAR, " +
-                    "y la voz solo si marcas su permiso. " +
+                    "Solo consulta nube: y una confirmación permiten usar la API de pago. " +
+                    "La voz permanece gratuita y local. " +
                     "No introduzcas aquí tu clave API de OpenAI. " +
                     "Si el acceso ya está guardado, pulsa Cancelar y escribe estado ia."
             )
@@ -1161,13 +1162,13 @@ class MainActivity : Activity() {
                 statusText.text = try {
                     val saved = aiGatewaySettings.configureByTap(
                         tokenInput.text.toString(),
-                        voiceConsentBox.isChecked
+                        false
                     )
                     if (saved) {
                         aiGatewayClient.cancelAndClear()
-                        "IA emparejada con el servidor oficial. Ya puedes enviar " +
-                            "preguntas escritas. La voz solo se enviará si la autorizaste. " +
-                            "Puedes consultar el estado escribiendo estado ia."
+                        "IA emparejada; modo local gratuito activo. Solo " +
+                            "consulta nube: y tu confirmación gastarán tokens. " +
+                            "La voz permanece local. Consulta estado ia."
                     } else {
                         "IA no emparejada. El token debe tener de 32 a 256 caracteres, " +
                             "sin espacios, y ser JARVIS_GATEWAY_TOKEN, no la API key. " +
