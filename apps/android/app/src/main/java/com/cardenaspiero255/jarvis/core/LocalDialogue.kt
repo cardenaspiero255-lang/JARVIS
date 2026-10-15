@@ -35,7 +35,7 @@ class LocalDialogue {
         }.take(300)
         turns.add("Tú: $sanitized".take(400))
         turns.add("JARVIS: $answer".take(400))
-        while (turns.size > 24) turns.removeAt(0)
+        while (turns.size > 16) turns.removeAt(0)
         lastAnswer = answer
         return answer
     }
