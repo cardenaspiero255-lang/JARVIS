@@ -1,6 +1,6 @@
 {
-  "name": "jarvis-omega-ai-gateway",
-  "version": "0.1.0",
+  "name": "jarvis-omega-retired-cloud-endpoint",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
