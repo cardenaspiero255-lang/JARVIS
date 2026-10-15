@@ -4,6 +4,9 @@ package com.cardenaspiero255.jarvis.core
 class ChatSpeechPolicy {
     private val spokenNumbers = Regex("""^Resultado: -?\d{1,3}(?:\.\d{3})*(?:,\d{1,10})?$""")
     private val fixed = setOf(
+        VoiceFaqRouter.VISION,
+        VoiceFaqRouter.GAMEHUB,
+        VoiceFaqRouter.STOP,
         "Escribe una pregunta para conversar.",
         "No hay una respuesta anterior todavía.",
         "No hay un resultado anterior para continuar.",
