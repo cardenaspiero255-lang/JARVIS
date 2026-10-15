@@ -58,3 +58,11 @@ La ruta de voz puede continuar un resultado numérico con «y por tres», «y me
 La continuidad mantiene **únicamente un BigDecimal** y la marca de tiempo monotónica en memoria durante un máximo de **45 segundos entre operaciones válidas**. No conserva las frases dictadas, no escribe este estado en la memoria cifrada ni lo restaura al reiniciar. Cualquier comando distinto, frase inválida, error matemático o caducidad cancela el resultado. El botón **BLOQUEAR SESIÓN — PRIVACIDAD** y los cierres del Activity cancelan el contexto; únicamente se conserva a través del breve cambio a la interfaz externa de reconocimiento que el usuario inició explícitamente. Ese proveedor Android podría usar red, sin que JARVIS reciba privilegios adicionales.
 
 A diferencia de una IA conversacional general, este bloque solo recuerda un número temporal; la conversación libre sigue limitada a respuestas locales verificables. La compilación y pruebas unitarias no prueban todavía voz física ni la continuidad de ciclo de vida de todos los fabricantes Android.
+
+## Validez de los resultados del reconocedor Android (PR #32)
+
+Cada pulsación de **HABLAR CON JARVIS** crea una solicitud local de reconocimiento con marca de tiempo monotónica. Solo un resultado de Android puede consumirse para esa solicitud y únicamente dentro de **180 segundos**. Las respuestas duplicadas, tardías, posteriores a una cancelación o que no corresponden a una solicitud iniciada mediante el botón son rechazadas antes de entrar en los parsers de órdenes, cálculos y preguntas.
+
+El bloqueo de privacidad, la destrucción de Activity o un error al iniciar el reconocedor invalidan la autorización pendiente. El estado temporal guarda solo una marca de tiempo; no persiste audio, texto reconocido, credenciales ni identificadores. Esto limita los callbacks obsoletos, pero no demuestra por sí solo el funcionamiento de un proveedor Android concreto; siguen faltando pruebas físicas del reconocimiento, cierre y reanudación.
+
+La capacidad no permite escucha continua, comandos automáticos ni nuevas autorizaciones a otras aplicaciones.
