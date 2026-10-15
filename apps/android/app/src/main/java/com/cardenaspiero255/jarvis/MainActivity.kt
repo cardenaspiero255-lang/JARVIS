@@ -108,7 +108,7 @@ class MainActivity : Activity() {
         )
         layout.addView(statusText)
         layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
-            lockSessionByTap()
+            lockSessionByUserRequest()
         })
         layout.addView(label(
             "Pantalla protegida contra capturas por defecto. Si necesitas compartir " +
@@ -481,8 +481,8 @@ class MainActivity : Activity() {
         if (::handsStatusText.isInitialized) refreshHandsStatus()
     }
 
-    /** Separate visible user gesture: revoke all currently merged local modules. */
-    private fun lockSessionByTap() {
+    /** Revoke local modules on a visible tap or a one-shot foreground speech request. */
+    private fun lockSessionByUserRequest() {
         val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
             SessionLockChannel.VOICE_REQUEST to {
                 voiceConsent.cancel()
@@ -692,6 +692,11 @@ class MainActivity : Activity() {
                 )
                 statusText.text = "GameHub solicitado. Pulsa CONFIRMAR APERTURA " +
                     "antes de 30 segundos. La voz no abre apps por sí sola."
+            }
+            VoiceAction.STOP_SESSION -> {
+                // A single-use recognition request was consumed and foreground-checked
+                // above. Emergency stop only revokes capabilities; it grants none.
+                lockSessionByUserRequest()
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
