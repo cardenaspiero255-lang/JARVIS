@@ -57,7 +57,7 @@ def main():
     token = os.environ.get("GITHUB_TOKEN", "")
     try:
         metadata = authenticated_get(token, "")
-        runs = authenticated_get(token, "/actions/runs?branch=main&per_page=30")
+        runs = authenticated_get(token, "/actions/workflows/serverless-github-monitor.yml/runs?branch=main&per_page=30")
         snapshot = SentinelHealthObserver().inspect(
             metadata, runs, now=datetime.now(timezone.utc)
         )
