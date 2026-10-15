@@ -44,6 +44,8 @@ class GuardianCheckEvidenceTests(unittest.TestCase):
             ((check("neutral", conclusion="neutral"),), True),
             ((check("bad", conclusion=None),), True),
             ((check("invalid", status="new", conclusion="success"),), True),
+            ((check("invalid", status=["completed"], conclusion="success"),), True),
+            ((check("invalid", status="completed", conclusion=["success"]),), True),
             (({"head_sha": SHA, "name": "bad", "status": "completed"},), True),
             ((check(""),), True),
             ((check("x"),), 1),
