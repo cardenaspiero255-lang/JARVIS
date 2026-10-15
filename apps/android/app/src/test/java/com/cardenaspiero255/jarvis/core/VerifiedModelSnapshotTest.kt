@@ -3,11 +3,12 @@ package com.cardenaspiero255.jarvis.core
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import java.security.MessageDigest
 
 class VerifiedModelSnapshotTest {
     @Test fun copiesAndVerifiesSnapshotBeforeUse() {
-        val dir = createTempDir(prefix = "jarvis-model-test-")
+        val dir = createTempDirectory("jarvis-model-test-").toFile()
         try {
             val original = File(dir, "external.gguf").apply { writeText("GGUF model fixture") }
             val hash = MessageDigest.getInstance("SHA-256").digest(original.readBytes())
@@ -21,7 +22,7 @@ class VerifiedModelSnapshotTest {
     }
 
     @Test fun refusesBadDigestWithoutLeavingModel() {
-        val dir = createTempDir(prefix = "jarvis-model-test-")
+        val dir = createTempDirectory("jarvis-model-test-").toFile()
         try {
             val original = File(dir, "external.gguf").apply { writeText("invalid") }
             assertNull(VerifiedModelSnapshot.create(original, File(dir, "private"), "0".repeat(64)))
