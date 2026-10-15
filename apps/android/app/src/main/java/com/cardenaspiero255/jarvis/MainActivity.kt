@@ -74,6 +74,7 @@ class MainActivity : Activity() {
     private val localDialogue = LocalDialogue()
     private lateinit var offlineLlm: OfflineLlmEngine
     private var chatBusy = false
+    private var modelInstallBusy = false
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
@@ -215,11 +216,39 @@ class MainActivity : Activity() {
             13f, Color.rgb(164, 166, 174)
         ))
         section.addView(label(
-            "Modelo recomendado: Qwen2.5-0.5B-Instruct Q4_K_M (491 MB, Apache 2.0). " +
-                "Descárgalo de Hugging Face y selecciónalo aquí. Se verificará el SHA-256 oficial. " +
-                "La importación necesita espacio libre adicional en disco.",
+            "Qwen oficial 0.5B Q4_K_M · 491 MB · Apache 2.0. " +
+                "Instálalo aquí con un toque. El modelo se descarga una vez y después funciona sin internet.",
             12f, Color.rgb(164, 166, 174)
         ))
+        section.addView(primaryButton("INSTALAR QWEN OFICIAL — 491 MB") {
+            if (chatBusy || modelInstallBusy) {
+                statusText.text = "Termina la operación actual antes de instalar Qwen."
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Instalar Qwen oficial")
+                    .setMessage(
+                        "JARVIS descargará unos 491 MB desde el repositorio oficial Qwen " +
+                        "en Hugging Face, con tu autorización. Se recomienda Wi-Fi y al " +
+                        "menos 550 MB libres. Comprobará el SHA-256 antes de habilitarlo. " +
+                        "La descarga utiliza Internet; las conversaciones continuarán locales."
+                    )
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("INSTALAR") { _, _ ->
+                        modelInstallBusy = true
+                        statusText.text = "Conectando con Qwen oficial por HTTPS..."
+                        offlineLlm.installOfficial(
+                            onProgress = { percent ->
+                                statusText.text = "Descargando Qwen oficial: $percent%. " +
+                                    "Mantén JARVIS abierto hasta terminar."
+                            },
+                            callback = { _, message ->
+                                modelInstallBusy = false
+                                statusText.text = message
+                            }
+                        )
+                    }.show()
+            }
+        })
         section.addView(primaryButton("ABRIR DESCARGA OFICIAL DE QWEN") {
             try {
                 // Opens the official model page only by explicit user action.
@@ -230,8 +259,8 @@ class MainActivity : Activity() {
             }
         })
         section.addView(primaryButton("IMPORTAR MODELO GGUF — QWEN 0.5B") {
-            if (chatBusy) {
-                statusText.text = "Termina la respuesta actual antes de importar otro modelo."
+            if (chatBusy || modelInstallBusy) {
+                statusText.text = "Termina la operación actual antes de importar otro modelo."
             } else {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -270,13 +299,13 @@ class MainActivity : Activity() {
             when {
                 message.isBlank() ->
                     statusText.text = "Escribe un mensaje antes de enviarlo."
-                chatBusy ->
-                    statusText.text = "JARVIS está generando una respuesta. Espera a que finalice."
+                chatBusy || modelInstallBusy ->
+                    statusText.text = "JARVIS está procesando una operación. Espera a que finalice."
                 message.equals("estado ia", ignoreCase = true) -> {
                     chatInput.text.clear()
                     statusText.text = "JARVIS no utiliza API de pago. " +
                         if (offlineLlm.isInstalled()) "Modelo GGUF instalado; consulta el chat para probarlo."
-                        else "Importa el modelo Qwen GGUF para activar la inferencia."
+                        else "Pulsa INSTALAR QWEN OFICIAL para activar la inferencia."
                 }
                 message.equals("conectar ia", ignoreCase = true) ||
                     message.trimStart().startsWith("consulta nube:", ignoreCase = true) -> {
@@ -646,6 +675,7 @@ class MainActivity : Activity() {
         if (::privateMemory.isInitialized) privateMemory.stop()
         if (::offlineLlm.isInitialized) offlineLlm.releaseForBackground()
         chatBusy = false
+        modelInstallBusy = false
         voiceConsent.cancel()
         lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
@@ -655,8 +685,8 @@ class MainActivity : Activity() {
 
     /** Five user-initiated, serialized physical-device inference samples. */
     private fun runLocalLlmBenchmark() {
-        if (chatBusy) {
-            statusText.text = "Termina la respuesta o prueba actual antes de iniciar otra."
+        if (chatBusy || modelInstallBusy) {
+            statusText.text = "Termina la operación actual antes de iniciar otra."
             return
         }
         if (!offlineLlm.isInstalled()) {
