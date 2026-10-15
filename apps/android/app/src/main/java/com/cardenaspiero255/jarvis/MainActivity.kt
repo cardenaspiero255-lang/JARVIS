@@ -33,6 +33,7 @@ import com.cardenaspiero255.jarvis.core.LocalCapabilityDiagnostics
 import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
 import com.cardenaspiero255.jarvis.core.ReadoutRedactionPolicy
 import com.cardenaspiero255.jarvis.core.SensitiveReadout
+import com.cardenaspiero255.jarvis.core.ScreenObservationReleaseGate
 import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.cardenaspiero255.jarvis.core.ScreenConsentRequestGate
 import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
@@ -512,7 +513,9 @@ class MainActivity : Activity() {
         ))
         section.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
         section.addView(label(
-            "Visión temporal: Android exige tu permiso por cada sesión. " +
+            "Visión continua desactivada mientras completamos las pruebas físicas. " +
+                "El análisis de imágenes elegidas sigue disponible. " +
+                "Cuando se habilite, Android exigirá tu permiso. " +
                 "El icono de transmisión y la notificación de captura " +
                 "son indicadores del sistema, no se pueden ocultar desde JARVIS. " +
                 "Se detiene a los 10 minutos. Sin clics ni imágenes guardadas.",
@@ -777,6 +780,10 @@ class MainActivity : Activity() {
     }
 
     private fun requestScreenObservation() {
+        if (!ScreenObservationReleaseGate.ENABLED) {
+            statusText.text = ScreenObservationReleaseGate.UNAVAILABLE_MESSAGE
+            return
+        }
         val notificationGranted = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
@@ -961,6 +968,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (screenConsentGate.owns(requestCode)) {
+            if (!ScreenObservationReleaseGate.ENABLED) {
+                screenConsentRequested = false
+                screenConsentGate.cancel()
+                ScreenObservationService.stopNow()
+                statusText.text = ScreenObservationReleaseGate.UNAVAILABLE_MESSAGE
+                return
+            }
             val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
             if (!authorized) {
                 // A delayed callback from an older session must not cancel the
