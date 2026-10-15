@@ -641,8 +641,8 @@ class MainActivity : Activity() {
 
     private fun showChatReply(answer: String, benchmark: String?) {
         lastChatReply = answer
-        chatLog.text = localDialogue.history().takeLast(8).joinToString("\\n")
-        statusText.text = if (benchmark == null) answer else "$answer\\n$benchmark"
+        chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
+        statusText.text = if (benchmark == null) answer else "$answer\n$benchmark"
         if (privateMemory.isEnabled()) {
             try {
                 if (!privateMemory.save(localDialogue.snapshotForStorage())) {
