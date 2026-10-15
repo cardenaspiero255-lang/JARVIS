@@ -53,6 +53,19 @@ class DurableStore:
             raise IdempotencyConflict("idempotency key conflict")
         return row
 
+    def snapshot(self, source, key, fingerprint):
+        """Read status and completed result from the SAME SQLite row.
+
+        The SELECT is atomic relative to commits on other connections.
+        Unlike separate status()/get() calls it cannot pair a new status
+        with an older result when the provider completes concurrently.
+        """
+        row = self._check(source, key, fingerprint)
+        if row is None:
+            return None
+        _, state, serialized = row
+        return state, json.loads(serialized) if state == "completed" else None
+
     def get(self, source, key, fingerprint):
         row = self._check(source, key, fingerprint)
         return json.loads(row[2]) if row and row[1] == "completed" else None
