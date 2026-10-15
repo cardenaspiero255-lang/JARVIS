@@ -1,5 +1,7 @@
 package com.cardenaspiero255.jarvis
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,6 +26,7 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.ButtonHintDetector
 import com.cardenaspiero255.jarvis.core.OcrLine
 import com.cardenaspiero255.jarvis.core.ScreenObservationPolicy
+import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
@@ -72,7 +75,11 @@ class ScreenObservationService : Service() {
             @Suppress("DEPRECATION")
             intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
         }
-        if (code != android.app.Activity.RESULT_OK || permission == null ||
+        val notificationGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationGranted) ||
+            code != android.app.Activity.RESULT_OK || permission == null ||
             !policy.start(true, SystemClock.elapsedRealtime())) {
             stopSelf()
             return START_NOT_STICKY
