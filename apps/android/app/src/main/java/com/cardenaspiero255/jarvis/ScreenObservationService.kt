@@ -65,7 +65,8 @@ class ScreenObservationService : Service() {
             terminate(stopProjection = true)
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_START || !shuttingDown.get()) {
+        if (intent?.action != ACTION_START || !shuttingDown.get() ||
+            !pendingStart.compareAndSet(true, false)) {
             return START_NOT_STICKY
         }
         val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -267,6 +268,25 @@ class ScreenObservationService : Service() {
         const val EXTRA_RESULT_DATA = "screen_result_data"
         private const val CHANNEL_ID = "jarvis_omega_screen_capture"
         private const val NOTIFICATION_ID = 1241
+
+        private val pendingStart = AtomicBoolean(false)
+
+        /** User/OS consent is only good for ONE queued service start. */
+        fun authorizeOneStart(): Boolean {
+            if (live != null) return false
+            return pendingStart.compareAndSet(false, true)
+        }
+
+        /** Immediately revoke both queued starts and any live MediaProjection. */
+        fun stopNow(): Boolean {
+            pendingStart.set(false)
+            return try {
+                live?.terminate(stopProjection = true)
+                live == null && !pendingStart.get()
+            } catch (_: RuntimeException) {
+                false
+            }
+        }
 
         @Volatile private var live: ScreenObservationService? = null
         @Volatile private var liveHintCount: Int = 0
