@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.cardenaspiero255.jarvis.core.VisionImagePolicy
+import com.cardenaspiero255.jarvis.core.VisionRequestGate
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -27,6 +28,7 @@ class VisionRecognizer(
 ) {
     private val appContext = context.applicationContext
     private val policy = VisionImagePolicy()
+    private val resultGate = VisionRequestGate()
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -34,11 +36,13 @@ class VisionRecognizer(
 
     /** Called only after the user selects one image in Android's picker. */
     fun inspectSelectedImage(uri: Uri) {
+        resultGate.cancel()
         if (closed || uri.scheme != "content") {
             display("Imagen no disponible. Debes elegirla con el selector de Android.")
             return
         }
-        display("Analizando texto localmente en la imagen seleccionada…")
+        val requestId = resultGate.begin()
+        displayFor(requestId, "Analizando texto localmente en la imagen seleccionada…")
         worker.execute {
             var image: Bitmap? = null
             try {
@@ -47,7 +51,7 @@ class VisionRecognizer(
                     BitmapFactory.decodeStream(BoundedInputStream(input), null, bounds)
                 } ?: throw IOException("unreadable content URI")
                 if (!policy.acceptDimensions(bounds.outWidth, bounds.outHeight)) {
-                    display("Imagen demasiado grande o inválida para analizar con seguridad.")
+                    displayFor(requestId, "Imagen demasiado grande o inválida para analizar con seguridad.")
                     return@execute
                 }
                 val options = BitmapFactory.Options().apply {
@@ -60,40 +64,45 @@ class VisionRecognizer(
                 val bitmap = image ?: throw IOException("invalid bitmap")
                 image = null // Task callback owns the sampled bitmap.
                 main.post {
-                    if (closed) {
+                    if (closed || !resultGate.accepts(requestId)) {
                         bitmap.recycle()
                         return@post
                     }
                     try {
                         recognizer.process(InputImage.fromBitmap(bitmap, 0))
                             .addOnSuccessListener { result ->
-                                display(policy.renderPreview(result.text))
+                                displayFor(requestId, policy.renderPreview(result.text))
                             }
                             .addOnFailureListener {
-                                display("No se pudo reconocer el texto de esta imagen.")
+                                displayFor(requestId, "No se pudo reconocer el texto de esta imagen.")
                             }
                             .addOnCompleteListener { bitmap.recycle() }
                     } catch (_: RuntimeException) {
                         bitmap.recycle()
-                        display("El motor local de visión no está disponible.")
+                        displayFor(requestId, "El motor local de visión no está disponible.")
                     }
                 }
             } catch (_: IOException) {
-                display("No se pudo leer la imagen seleccionada.")
+                displayFor(requestId, "No se pudo leer la imagen seleccionada.")
             } catch (_: SecurityException) {
-                display("Android no concedió acceso a la imagen.")
+                displayFor(requestId, "Android no concedió acceso a la imagen.")
             } catch (_: RuntimeException) {
-                display("No se pudo analizar la imagen.")
+                displayFor(requestId, "No se pudo analizar la imagen.")
             } catch (_: OutOfMemoryError) {
-                display("No hay memoria suficiente para procesar la imagen.")
+                displayFor(requestId, "No hay memoria suficiente para procesar la imagen.")
             } finally {
                 image?.recycle()
             }
         }
     }
 
+    fun cancel() {
+        resultGate.cancel()
+    }
+
     fun close() {
         if (closed) return
+        cancel()
         closed = true
         worker.shutdownNow()
         recognizer.close()
@@ -101,6 +110,12 @@ class VisionRecognizer(
 
     private fun display(text: String) {
         main.post { if (!closed) showStatus(text) }
+    }
+
+    private fun displayFor(requestId: Long, text: String) {
+        main.post {
+            if (!closed && resultGate.accepts(requestId)) showStatus(text)
+        }
     }
 
     /** Cap bytes read from an untrusted document provider (per decoding pass). */
