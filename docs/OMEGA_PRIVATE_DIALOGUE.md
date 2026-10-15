@@ -34,3 +34,9 @@ Cualquier fallo de AndroidKeyStore impide leer/escribir y se notifica sin devolv
 - El reconocedor entrega una transcripción efímera: el fallback no almacena texto de voz ni lo añade al historial cifrado. Por ello **no conserva** resultados de matemáticas habladas entre invocaciones.
 - Después de mostrar el resultado se puede usar voluntariamente el botón **LEER ÚLTIMA RESPUESTA DEL CHAT**, sujeto al consentimiento y la voz offline del bloque Omega Voice.
 - La CI valida semántica y seguridad, **no** reconoce voz realmente en un teléfono. Siguen pendientes pruebas físicas del proveedor de voz, ciclo de vida y TTS.
+
+## Expresiones numéricas habladas (bloque nuevo)
+
+La calculadora local también reconoce cardinales españoles acotados en expresiones explícitas o con operadores: «un millón por quinientos», «dos mil quinientos más veintitrés», «cien dividido por cuatro» y «treinta y cuatro por dos». Estos ejemplos se calculan sin modelo remoto y no habilitan comandos sobre Android.
+
+Se usa una gramática cerrada de unidades, decenas, centenas, miles y millones. Las palabras ajenas a esta gramática se rechazan, en vez de interpretarse como instrucciones. Se conservan los límites de longitud, magnitud, profundidad y ausencia de contexto persistente en voz. No se garantiza reconocimiento de frases arbitrarias, dictado natural general ni todas las variantes regionales. Las pruebas en teléfono físico del proveedor de transcripción Android siguen pendientes.
