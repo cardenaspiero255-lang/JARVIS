@@ -72,12 +72,13 @@ class OfflineLlmEngine(context: Context) {
             var staging: File? = null
             try {
                 if (!modelDir.isDirectory && !modelDir.mkdirs()) throw IOException("No private directory")
-                staging = File.createTempFile("jarvis-import-", ".part", modelDir)
+                val tmpFile = File.createTempFile("jarvis-import-", ".part", modelDir)
+                staging = tmpFile
                 val input = appContext.contentResolver.openInputStream(uri)
                     ?: throw IOException("Cannot open selected GGUF")
                 var total = 0L
                 input.buffered().use { stream ->
-                    staging.outputStream().buffered().use { output ->
+                    tmpFile.outputStream().buffered().use { output ->
                         val bytes = ByteArray(64 * 1024)
                         while (true) {
                             val count = stream.read(bytes)
@@ -94,7 +95,7 @@ class OfflineLlmEngine(context: Context) {
                 // Never replace the target while llama.cpp is using a mapped model.
                 unload()
                 val verified = VerifiedModelSnapshot.create(
-                    staging, modelDir, LocalLlmPolicy.SHA256
+                    tmpFile, modelDir, LocalLlmPolicy.SHA256
                 ) ?: throw IOException("SHA-256 mismatch")
                 if (!verified.isFile) throw IOException("Model not installed")
                 deliver(epoch) { callback(true, "Modelo Qwen verificado e instalado sin conexión.") }
@@ -119,6 +120,7 @@ class OfflineLlmEngine(context: Context) {
             val response: String?
             val bench: Benchmark?
             try {
+                val start = SystemClock.elapsedRealtime()
                 val info = ActivityManager.MemoryInfo()
                 val manager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 manager.getMemoryInfo(info)
@@ -138,7 +140,6 @@ class OfflineLlmEngine(context: Context) {
                     deliver(epoch) { callback(null, null) }
                     return@execute
                 }
-                val start = SystemClock.elapsedRealtime()
                 if (loaded == null) {
                     loaded = runBlocking {
                         Llama.loadModel(
