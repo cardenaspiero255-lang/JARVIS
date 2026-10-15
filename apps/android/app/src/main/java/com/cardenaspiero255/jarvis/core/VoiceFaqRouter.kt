@@ -11,7 +11,7 @@ object VoiceFaqRouter {
     const val VISION =
         "Omega Vision reconoce texto de imágenes elegidas por ti. La visión continua aún no está incluida en esta versión."
     const val GAMEHUB =
-        "Para abrir GameHub Ultra, pulsa ABRIR GAMEHUB ULTRA. Por voz, confirma su apertura en la pantalla."
+        "Para abrir GameHub Ultra, pulsa el botón ABRIR GAMEHUB ULTRA. Por voz, confirma su apertura en la pantalla."
     const val STOP =
         "Para detener las funciones locales, pulsa BLOQUEAR SESIÓN — PRIVACIDAD. No borra el historial cifrado."
 
