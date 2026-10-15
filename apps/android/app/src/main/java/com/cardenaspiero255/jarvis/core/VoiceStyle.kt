@@ -17,7 +17,7 @@ data class InstalledVoice(
 
 /** Pure Kotlin policy, also exercised by JVM tests. */
 object VoiceStyleSelector {
-    fun select(style: VoiceStyle, installed: List<InstalledVoice>): InstalledVoice? {
+    fun candidates(style: VoiceStyle, installed: List<InstalledVoice>): List<InstalledVoice> {
         val candidates = installed.filter { voice ->
             !voice.requiresNetwork && voice.name.isNotBlank() &&
                 when (style) {
@@ -35,8 +35,11 @@ object VoiceStyleSelector {
                     VoiceStyle.BRITISH_ASSISTANT -> 0
                 }
             }.thenBy { it.name.lowercase() }
-        ).firstOrNull()
+        )
     }
+
+    fun select(style: VoiceStyle, installed: List<InstalledVoice>): InstalledVoice? =
+        candidates(style, installed).firstOrNull()
 
     fun pitch(style: VoiceStyle): Float = when (style) {
         VoiceStyle.SPANISH -> 1.00f
