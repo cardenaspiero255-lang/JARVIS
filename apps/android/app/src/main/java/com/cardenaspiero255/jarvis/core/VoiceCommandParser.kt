@@ -26,7 +26,9 @@ class VoiceCommandParser {
             "jarvis como estas", "como estas jarvis" -> VoiceAction.READ_STATUS
             "jarvis abre configuracion", "abre configuracion",
             "abrir ajustes", "jarvis ajustes" -> VoiceAction.OPEN_ACCESSIBILITY_SETTINGS
-            "jarvis abre gamehub ultra", "abre gamehub ultra",\n            "abrir gamehub ultra", "jarvis inicia gamehub ultra" -> VoiceAction.OPEN_GAMEHUB_ULTRA\n            else -> VoiceAction.UNSUPPORTED
+            "jarvis abre gamehub ultra", "abre gamehub ultra",
+            "abrir gamehub ultra", "jarvis inicia gamehub ultra" -> VoiceAction.OPEN_GAMEHUB_ULTRA
+            else -> VoiceAction.UNSUPPORTED
         }
     }
 }
