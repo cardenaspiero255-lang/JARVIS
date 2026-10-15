@@ -172,7 +172,7 @@ class OfflineLlmEngine(context: Context) {
                 unload()
                 deliver(epoch) { callback(null, null) }
                 return@execute
-            } catch (_: UnsatisfiedLinkError) {
+            } catch (_: LinkageError) {
                 unload()
                 deliver(epoch) { callback(null, null) }
                 return@execute
