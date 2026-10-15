@@ -6,6 +6,7 @@ import java.util.Locale
 enum class VoiceAction {
     READ_STATUS,
     READ_DEVICE_HEALTH,
+    READ_GAME_READINESS,
     OPEN_ACCESSIBILITY_SETTINGS,
     OPEN_GAMEHUB_ULTRA,
     UNSUPPORTED
@@ -28,6 +29,9 @@ class VoiceCommandParser {
             "jarvis cuanta bateria tengo", "cuanta bateria tengo",
             "jarvis bateria", "estado de bateria", "jarvis estado termico",
             "cuanta ram libre tengo" -> VoiceAction.READ_DEVICE_HEALTH
+            "jarvis puedo jugar ahora", "puedo jugar ahora",
+            "jarvis evalua juego", "jarvis estoy listo para jugar",
+            "que tal esta mi telefono para jugar" -> VoiceAction.READ_GAME_READINESS
             "jarvis abre configuracion", "abre configuracion",
             "abrir ajustes", "jarvis ajustes" -> VoiceAction.OPEN_ACCESSIBILITY_SETTINGS
             "jarvis abre gamehub ultra", "abre gamehub ultra",

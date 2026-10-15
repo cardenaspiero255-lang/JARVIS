@@ -9,3 +9,7 @@
 - No hay permisos nuevos, telemetría continua, almacenamiento, transmisiones ni acceso a otras apps. Las lecturas son de JARVIS y no equivalen a medir FPS de GameHub.
 
 **Verificación:** Kotlin/JUnit evalúa lectura normal, umbrales extremos, prioridad crítica en cada perfil, memoria insuficiente y datos desconocidos; contratos Python impiden autoridad Android, servicios de red o lanzamiento silencioso. La generación de APK no sustituye ensayos térmicos o rendimiento físico. La clasificación SSS+ no está certificada.
+
+## Consulta de preparación por voz (PR #34)
+
+Con el botón HABLAR CON JARVIS, frases exactas como «¿puedo jugar ahora?», «Jarvis, evalúa juego» y «¿qué tal está mi teléfono para jugar?» producen una lectura nueva con DeviceHealthReader y muestran GameReadinessAdvisor con el perfil que elegiste manualmente. La transcripción no configura perfiles, abre GameHub ni controla CPU/GPU; la pregunta es estrictamente de solo lectura. Tampoco genera voz TTS automática. El reconocimiento de voz puede depender del proveedor Android, que podría utilizar servicios externos; este código no transmite telemetría ni conserva transcripciones. La funcionalidad necesita pruebas físicas para verificar el dictado real.
