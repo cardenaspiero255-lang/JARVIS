@@ -32,6 +32,7 @@ import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.VoiceMathGate
+import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
 import com.cardenaspiero255.jarvis.core.VoiceConsentGate
@@ -484,9 +485,10 @@ class MainActivity : Activity() {
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
-                val mathAnswer = VoiceMathGate.answer(transcript)
-                if (mathAnswer != null) lastChatReply = mathAnswer
-                statusText.text = mathAnswer ?:
+                val localAnswer = VoiceMathGate.answer(transcript)
+                    ?: VoiceFaqRouter.answer(transcript)
+                if (localAnswer != null) lastChatReply = localAnswer
+                statusText.text = localAnswer ?:
                     "Orden no disponible. No se realizó ninguna acción."
             }
         }
