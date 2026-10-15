@@ -62,7 +62,7 @@ class MainActivity : Activity() {
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
-    private val visionPickerRequest = VisionPickerRequestGate()
+    private lateinit var visionPickerRequest: VisionPickerRequestGate
     private val foregroundGate = VoiceForegroundGate()
     private val capturePrivacyGate = ScreenCapturePrivacyGate()
     private val capturePrivacyHandler = Handler(Looper.getMainLooper())
@@ -83,6 +83,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        visionPickerRequest = VisionPickerRequestGate(
+            savedInstanceState?.getInt(VISION_PICKER_COUNTER_KEY, 0) ?: 0
+        )
         // Protect chat, encrypted-memory controls and system-task thumbnails before
         // creating any UI; a screenshot exception always requires a separate tap.
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -446,6 +449,12 @@ class MainActivity : Activity() {
         setContentView(scroll)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Keep request codes monotonic on rotation; never persist live consent.
+        outState.putInt(VISION_PICKER_COUNTER_KEY, visionPickerRequest.issuedCount())
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStart() {
         super.onStart()
         enforceCapturePrivacy()
@@ -769,5 +778,6 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
+        private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
     }
 }
