@@ -33,7 +33,7 @@ class GameReadinessPrivacyContracts(unittest.TestCase):
 
     def test_no_new_permissions_needed_for_game_advisor(self):
         manifest=(ROOT/"apps/android/app/src/main/AndroidManifest.xml").read_text()
-        self.assertIn("android.permission.INTERNET",manifest)
+        self.assertNotIn("android.permission.INTERNET",manifest)
         self.assertNotIn("HttpsURLConnection",
                          (JAVA/"core/GameReadinessAdvisor.kt").read_text())
         self.assertNotIn("android.permission.PACKAGE_USAGE_STATS",manifest)
