@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import com.cardenaspiero255.jarvis.core.VisionImagePolicy
 import com.cardenaspiero255.jarvis.core.VisionRequestGate
+import com.cardenaspiero255.jarvis.core.ButtonHintDetector
+import com.cardenaspiero255.jarvis.core.OcrLine
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
@@ -29,6 +31,7 @@ class VisionRecognizer(
 ) {
     private val appContext = context.applicationContext
     private val policy = VisionImagePolicy()
+    private val buttonDetector = ButtonHintDetector()
     private val resultGate = VisionRequestGate()
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
@@ -76,7 +79,17 @@ class VisionRecognizer(
                             }
                         engine.process(InputImage.fromBitmap(bitmap, 0))
                             .addOnSuccessListener { result ->
-                                displayFor(requestId, policy.renderPreview(result.text))
+                                val lines = result.textBlocks.flatMap { block -> block.lines }
+                                    .mapNotNull { line ->
+                                        line.boundingBox?.let { bounds ->
+                                            OcrLine(line.text, bounds.left, bounds.top,
+                                                bounds.width(), bounds.height())
+                                        }
+                                    }
+                                val hints = buttonDetector.detect(lines, bitmap.width, bitmap.height)
+                                val details = buttonDetector.describe(hints)
+                                displayFor(requestId,
+                                    policy.renderPreview(result.text) + "\n" + details)
                             }
                             .addOnFailureListener {
                                 displayFor(requestId, "No se pudo reconocer el texto de esta imagen.")
