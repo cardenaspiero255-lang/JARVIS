@@ -25,8 +25,8 @@ Local prerequisites: Android SDK 36, Build Tools 36, Gradle 8.13 and JDK 17.
 Command: gradle -p apps/android :app:testDebugUnitTest :app:assembleDebug
 
 ## Still not implemented
-No wake-word engine, always-listening service, AccessibilityService executor,
-screen/vision recognition, memory, LLM orchestration, remote auth, automatic
+No wake-word engine, always-listening service, general-purpose accessibility
+executor, screen/vision recognition, memory, LLM orchestration, remote auth, automatic
 GitHub actions, background service, Android instrumentation tests, or
 authenticated Ultra Sentinel / GameHub link.
 
