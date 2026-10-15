@@ -8,7 +8,6 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.ChatSpeechPolicy
-import com.cardenaspiero255.jarvis.core.AiGatewayPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.DeviceHealthSpeechPolicy
 import com.cardenaspiero255.jarvis.core.GameReadinessReport
@@ -270,20 +269,6 @@ class SpokenReplyEngine(
     fun speakRecognizedGameAfterTap(report: GameReadinessReport): Boolean {
         val safe = gameSpeech.textForSpeech(report, explicitTap = true,
             ready = !closed, stopped = false) ?: return false
-        if (!resumeAfterRecognizedTap()) return false
-        return speakExplicitText(safe, preserveDisplayedAnswer = true)
-    }
-
-    /** Read user-requested authenticated gateway text, never an Android command. */
-    fun speakAiReplyAfterRecognizedTap(modelText: String?): Boolean {
-        val safe = AiGatewayPolicy.spokenModelText(modelText) ?: return false
-        if (!resumeAfterRecognizedTap()) return false
-        return speakExplicitText(safe, preserveDisplayedAnswer = true)
-    }
-
-    /** Requires a separate visible tap on the existing chat speech button. */
-    fun speakAiReplyByTap(modelText: String?): Boolean {
-        val safe = AiGatewayPolicy.spokenModelText(modelText) ?: return false
         if (!resumeAfterRecognizedTap()) return false
         return speakExplicitText(safe, preserveDisplayedAnswer = true)
     }

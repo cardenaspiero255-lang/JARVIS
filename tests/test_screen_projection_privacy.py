@@ -14,7 +14,7 @@ class ScreenProjectionPrivacyContracts(unittest.TestCase):
         self.assertIn("android.permission.FOREGROUND_SERVICE",grants)
         self.assertIn("android.permission.POST_NOTIFICATIONS",grants)
         self.assertIn("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",grants)
-        self.assertIn("android.permission.INTERNET",grants)
+        self.assertNotIn("android.permission.INTERNET",grants)
         self.assertNotIn("AiGatewayClient", (BASE/"java/com/cardenaspiero255/jarvis/ScreenObservationService.kt").read_text())
         self.assertNotIn("android.permission.CAMERA",grants)
         services=[x for x in manifest.findall("./application/service")

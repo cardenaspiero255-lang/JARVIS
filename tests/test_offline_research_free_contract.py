@@ -32,21 +32,16 @@ class LocalResearchNoBillingTests(unittest.TestCase):
         self.assertIn("OfflineKnowledgeEngine.SAFE_SPOKEN_REPLIES",speech)
         self.assertIn("answer.takeIf { it in fixed || spokenNumbers.matches(it) }",speech)
 
-    def test_paired_token_does_not_turn_on_paid_chats(self):
+    def test_local_only_chat_cannot_trigger_paid_requests(self):
         main=(JAVA/"MainActivity.kt").read_text()
-        self.assertIn("OfflineCostPolicy.isPaidRequest(message)",main)
-        self.assertIn("OfflineCostPolicy.paidPrompt(message)",main)
-        self.assertIn('setTitle("Confirmar consulta de pago")',main)
-        self.assertIn('setPositiveButton("Enviar de pago")',main)
-        self.assertIn("requestAiReply(paidPrompt, fromVoice = false)",main)
-        self.assertNotIn("aiGatewayClient.isConfigured() -> {\n                    chatInput.text.clear()\n                    requestAiReply(message",main)
-        body=main.split("private fun processRecognizedSpeech(transcript: String)",1)[1].split(
-            "private fun showAiSetupDialog()",1)[0]
-        self.assertIn("localDialogue.replyVoice(transcript)",body)
-        self.assertNotIn("requestAiReply(transcript",body)
-        self.assertNotIn("aiGatewayClient.request(",body)
-        policy=(JAVA/"core/OfflineCostPolicy.kt").read_text()
-        self.assertIn('PAID_PREFIX = "consulta nube:"',policy)
+        self.assertIn("localDialogue.reply(message)",main)
+        self.assertIn("localDialogue.replyVoice(transcript)",main)
+        self.assertIn("La conexión de pago fue retirada.",main)
+        self.assertNotIn("requestAiReply(",main)
+        self.assertNotIn("OfflineCostPolicy",main)
+        self.assertNotIn("AiGatewayClient",main)
+        self.assertFalse((JAVA/"core/OfflineCostPolicy.kt").exists())
+        self.assertFalse((JAVA/"AiGatewayClient.kt").exists())
 
     def test_preserves_icon_and_sound(self):
         main=(JAVA/"MainActivity.kt").read_text()

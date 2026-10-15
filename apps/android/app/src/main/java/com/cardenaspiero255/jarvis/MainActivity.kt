@@ -39,8 +39,6 @@ import com.cardenaspiero255.jarvis.core.ScreenConsentRequestGate
 import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
-import com.cardenaspiero255.jarvis.core.AiGatewayPolicy
-import com.cardenaspiero255.jarvis.core.OfflineCostPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.GameReadinessReport
@@ -98,9 +96,6 @@ class MainActivity : Activity() {
     private lateinit var visionRecognizer: VisionRecognizer
     private lateinit var handsStatusText: TextView
     private lateinit var privateMemory: PrivateConversationStore
-    private lateinit var aiGatewaySettings: AiGatewaySettings
-    private lateinit var aiGatewayClient: AiGatewayClient
-    private var lastAiReply: String? = null
     private lateinit var chatLog: TextView
     private lateinit var chatInput: EditText
     private lateinit var healthStatusText: TextView
@@ -194,8 +189,7 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
-        aiGatewaySettings = AiGatewaySettings(this)
-        aiGatewayClient = AiGatewayClient(aiGatewaySettings)
+        RetiredCloudCredentialCleaner.purge(this)
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
                 "JARVIS solo permite HOME y abrir GameHub con permiso; no navega otras interfaces.",
@@ -231,59 +225,26 @@ class MainActivity : Activity() {
                     statusText.text = "Escribe un mensaje antes de enviarlo."
                 message.equals("estado ia", ignoreCase = true) -> {
                     chatInput.text.clear()
-                    statusText.text = when {
-                        aiGatewayClient.isConfigured() ->
-                            "IA emparejada, pero JARVIS sigue en modo gratuito y local. " +
-                                "Solo el comando consulta nube: seguido de una pregunta " +
-                                "y una confirmación permite usar la API de pago."
-                        aiGatewaySettings.hasStoredPairing() ->
-                            "IA no emparejada: hay una configuración cifrada antigua " +
-                                "o ilegible. Escribe conectar ia para repararla."
-                        else ->
-                            "Modo gratuito y local activo. No necesitas configurar IA " +
-                                "para conversar sobre los conocimientos disponibles."
-                    }
+                    statusText.text = "JARVIS funciona en modo local gratuito. " +
+                        "No utiliza el gateway ni una clave API de OpenAI. " +
+                        "El modelo generativo local está en preparación."
                 }
-                message.equals("conectar ia", ignoreCase = true) -> {
+                message.equals("conectar ia", ignoreCase = true) ||
+                    message.trimStart().startsWith("consulta nube:", ignoreCase = true) -> {
                     chatInput.text.clear()
-                    showAiSetupDialog()
+                    statusText.text = "La conexión de pago fue retirada. " +
+                        "JARVIS utiliza solo conocimientos y funciones locales. " +
+                        "Ninguna consulta se envió a OpenAI."
                 }
                 message.equals("desconectar ia", ignoreCase = true) -> {
                     chatInput.text.clear()
-                    aiGatewayClient.cancelAndClear()
-                    lastAiReply = null
-                    lastChatReply = null
-                    statusText.text = try {
-                        if (aiGatewaySettings.revokeByTap())
-                            "Conexión de IA revocada y clave cifrada eliminada."
-                        else "No se pudo confirmar la eliminación del acceso a la IA."
-                    } catch (_: Exception) { "No se pudo revocar la conexión de IA." }
-                }
-                OfflineCostPolicy.isPaidRequest(message) -> {
-                    val paidPrompt = OfflineCostPolicy.paidPrompt(message)
-                    when {
-                        paidPrompt == null ->
-                            statusText.text = "Escribe consulta nube: y después una pregunta corta."
-                        !aiGatewayClient.isConfigured() ->
-                            statusText.text = "Consulta de pago no disponible. " +
-                                "El modo local sigue funcionando sin API. " +
-                                "Para usar la nube, primero escribe conectar ia."
-                        else -> AlertDialog.Builder(this)
-                            .setTitle("Confirmar consulta de pago")
-                            .setMessage("Esta pregunta se enviará a la API OpenAI " +
-                                "y podría generar cargos en tu cuenta. " +
-                                "El modo local es gratuito. ¿Quieres continuar?")
-                            .setNegativeButton("Cancelar", null)
-                            .setPositiveButton("Enviar de pago") { _, _ ->
-                                chatInput.text.clear()
-                                requestAiReply(paidPrompt, fromVoice = false)
-                            }.show()
-                    }
+                    statusText.text = if (RetiredCloudCredentialCleaner.purge(this))
+                        "El antiguo token de nube quedó borrado de este dispositivo."
+                    else "No se pudo confirmar la limpieza de todas las credenciales antiguas."
                 }
                 else -> {
                     val answer = localDialogue.reply(message)
                     lastChatReply = answer
-                    lastAiReply = null
                     chatInput.text.clear()
                     chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                     statusText.text = answer
@@ -302,10 +263,7 @@ class MainActivity : Activity() {
         })
         section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
             val answer = lastChatReply
-            val remoteAnswer = lastAiReply
-            if (remoteAnswer != null) {
-                spokenReplyEngine.speakAiReplyByTap(remoteAnswer)
-            } else if (answer == null) {
+            if (answer == null) {
                 statusText.text = "Primero genera una respuesta local en esta sesión."
             } else spokenReplyEngine.speakChatByTap(answer)
         })
@@ -636,8 +594,6 @@ class MainActivity : Activity() {
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
-        aiGatewayClient.cancelAndClear()
-        lastAiReply = null
         lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
@@ -655,7 +611,6 @@ class MainActivity : Activity() {
         screenConsentRequested = false
         screenConsentGate.cancel()
         ScreenObservationService.stopNow()
-        if (::aiGatewayClient.isInitialized) aiGatewayClient.close()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -697,8 +652,6 @@ class MainActivity : Activity() {
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             },
             SessionLockChannel.LOCAL_CHAT to {
-                aiGatewayClient.cancelAndClear()
-                lastAiReply = null
                 localDialogue.clear()
                 lastChatReply = null
                 chatInput.text.clear()
@@ -1128,92 +1081,6 @@ class MainActivity : Activity() {
                     statusText.text = "Memoria cifrada no disponible; tema no guardado."
                 }
             }
-        }
-    }
-
-    /**
-     * The public HTTPS endpoint is bundled; only the private gateway token
-     * requires a one-time consented pairing. Do not embed the bearer token in
-     * the APK or ask users to enter an OpenAI API key on Android.
-     */
-    private fun showAiSetupDialog() {
-        val fields = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(6), dp(18), dp(6))
-        }
-        val serverLabel = label(
-            "Servidor de JARVIS integrado: " +
-                AiGatewayPolicy.DEFAULT_ENDPOINT + "\n" +
-                "No necesitas escribir una dirección HTTPS.",
-            13f, Color.DKGRAY
-        )
-        val tokenInput = EditText(this).apply {
-            hint = "Token privado JARVIS_GATEWAY_TOKEN (NO la API key)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setSingleLine(true)
-        }
-        val voiceConsentBox = CheckBox(this).apply {
-            text = "Preguntas habladas solo en modo local gratuito"
-            isChecked = false
-            isEnabled = false
-        }
-        fields.addView(serverLabel)
-        fields.addView(tokenInput)
-        fields.addView(voiceConsentBox)
-        AlertDialog.Builder(this)
-            .setTitle("JARVIS — conectar IA")
-            .setMessage(
-                "El servidor HTTPS ya está integrado. Solo necesitas " +
-                    "emparejar tu token privado una vez; Android lo cifrará. " +
-                    "Solo consulta nube: y una confirmación permiten usar la API de pago. " +
-                    "La voz permanece gratuita y local. " +
-                    "No introduzcas aquí tu clave API de OpenAI. " +
-                    "Si el acceso ya está guardado, pulsa Cancelar y escribe estado ia."
-            )
-            .setView(fields)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Conectar") { _, _ ->
-                statusText.text = try {
-                    val saved = aiGatewaySettings.configureByTap(
-                        tokenInput.text.toString(),
-                        false
-                    )
-                    if (saved) {
-                        aiGatewayClient.cancelAndClear()
-                        "IA emparejada; modo local gratuito activo. Solo " +
-                            "consulta nube: y tu confirmación gastarán tokens. " +
-                            "La voz permanece local. Consulta estado ia."
-                    } else {
-                        "IA no emparejada. El token debe tener de 32 a 256 caracteres, " +
-                            "sin espacios, y ser JARVIS_GATEWAY_TOKEN, no la API key. " +
-                            "El servidor ya viene configurado."
-                    }
-                } catch (_: Exception) {
-                    "IA no emparejada: Android no pudo guardar el acceso cifrado. " +
-                        "Reintenta conectar ia."
-                }
-            }.show()
-    }
-
-    private fun requestAiReply(message: String, fromVoice: Boolean) {
-        statusText.text = "Consultando GPT-6 Astra mediante el servidor autorizado..."
-        val accepted = aiGatewayClient.request(message, fromVoice) { text, error ->
-            if (text != null) {
-                statusText.text = text
-                if (fromVoice) {
-                    spokenReplyEngine.speakAiReplyAfterRecognizedTap(text)
-                } else {
-                    lastAiReply = text
-                    lastChatReply = null
-                    chatLog.text = "JARVIS IA: " + text.take(1400)
-                }
-            } else {
-                statusText.text = error ?: "No se recibió una respuesta de la IA."
-            }
-        }
-        if (!accepted) {
-            statusText.text = "IA no autorizada para esta solicitud. " +
-                "Escribe conectar ia para configurar o continúa con el chat local."
         }
     }
 
