@@ -20,3 +20,9 @@ Cualquier fallo de AndroidKeyStore impide leer/escribir y se notifica sin devolv
 - Kotlin/JUnit: respuestas locales, límites y reutilización de contexto; denegación por defecto.
 - Pruebas instrumentadas: creación AES-GCM AndroidKeyStore, cifrado, lectura autorizada, datos no cifrados ausentes en preferencias, revocación y borrado, autenticación del cifrado ante manipulación.
 - CI compila APK normal y APK de pruebas instrumentadas **sin ejecutarlas**. La ejecución debe realizarse en un dispositivo físico/emulador. No afirmar E2E hasta completar pruebas reales.
+
+## Lectura opcional de respuestas locales (Omega Voice)
+- El botón **LEER ÚLTIMA RESPUESTA DEL CHAT** solo habla después de que el usuario haya activado una voz **offline** instalada y autorizado una lectura por pulsación.
+- El origen permitido es la respuesta generada localmente durante la sesión actual: frases de estado y cálculos acotados. Una allowlist en `ChatSpeechPolicy` rechaza transcripciones arbitrarias, texto del usuario, OCR, historial restaurado y resultados de modelos externos.
+- Al pasar a segundo plano, detener la voz, cambiar perfil o borrar el historial, se cancela la sesión de habla o se invalida la última respuesta; nunca hay autolectura.
+- **Pendiente de validar:** audio audible en teléfono real, interrupción exacta durante cambios de actividad y compatibilidad de voces offline disponibles. CI/JUnit demuestra políticas y compilación, no acústica física.

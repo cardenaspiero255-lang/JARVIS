@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     private lateinit var privateMemory: PrivateConversationStore
     private lateinit var chatLog: TextView
     private lateinit var chatInput: EditText
+    private var lastChatReply: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +106,7 @@ class MainActivity : Activity() {
                 statusText.text = "Escribe un mensaje antes de enviarlo."
             } else {
                 val answer = localDialogue.reply(message)
+                lastChatReply = answer
                 chatInput.text.clear()
                 chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                 statusText.text = answer
@@ -120,12 +122,19 @@ class MainActivity : Activity() {
                 }
             }
         })
+        layout.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
+            val answer = lastChatReply
+            if (answer == null) {
+                statusText.text = "Primero genera una respuesta local en esta sesión."
+            } else spokenReplyEngine.speakChatByTap(answer)
+        })
         layout.addView(primaryButton("ACTIVAR MEMORIA PRIVADA CIFRADA") {
             try {
                 if (privateMemory.enableByTap()) {
                     val saved = privateMemory.load()
                     if (saved != null) {
                         localDialogue.restore(saved)
+                        lastChatReply = null // Restored rows are not trusted speech sources.
                         chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                     }
                     statusText.text = "Memoria cifrada activada para esta sesión. Puedes borrarla."
@@ -143,6 +152,7 @@ class MainActivity : Activity() {
             try {
                 if (privateMemory.eraseByTap()) {
                     localDialogue.clear()
+                    lastChatReply = null
                     chatLog.text = "Historial eliminado de este dispositivo."
                     statusText.text = "Historial y clave de memoria eliminados."
                 } else statusText.text = "Android no confirmó el borrado del historial."
@@ -259,6 +269,7 @@ class MainActivity : Activity() {
         foregroundGate.onStop()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
+        lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
