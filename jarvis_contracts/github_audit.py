@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import re
 
 from .adapters import GitHubReadOnlyAdapter
+from .check_evidence import summarize_checks
 
 
 class IncompleteSnapshot(ValueError):
@@ -28,6 +29,12 @@ class ReadOnlySnapshot:
     checks: tuple
     reviews: tuple
     check_inventory_complete: bool = True
+
+    @property
+    def check_evidence(self):
+        # Snapshot never decides required checks or authorizes a merge.
+        return summarize_checks(self.checks, self.head_sha,
+                                complete=self.check_inventory_complete)
 
     @property
     def authorized_to_merge(self):
