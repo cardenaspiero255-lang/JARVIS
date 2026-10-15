@@ -32,6 +32,7 @@ import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
+import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
@@ -49,7 +50,7 @@ class MainActivity : Activity() {
     private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
-    private var speechRecognitionPending = false
+    private val recognitionRequest = VoiceRecognitionRequestGate()
     private val foregroundGate = VoiceForegroundGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
@@ -332,7 +333,7 @@ class MainActivity : Activity() {
         foregroundGate.onStop()
         // The system recognizer may be another Activity: preserve only a short-lived
         // numeric answer while our explicitly started recognition is pending.
-        if (!speechRecognitionPending) voiceMathSession.clear()
+        if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
         lastChatReply = null
@@ -343,7 +344,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         voiceMathSession.clear()
-        speechRecognitionPending = false
+        recognitionRequest.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -360,7 +361,7 @@ class MainActivity : Activity() {
             SessionLockChannel.VOICE_REQUEST to {
                 voiceConsent.cancel()
                 voiceMathSession.clear()
-                speechRecognitionPending = false
+                recognitionRequest.cancel()
             },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
@@ -439,16 +440,19 @@ class MainActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
+        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
+            statusText.text = "Ya hay un reconocimiento de voz activo. Cancélalo antes de iniciar otro."
+            return
+        }
         try {
-            speechRecognitionPending = true
             @Suppress("DEPRECATION")
             startActivityForResult(intent, SPEECH_REQUEST)
         } catch (_: ActivityNotFoundException) {
-            speechRecognitionPending = false
+            recognitionRequest.cancel()
             voiceMathSession.clear()
             statusText.text = "No hay un proveedor de reconocimiento de voz disponible."
         } catch (_: SecurityException) {
-            speechRecognitionPending = false
+            recognitionRequest.cancel()
             voiceMathSession.clear()
             statusText.text = "El reconocimiento de voz no tiene permisos suficientes."
         }
@@ -465,8 +469,8 @@ class MainActivity : Activity() {
             return
         }
         if (requestCode != SPEECH_REQUEST) return
-        speechRecognitionPending = false
-        if (!foregroundGate.canAcceptRecognitionResult()) {
+        val requested = recognitionRequest.consume(SystemClock.elapsedRealtime())
+        if (!requested || !foregroundGate.canAcceptRecognitionResult()) {
             voiceMathSession.clear()
             voiceConsent.cancel()
             return
