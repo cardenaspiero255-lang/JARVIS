@@ -13,9 +13,8 @@ class ChatSpeechContractTests(unittest.TestCase):
         root = ET.parse(MANIFEST).getroot()
         namespace = "{http://schemas.android.com/apk/res/android}"
         permissions = {x.get(namespace + "name") for x in root.findall("uses-permission")}
-        self.assertIn("android.permission.INTERNET", permissions)
-        self.assertIn("AiGatewayPolicy.allowCloudRequest(",
-                      (SOURCE / "AiGatewayClient.kt").read_text())
+        self.assertNotIn("android.permission.INTERNET", permissions)
+        self.assertFalse((SOURCE / "AiGatewayClient.kt").exists())
         # RECORD_AUDIO is now needed by explicit in-app speech recognition;
         # the TTS engine remains microphone-free and no mic FGS is declared.
         self.assertIn("android.permission.RECORD_AUDIO", permissions)
