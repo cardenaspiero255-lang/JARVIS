@@ -39,6 +39,13 @@ class AuditEntry:
     digest: str
 
 
+@dataclass(frozen=True)
+class AuditAnchor:
+    """Trusted out-of-band checkpoint. Store separately from the SQLite DB."""
+    sequence: int
+    digest: str
+
+
 class IntegrityAudit:
     """Append-only audit chain with external integrity key and SQLite locks."""
 
@@ -123,6 +130,29 @@ class IntegrityAudit:
         except BaseException:
             self.db.execute("ROLLBACK")
             raise
+
+    def anchor(self):
+        """Return a signed-chain root that the host MUST persist independently.
+
+        A local HMAC chain alone CANNOT reveal deletion of the newest rows.
+        Save this checkpoint in a distinct, trusted append-only location.
+        """
+        rows = self.entries()
+        return AuditAnchor(len(rows), rows[-1].digest if rows else _GENESIS)
+
+    def verify_anchor(self, anchor):
+        """Reject truncation or rewrite of any prefix protected by the anchor."""
+        if (type(anchor) is not AuditAnchor or
+                type(anchor.sequence) is not int or anchor.sequence < 0 or
+                type(anchor.digest) is not str or _HEX.fullmatch(anchor.digest) is None):
+            raise AuditInvalid("trusted audit anchor required")
+        rows = self.entries()
+        if anchor.sequence > len(rows):
+            raise AuditTampered("audit log truncated since external checkpoint")
+        observed = rows[anchor.sequence - 1].digest if anchor.sequence else _GENESIS
+        if not hmac.compare_digest(observed, anchor.digest):
+            raise AuditTampered("audit log rewritten since external checkpoint")
+        return True
 
     def record(self, principal_digest, action, outcome, resource_digest, *, when):
         if (type(principal_digest) is not str or not _HEX.fullmatch(principal_digest)
