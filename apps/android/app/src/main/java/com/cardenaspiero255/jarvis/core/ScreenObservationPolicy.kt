@@ -28,7 +28,8 @@ class ScreenObservationPolicy {
     fun sample(nowMillis: Long): Boolean {
         if (!isActive(nowMillis)) return false
         val last = sampledAt
-        if (last != null && nowMillis - last in 0L until MIN_SAMPLE_INTERVAL_MILLIS) {
+        if (last != null &&
+            (nowMillis < last || nowMillis - last < MIN_SAMPLE_INTERVAL_MILLIS)) {
             return false
         }
         sampledAt = nowMillis
