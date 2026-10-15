@@ -18,3 +18,7 @@ La captura puede incluir información sensible visible en pantalla. **No utilice
 **Pruebas pendientes:** comprobar en un Android físico (API 26, 34, 35/36 según disponibilidad) la solicitud de permiso, llamada a `createVirtualDisplay`, inicio de notificación, paro desde notificación/barra del sistema/bloqueo de pantalla, cambio de rotación, RAM y ausencia de fugas. La compilación y las pruebas unitarias NO acreditan todavía operación física segura.
 
 Fuentes: guía oficial Android MediaProjection y su documentación de requisitos Android 14.
+
+## Android 13+: permiso de notificaciones visible
+
+El visor requiere la autorización `POST_NOTIFICATIONS` cuando Android la exige (API 33+). Una pulsación de **INICIAR VISIÓN** solicita el permiso si falta, pero no inicia la observación automáticamente. Después de autorizar, el usuario debe pulsar nuevamente **INICIAR VISIÓN** y confirmar el diálogo independiente MediaProjection. La aplicación y el servicio verifican ambos permisos; si se retira el de notificaciones, una sesión nueva no se inicia. La revocación de la sesión activa puede hacerse desde Android o desde el botón DETENER.
