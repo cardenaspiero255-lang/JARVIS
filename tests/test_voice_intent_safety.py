@@ -26,3 +26,13 @@ class VoiceIntentSafetyContract(unittest.TestCase):
         start = source.split("private fun startSpeech()", 1)[1].split(
             'Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)', 1)[0]
         self.assertIn("spokenReplyEngine.stop()", start)
+
+    def test_stopped_activity_cannot_rearm_recognition_consent(self):
+        source = (ROOT / "MainActivity.kt").read_text(encoding="utf-8")
+        result_handler = source.split("override fun onActivityResult(", 1)[1]
+        before_parser = result_handler.split("when (parser.parse(transcript))", 1)[0]
+        self.assertIn("foregroundGate.canAcceptRecognitionResult()", before_parser)
+        self.assertIn("voiceConsent.cancel()", before_parser)
+        on_stop = source.split("override fun onStop()", 1)[1].split(
+            "override fun onDestroy()", 1)[0]
+        self.assertIn("foregroundGate.onStop()", on_stop)
