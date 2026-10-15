@@ -106,11 +106,11 @@ class MainActivity : Activity() {
             } else {
                 val answer = localDialogue.reply(message)
                 chatInput.text.clear()
-                chatLog.text = localDialogue.history().takeLast(8).joinToString("\\n")
+                chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                 statusText.text = answer
                 if (privateMemory.isEnabled()) {
                     try {
-                        if (!privateMemory.save(localDialogue.history().joinToString("\\n"))) {
+                        if (!privateMemory.save(localDialogue.history().joinToString("\n"))) {
                             statusText.text = "No se pudo guardar el historial cifrado."
                         }
                     } catch (_: Exception) {
@@ -126,7 +126,7 @@ class MainActivity : Activity() {
                     val saved = privateMemory.load()
                     if (saved != null) {
                         localDialogue.restore(saved)
-                        chatLog.text = localDialogue.history().takeLast(8).joinToString("\\n")
+                        chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
                     }
                     statusText.text = "Memoria cifrada activada para esta sesión. Puedes borrarla."
                 }
