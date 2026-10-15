@@ -41,4 +41,6 @@ class ScreenProjectionPrivacyContracts(unittest.TestCase):
         for forbidden in ("SharedPreferences", "FileOutputStream", "HttpURLConnection",
                           "OkHttpClient", "OmegaHandsService.goHome", "performGlobalAction("):
             self.assertNotIn(forbidden,service)
-        self.assertIn("if (!submitted) processing.set(false)",service)
+        self.assertIn("if (!submitted) {",service)
+        self.assertIn("pendingBitmap?.recycle()",service)
+        self.assertIn("processing.set(false)",service)
