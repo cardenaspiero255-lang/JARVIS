@@ -1,5 +1,8 @@
 package com.cardenaspiero255.jarvis.core
 
+import java.text.Normalizer
+import java.util.Locale
+
 /** Pinned, licensed offline baseline. No network, inference or API keys here. */
 object LocalLlmPolicy {
     const val MODEL_NAME = "Qwen2.5-0.5B-Instruct-Q4_K_M"
@@ -11,6 +14,20 @@ object LocalLlmPolicy {
     fun isEligibleLength(length: Long): Boolean = length in 1..MAX_BYTES
     fun isValidPrompt(input: String): Boolean =
         input.length <= MAX_INPUT_CHARS && input.isNotBlank()
+
+    /** Never regress deterministic arithmetic, repeat or explicit app status. */
+    fun shouldUseGenerative(input: String): Boolean {
+        if (!isValidPrompt(input)) return false
+        val normalized = Normalizer.normalize(
+            input.trim().lowercase(Locale.ROOT), Normalizer.Form.NFD
+        ).replace(Regex("\\p{M}+"), "")
+        if (normalized in setOf(
+                "repite", "repitelo", "buenas", "estado", "jarvis estado", "estado jarvis"
+            )) return false
+        if (normalized.contains("cuanto es") || normalized.startsWith("calcula ")) return false
+        if (Regex(".*\\d+.*[x×+*/-]\\s*\\d+.*").matches(normalized)) return false
+        return true
+    }
 
     fun cleanAnswer(answer: String): String? {
         val cleaned = answer.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
