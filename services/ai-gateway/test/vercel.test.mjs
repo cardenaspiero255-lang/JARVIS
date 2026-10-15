@@ -70,3 +70,39 @@ test("oversized pre-parsed Vercel body denied before calling provider",async()=>
     await new Promise(done=>srv.close(done));
   }
 });
+
+
+test("serverless handler normalizes Vercel-rewritten request URLs; never treats GET as missing", async()=>{
+  // Vercel may expose the pre-rewrite public URL and route query parameters
+  // to the function, even though the matching function is /api/chat.
+  const {default:handler}=await import("../api/chat.mjs");
+  const beforeKey=process.env.OPENAI_API_KEY;
+  const beforeToken=process.env.JARVIS_GATEWAY_TOKEN;
+  process.env.OPENAI_API_KEY="sk-test-key-not-real";
+  process.env.JARVIS_GATEWAY_TOKEN="fake-gateway-token-test-only-123456789012345";
+  const server=createServer((req,res)=>{
+    // Simulate a Vercel rewrite preserving its incoming URL/route query.
+    req.url="/v1/chat?path=api%2Fchat";
+    return handler(req,res);
+  });
+  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+  try {
+    const url="http://127.0.0.1:"+server.address().port+"/v1/chat";
+    const get=await fetch(url);
+    assert.equal(get.status,405);
+    assert.deepEqual(await get.json(),{error:"method_not_allowed"});
+    const unauth=await fetch(url,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({message:"Hola"})
+    });
+    assert.equal(unauth.status,401);
+    assert.deepEqual(await unauth.json(),{error:"unauthorized"});
+  } finally {
+    await new Promise(resolve=>server.close(resolve));
+    if(beforeKey===undefined)delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY=beforeKey;
+    if(beforeToken===undefined)delete process.env.JARVIS_GATEWAY_TOKEN;
+    else process.env.JARVIS_GATEWAY_TOKEN=beforeToken;
+  }
+});
