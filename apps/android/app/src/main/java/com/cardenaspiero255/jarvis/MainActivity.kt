@@ -85,7 +85,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         })
         layout.addView(label(
-            "Conversación básica en español sin conexión a un modelo general. " +
+            "Chat local en español con calculadora y continuidad de resultados. Sin IA general. " +
                 "La memoria en disco está desactivada hasta que la autorices.",
             13f, Color.rgb(164, 166, 174)
         ))
