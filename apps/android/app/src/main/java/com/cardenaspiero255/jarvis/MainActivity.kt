@@ -23,6 +23,7 @@ import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
 import com.cardenaspiero255.jarvis.core.VoiceConsentGate
+import com.cardenaspiero255.jarvis.core.VoiceForegroundGate
 import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
 
 /**
@@ -33,6 +34,7 @@ class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private val voiceConsent = VoiceConsentGate()
+    private val foregroundGate = VoiceForegroundGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
 
@@ -109,7 +111,13 @@ class MainActivity : Activity() {
         setContentView(scroll)
     }
 
+    override fun onStart() {
+        super.onStart()
+        foregroundGate.onStart()
+    }
+
     override fun onStop() {
+        foregroundGate.onStop()
         voiceConsent.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
@@ -143,6 +151,10 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != SPEECH_REQUEST) return
+        if (!foregroundGate.canAcceptRecognitionResult()) {
+            voiceConsent.cancel()
+            return
+        }
         if (resultCode != RESULT_OK) {
             statusText.text = "Escucha cancelada. No se ejecutó ninguna acción."
             return
