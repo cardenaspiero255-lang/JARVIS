@@ -24,6 +24,7 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.VoiceMathGate
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
 import com.cardenaspiero255.jarvis.core.VoiceConsentGate
@@ -370,8 +371,13 @@ class MainActivity : Activity() {
                 )
                 statusText.text = "Solicitud recibida. Pulsa CONFIRMAR AJUSTES antes de 30 segundos."
             }
-            VoiceAction.UNSUPPORTED ->
-                statusText.text = "Orden no disponible. No se realizó ninguna acción."
+            VoiceAction.UNSUPPORTED -> {
+                // Read-only math fallback: no Android actions or saved transcript.
+                val mathAnswer = VoiceMathGate.answer(transcript)
+                if (mathAnswer != null) lastChatReply = mathAnswer
+                statusText.text = mathAnswer ?:
+                    "Orden no disponible. No se realizó ninguna acción."
+            }
         }
     }
 

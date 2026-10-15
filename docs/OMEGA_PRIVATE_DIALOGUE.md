@@ -26,3 +26,11 @@ Cualquier fallo de AndroidKeyStore impide leer/escribir y se notifica sin devolv
 - El origen permitido es la respuesta generada localmente durante la sesión actual: frases de estado y cálculos acotados. Una allowlist en `ChatSpeechPolicy` rechaza transcripciones arbitrarias, texto del usuario, OCR, historial restaurado y resultados de modelos externos.
 - Al pasar a segundo plano, detener la voz, cambiar perfil o borrar el historial, se cancela la sesión de habla o se invalida la última respuesta; nunca hay autolectura.
 - **Pendiente de validar:** audio audible en teléfono real, interrupción exacta durante cambios de actividad y compatibilidad de voces offline disponibles. CI/JUnit demuestra políticas y compilación, no acústica física.
+
+## Cálculo por voz iniciado manualmente
+- El botón **HABLAR CON JARVIS** abre el reconocedor de voz del sistema Android (que puede utilizar un proveedor externo, según el dispositivo). No se activa escucha continua.
+- Para una transcripción que no sea un comando conocido, `VoiceMathGate` intenta **solo aritmética local y acotada**. Por ejemplo, «¿cuánto es un millón por quinientos?» no está soportado como números escritos con palabras; «¿cuánto es 1 millón por 500?» sí lo está.
+- Las órdenes no matemáticas siguen rechazadas. Ninguna transcripción crea permisos, toca controles Android o llama a servicios.
+- El reconocedor entrega una transcripción efímera: el fallback no almacena texto de voz ni lo añade al historial cifrado. Por ello **no conserva** resultados de matemáticas habladas entre invocaciones.
+- Después de mostrar el resultado se puede usar voluntariamente el botón **LEER ÚLTIMA RESPUESTA DEL CHAT**, sujeto al consentimiento y la voz offline del bloque Omega Voice.
+- La CI valida semántica y seguridad, **no** reconoce voz realmente en un teléfono. Siguen pendientes pruebas físicas del proveedor de voz, ciclo de vida y TTS.
