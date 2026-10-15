@@ -19,6 +19,14 @@ class LocalLlmPolicyTest {
         assertTrue(LocalLlmPolicy.isValidPrompt("Explica la gravedad"))
     }
 
+    @Test fun keepsDeterministicCommandsAndArithmeticAheadOfGeneration() {
+        assertFalse(LocalLlmPolicy.shouldUseGenerative("repite"))
+        assertFalse(LocalLlmPolicy.shouldUseGenerative("estado"))
+        assertFalse(LocalLlmPolicy.shouldUseGenerative("1 millón x 500"))
+        assertFalse(LocalLlmPolicy.shouldUseGenerative("¿cuánto es 5 por 7?"))
+        assertTrue(LocalLlmPolicy.shouldUseGenerative("Compara Red Magic 11S Pro y 12 Pro"))
+    }
+
     @Test fun safeAnswerExcludesControlCharacters() {
         assertEquals("Hola mundo", LocalLlmPolicy.cleanAnswer("Hola\u0000 mundo"))
         assertNull(LocalLlmPolicy.cleanAnswer("\n\u0000"))
