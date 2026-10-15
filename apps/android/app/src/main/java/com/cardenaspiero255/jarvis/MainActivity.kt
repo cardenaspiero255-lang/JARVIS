@@ -111,6 +111,11 @@ class MainActivity : Activity() {
             refreshHandsStatus()
         })
 
+        layout.addView(primaryButton("ABRIR GAMEHUB ULTRA") {
+            val launched = GameHubLauncher(this).launchOnTap()
+            statusText.text = if (launched) "GameHub Ultra se abrió mediante Android."
+                else "No se encontró GameHub Ultra instalado o Android rechazó la apertura."
+        })
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         layout.addView(primaryButton("CONFIRMAR AJUSTES SOLICITADOS POR VOZ") {
             val confirmed = voiceConsent.consume(
