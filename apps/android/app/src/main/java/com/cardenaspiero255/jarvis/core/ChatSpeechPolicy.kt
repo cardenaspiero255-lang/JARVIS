@@ -25,8 +25,10 @@ class ChatSpeechPolicy {
         "JARVIS funciona en modo observador. Las acciones sensibles necesitan permiso visible.",
         "Puedo consultar el estado en modo observador, conversar sobre funciones disponibles, reconocer texto de imágenes elegidas y abrir GameHub por pulsación.",
         "Soy JARVIS OMEGA, un prototipo de asistente Android. No soy una IA general conectada.",
-        "No tengo una conexión a un modelo conversacional general en esta versión. Puedo ayudarte con estado, privacidad y funciones de JARVIS."
-    ) + LocalTopicDialogue.SAFE_SPOKEN_REPLIES
+        "No tengo una conexión a un modelo conversacional general en esta versión. Puedo ayudarte con estado, privacidad y funciones de JARVIS.",
+        "Todavía no tengo una respuesta local verificada sobre eso. Puedo explicar ciencia, tecnología y juegos sin internet."
+    ) + LocalTopicDialogue.SAFE_SPOKEN_REPLIES +
+        OfflineKnowledgeEngine.SAFE_SPOKEN_REPLIES
 
     /** Invalid, restored or third-party content is denied rather than spoken. */
     fun textForSpeech(answer: String?, explicitTap: Boolean, ready: Boolean, stopped: Boolean): String? {
