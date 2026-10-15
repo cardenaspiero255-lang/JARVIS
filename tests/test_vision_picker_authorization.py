@@ -33,7 +33,8 @@ class VisionPickerAuthorizationContracts(unittest.TestCase):
 
     def test_rotation_only_restores_issued_counter_not_pending_grant(self):
         source = MAIN.read_text(encoding="utf-8")
-        self.assertIn("VisionPickerRequestGate(savedInstanceState?.getInt(", source)
+        self.assertIn("visionPickerRequest = VisionPickerRequestGate(", source)
+        self.assertIn("savedInstanceState?.getInt(VISION_PICKER_COUNTER_KEY, 0)", source)
         self.assertIn("outState.putInt(VISION_PICKER_COUNTER_KEY, visionPickerRequest.issuedCount())", source)
         self.assertIn("private const val VISION_PICKER_COUNTER_KEY", source)
         self.assertNotIn("pendingCode", source)
