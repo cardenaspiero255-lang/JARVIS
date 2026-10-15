@@ -27,6 +27,7 @@ import com.cardenaspiero255.jarvis.core.ButtonHintDetector
 import com.cardenaspiero255.jarvis.core.OcrLine
 import com.cardenaspiero255.jarvis.core.ProjectionStartPermit
 import com.cardenaspiero255.jarvis.core.ScreenObservationPolicy
+import com.cardenaspiero255.jarvis.core.ScreenObservationReleaseGate
 import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -67,7 +68,7 @@ class ScreenObservationService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_START || !shuttingDown.get() ||
+        if (!ScreenObservationReleaseGate.ENABLED || intent?.action != ACTION_START || !shuttingDown.get() ||
             !pendingStart.consume()) {
             stopSelf(startId)
             return START_NOT_STICKY
@@ -276,7 +277,7 @@ class ScreenObservationService : Service() {
 
         /** User/OS consent is only good for ONE queued service start. */
         fun authorizeOneStart(): Boolean {
-            if (live != null) return false
+            if (!ScreenObservationReleaseGate.ENABLED || live != null) return false
             return pendingStart.arm()
         }
 
