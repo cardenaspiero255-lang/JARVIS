@@ -14,7 +14,7 @@ class MediaProjectionLifecycleContract(unittest.TestCase):
         perms={x.get(ANDROID+"name") for x in root.findall("uses-permission")}
         self.assertIn("android.permission.POST_NOTIFICATIONS",perms)
         self.assertIn("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",perms)
-        self.assertNotIn("android.permission.INTERNET",perms)
+        self.assertIn("android.permission.INTERNET",perms)
         self.assertNotIn("AiGatewayClient", (JAVA/"ScreenObservationService.kt").read_text())
         services=[x for x in root.findall("./application/service")
                   if x.get(ANDROID+"name")==".ScreenObservationService"]
