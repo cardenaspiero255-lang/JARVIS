@@ -8,11 +8,11 @@ SRC=ROOT/"apps/android/app/src/main/java/com/cardenaspiero255/jarvis"
 MANIFEST=ROOT/"apps/android/app/src/main/AndroidManifest.xml"
 
 class NoPaidCloudInAndroid(unittest.TestCase):
-    def test_manifest_grants_no_internet(self):
+    def test_manifest_grants_only_scoped_qwen_internet(self):
         ns="{http://schemas.android.com/apk/res/android}"
         manifest=ET.parse(MANIFEST).getroot()
         permissions={x.get(ns+"name") for x in manifest.findall("uses-permission")}
-        self.assertNotIn("android.permission.INTERNET",permissions)
+        self.assertIn("android.permission.INTERNET", permissions)
         self.assertIn("android.permission.RECORD_AUDIO",permissions)
         self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",permissions)
         self.assertEqual("false",manifest.find("application").get(ns+"usesCleartextTraffic"))

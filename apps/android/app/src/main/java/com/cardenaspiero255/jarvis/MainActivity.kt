@@ -3,7 +3,10 @@ package com.cardenaspiero255.jarvis
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
+import com.cardenaspiero255.jarvis.core.LocalBenchmarkStats
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
@@ -69,6 +72,9 @@ class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
+    private lateinit var offlineLlm: OfflineLlmEngine
+    private var chatBusy = false
+    private var modelInstallBusy = false
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
@@ -189,6 +195,7 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
+        offlineLlm = OfflineLlmEngine(this)
         RetiredCloudCredentialCleaner.purge(this)
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
@@ -204,10 +211,79 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         })
         section.addView(label(
-            "Chat local en español con calculadora y continuidad de resultados. Sin IA general. " +
+            "Chat local en español. Inferencia GGUF opcional con llama.cpp, sin nube ni pagos. " +
                 "La memoria en disco está desactivada hasta que la autorices.",
             13f, Color.rgb(164, 166, 174)
         ))
+        section.addView(label(
+            "Qwen oficial 0.5B Q4_K_M · 491 MB · Apache 2.0. " +
+                "Instálalo aquí con un toque. El modelo se descarga una vez y después funciona sin internet.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        section.addView(primaryButton("INSTALAR QWEN OFICIAL — 491 MB") {
+            if (chatBusy || modelInstallBusy) {
+                statusText.text = "Termina la operación actual antes de instalar Qwen."
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Instalar Qwen oficial")
+                    .setMessage(
+                        "JARVIS descargará unos 491 MB desde el repositorio oficial Qwen " +
+                        "en Hugging Face, con tu autorización. Se recomienda Wi-Fi y al " +
+                        "menos 550 MB libres. Comprobará el SHA-256 antes de habilitarlo. " +
+                        "La descarga utiliza Internet; las conversaciones continuarán locales."
+                    )
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("INSTALAR") { _, _ ->
+                        modelInstallBusy = true
+                        statusText.text = "Conectando con Qwen oficial por HTTPS..."
+                        offlineLlm.installOfficial(
+                            onProgress = { percent ->
+                                statusText.text = "Descargando Qwen oficial: $percent%. " +
+                                    "Mantén JARVIS abierto hasta terminar."
+                            },
+                            callback = { _, message ->
+                                modelInstallBusy = false
+                                statusText.text = message
+                            }
+                        )
+                    }.show()
+            }
+        })
+        section.addView(primaryButton("ABRIR DESCARGA OFICIAL DE QWEN") {
+            try {
+                // Opens the official model page only by explicit user action.
+                // Inference itself remains fully offline.
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LocalLlmPolicy.MODEL_URL)))
+            } catch (_: ActivityNotFoundException) {
+                statusText.text = "No hay navegador para abrir el enlace oficial."
+            }
+        })
+        section.addView(primaryButton("IMPORTAR MODELO GGUF — QWEN 0.5B") {
+            if (chatBusy || modelInstallBusy) {
+                statusText.text = "Termina la operación actual antes de importar otro modelo."
+            } else {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                try {
+                    startActivityForResult(intent, REQUEST_LOCAL_GGUF)
+                    statusText.text = "Selecciona el GGUF oficial Qwen Q4_K_M."
+                } catch (_: ActivityNotFoundException) {
+                    statusText.text = "No hay selector de archivos compatible en Android."
+                }
+            }
+        })
+        section.addView(primaryButton("CONSULTAR ESTADO LLM LOCAL") {
+            statusText.text = if (offlineLlm.isInstalled()) {
+                "GGUF importado. Se comprobará su SHA-256 antes de inferencia. Motor llama.cpp CPU ARM64."
+            } else {
+                "Falta importar Qwen GGUF. El chat determinista funciona sin modelo."
+            }
+        })
+        section.addView(primaryButton("MEDIR RENDIMIENTO LLM — 5 PRUEBAS") {
+            runLocalLlmBenchmark()
+        })
         chatLog = label("Sin mensajes guardados en esta sesión.", 14f, Color.WHITE)
         section.addView(chatLog)
         chatInput = EditText(this).apply {
@@ -223,11 +299,13 @@ class MainActivity : Activity() {
             when {
                 message.isBlank() ->
                     statusText.text = "Escribe un mensaje antes de enviarlo."
+                chatBusy || modelInstallBusy ->
+                    statusText.text = "JARVIS está procesando una operación. Espera a que finalice."
                 message.equals("estado ia", ignoreCase = true) -> {
                     chatInput.text.clear()
-                    statusText.text = "JARVIS funciona en modo local gratuito. " +
-                        "No utiliza el gateway ni una clave API de OpenAI. " +
-                        "El modelo generativo local está en preparación."
+                    statusText.text = "JARVIS no utiliza API de pago. " +
+                        if (offlineLlm.isInstalled()) "Modelo GGUF instalado; consulta el chat para probarlo."
+                        else "Pulsa INSTALAR QWEN OFICIAL para activar la inferencia."
                 }
                 message.equals("conectar ia", ignoreCase = true) ||
                     message.trimStart().startsWith("consulta nube:", ignoreCase = true) -> {
@@ -243,20 +321,22 @@ class MainActivity : Activity() {
                     else "No se pudo confirmar la limpieza de todas las credenciales antiguas."
                 }
                 else -> {
-                    val answer = localDialogue.reply(message)
-                    lastChatReply = answer
                     chatInput.text.clear()
-                    chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
-                    statusText.text = answer
-                    if (privateMemory.isEnabled()) {
-                        try {
-                            if (!privateMemory.save(localDialogue.snapshotForStorage())) {
-                                statusText.text = "No se pudo guardar el historial cifrado."
+                    if (offlineLlm.isInstalled() && LocalLlmPolicy.shouldUseGenerative(message)) {
+                        chatBusy = true
+                        statusText.text = "Generando respuesta local en CPU ARM64..."
+                        offlineLlm.generate(message) { generated, benchmark ->
+                            chatBusy = false
+                            val answer = if (generated == null) {
+                                localDialogue.reply(message)
+                            } else {
+                                localDialogue.recordGeneratedReply(message, generated)
+                                generated
                             }
-                        } catch (_: Exception) {
-                            privateMemory.stop()
-                            statusText.text = "La memoria cifrada no está disponible; no se guardó."
+                            showChatReply(answer, benchmark?.summary())
                         }
+                    } else {
+                        showChatReply(localDialogue.reply(message), null)
                     }
                 }
             }
@@ -593,11 +673,72 @@ class MainActivity : Activity() {
         // numeric answer while our explicitly started recognition is pending.
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
+        if (::offlineLlm.isInitialized) offlineLlm.releaseForBackground()
+        chatBusy = false
+        modelInstallBusy = false
         voiceConsent.cancel()
         lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
+    }
+
+    /** Five user-initiated, serialized physical-device inference samples. */
+    private fun runLocalLlmBenchmark() {
+        if (chatBusy || modelInstallBusy) {
+            statusText.text = "Termina la operación actual antes de iniciar otra."
+            return
+        }
+        if (!offlineLlm.isInstalled()) {
+            statusText.text = "Importa primero el GGUF verificado para medir inferencia real."
+            return
+        }
+        chatBusy = true
+        val measures = mutableListOf<OfflineLlmEngine.Benchmark>()
+        fun next() {
+            offlineLlm.generate("Explica la fotosíntesis en tres frases sencillas.") { generated, metric ->
+                if (metric == null || generated == null) {
+                    chatBusy = false
+                    statusText.text = "Benchmark incompleto: fallo o falta de recursos. " +
+                        "No se publicarán cifras inventadas."
+                    return@generate
+                }
+                measures.add(metric)
+                if (measures.size < 5) {
+                    statusText.text = "Prueba local ${measures.size}/5 completa; ejecutando la siguiente..."
+                    next()
+                } else {
+                    chatBusy = false
+                    val cold = measures.first()
+                    val warm = LocalBenchmarkStats.medianPositive(
+                        measures.drop(1).map { it.tokensPerSecond }
+                    )
+                    val peakPss = measures.maxOf { it.pssMiB }
+                    statusText.text = "Benchmark físico 5/5: primera respuesta ${cold.tokensPerSecond} " +
+                        "tokens/s (${cold.wallMs} ms), mediana caliente " +
+                        "${warm?.toString() ?: "N/D"} tokens/s, PSS máximo medido " +
+                        "$peakPss MiB. Revisar los 5 registros JARVIS_LLM_BENCH y la temperatura."
+                }
+            }
+        }
+        statusText.text = "Iniciando 5 inferencias reales sin nube..."
+        next()
+    }
+
+    private fun showChatReply(answer: String, benchmark: String?) {
+        lastChatReply = answer
+        chatLog.text = localDialogue.history().takeLast(8).joinToString("\n")
+        statusText.text = if (benchmark == null) answer else "$answer\n$benchmark"
+        if (privateMemory.isEnabled()) {
+            try {
+                if (!privateMemory.save(localDialogue.snapshotForStorage())) {
+                    statusText.text = "No se pudo guardar el historial cifrado."
+                }
+            } catch (_: Exception) {
+                privateMemory.stop()
+                statusText.text = "La memoria cifrada no está disponible; no se guardó."
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -613,6 +754,7 @@ class MainActivity : Activity() {
         ScreenObservationService.stopNow()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
+        if (::offlineLlm.isInitialized) offlineLlm.close()
         super.onDestroy()
     }
 
@@ -652,6 +794,8 @@ class MainActivity : Activity() {
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             },
             SessionLockChannel.LOCAL_CHAT to {
+                offlineLlm.invalidateSession()
+                chatBusy = false
                 localDialogue.clear()
                 lastChatReply = null
                 chatInput.text.clear()
@@ -920,6 +1064,18 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_LOCAL_GGUF) {
+            val uri = data?.data
+            if (resultCode == RESULT_OK && uri != null) {
+                statusText.text = "Copiando y comprobando el modelo local..."
+                offlineLlm.importFrom(uri) { _, info ->
+                    statusText.text = info
+                }
+            } else {
+                statusText.text = "Importación de modelo cancelada."
+            }
+            return
+        }
         if (screenConsentGate.owns(requestCode)) {
             val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
             if (!authorized) {
@@ -1152,6 +1308,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
+        const val REQUEST_LOCAL_GGUF = 9016
         private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
         private const val SCREEN_CONSENT_COUNTER_KEY = "jarvis.screen.consent.issued"
         private const val REQUEST_SCREEN_NOTIFICATIONS = 9004

@@ -8,14 +8,14 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 
 
 class VisionPrivacyContracts(unittest.TestCase):
-    def test_image_selection_does_not_request_camera_media_or_internet(self):
+    def test_image_selection_without_camera_or_media_access(self):
         root = ET.parse(ROOT / "apps/android/app/src/main/AndroidManifest.xml").getroot()
         grants = {p.get(ANDROID+"name") for p in root.findall("uses-permission")}
         for forbidden in ("android.permission.CAMERA",
                           "android.permission.READ_MEDIA_IMAGES",
                           "android.permission.READ_EXTERNAL_STORAGE"):
             self.assertNotIn(forbidden, grants)
-        self.assertNotIn("android.permission.INTERNET", grants)
+        self.assertIn("android.permission.INTERNET", grants)
 
     def test_input_is_user_selected_and_ocr_text_is_not_executable(self):
         activity = (ROOT / "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/MainActivity.kt").read_text()

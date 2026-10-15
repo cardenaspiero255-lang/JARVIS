@@ -65,6 +65,21 @@ class LocalDialogue {
         return answer
     }
 
+    /**
+     * A locally generated reply is only chat text. It never triggers a device
+     * action. Keep private-memory rows bounded and prevent multiline injection.
+     */
+    fun recordGeneratedReply(input: String, generated: String) {
+        if (!LocalLlmPolicy.isValidPrompt(input)) return
+        val answer = LocalLlmPolicy.cleanAnswer(generated) ?: return
+        fun oneLine(text: String): String = text.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        turns.add("Tú: ${oneLine(input)}".take(400))
+        turns.add("JARVIS: $answer".take(400))
+        while (turns.size > 16) turns.removeAt(0)
+        lastAnswer = answer
+    }
+
     /** Voice stays ephemeral: only a known topic enum is updated, never the transcript. */
     fun replyVoice(input: String): String? {
         if (input.length > 160) return null

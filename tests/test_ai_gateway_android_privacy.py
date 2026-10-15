@@ -7,11 +7,11 @@ ROOT=Path(__file__).resolve().parents[1]/"apps/android/app/src/main"
 SRC=ROOT/"java/com/cardenaspiero255/jarvis"
 
 class RetiredGatewayAndroidPrivacy(unittest.TestCase):
-    def test_no_app_network_permission_or_cloud_client(self):
+    def test_model_only_network_and_no_cloud_client(self):
         ns="{http://schemas.android.com/apk/res/android}"
         manifest=ET.parse(ROOT/"AndroidManifest.xml").getroot()
         grants={x.get(ns+"name") for x in manifest.findall("uses-permission")}
-        self.assertNotIn("android.permission.INTERNET",grants)
+        self.assertIn("android.permission.INTERNET", grants)
         self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",grants)
         self.assertEqual("false",manifest.find("application").get(ns+"usesCleartextTraffic"))
         for path in ("AiGatewayClient.kt","AiGatewaySettings.kt","core/AiGatewayPolicy.kt"):

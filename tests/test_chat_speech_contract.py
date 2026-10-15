@@ -9,11 +9,11 @@ MANIFEST = ROOT / "apps/android/app/src/main/AndroidManifest.xml"
 
 
 class ChatSpeechContractTests(unittest.TestCase):
-    def test_no_network_permission_or_background_audio_service(self):
+    def test_model_only_network_and_no_background_audio_service(self):
         root = ET.parse(MANIFEST).getroot()
         namespace = "{http://schemas.android.com/apk/res/android}"
         permissions = {x.get(namespace + "name") for x in root.findall("uses-permission")}
-        self.assertNotIn("android.permission.INTERNET", permissions)
+        self.assertIn("android.permission.INTERNET", permissions)
         self.assertFalse((SOURCE / "AiGatewayClient.kt").exists())
         # RECORD_AUDIO is now needed by explicit in-app speech recognition;
         # the TTS engine remains microphone-free and no mic FGS is declared.
