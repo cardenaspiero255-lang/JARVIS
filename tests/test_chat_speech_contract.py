@@ -14,7 +14,16 @@ class ChatSpeechContractTests(unittest.TestCase):
         namespace = "{http://schemas.android.com/apk/res/android}"
         permissions = {x.get(namespace + "name") for x in root.findall("uses-permission")}
         self.assertNotIn("android.permission.INTERNET", permissions)
-        self.assertNotIn("android.permission.RECORD_AUDIO", permissions)
+        # RECORD_AUDIO is now needed by explicit in-app speech recognition;
+        # the TTS engine remains microphone-free and no mic FGS is declared.
+        self.assertIn("android.permission.RECORD_AUDIO", permissions)
+        self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", permissions)
+        services = root.findall("./application/service")
+        self.assertFalse(any(s.get(namespace + "foregroundServiceType") == "microphone"
+                             for s in services))
+        tts = (SOURCE / "SpokenReplyEngine.kt").read_text()
+        self.assertNotIn("SpeechRecognizer", tts)
+        self.assertNotIn("RECORD_AUDIO", tts)
 
     def test_chat_speech_requires_button_and_fresh_answer(self):
         activity = (SOURCE / "MainActivity.kt").read_text()
