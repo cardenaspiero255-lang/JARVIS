@@ -5,7 +5,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from jarvis_contracts.integrity_audit import IntegrityAudit, AuditInvalid, AuditTampered
+from jarvis_contracts.integrity_audit import IntegrityAudit, AuditAnchor, AuditInvalid, AuditTampered
 
 KEY = b"audit-test-key-not-stored-in-database!!"
 
@@ -94,3 +94,35 @@ class IntegrityAuditTests(unittest.TestCase):
                 for when in (float("nan"), float("inf"), -1):
                     with self.subTest(when=when), self.assertRaises(AuditInvalid):
                         audit.record("a"*64, "pr.read", "SUCCEEDED", "b"*64, when=when)
+
+    def test_external_anchor_detects_tail_truncation_after_internal_hash_chain_still_verifies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = tmp + "/audit.db"
+            with IntegrityAudit(path, key=KEY) as audit:
+                audit.record("a"*64, "pr.read", "SUCCEEDED", "b"*64, when=1800000000)
+                audit.record("a"*64, "pr.read", "SUCCEEDED", "c"*64, when=1800000001)
+                trusted_anchor = audit.anchor()
+                self.assertEqual(trusted_anchor.sequence, 2)
+                self.assertTrue(audit.verify_anchor(trusted_anchor))
+            with sqlite3.connect(path) as db:
+                db.execute("DELETE FROM audit_entries WHERE sequence=2")
+            with IntegrityAudit(path, key=KEY) as audit:
+                self.assertTrue(audit.verify(), "local chain cannot detect removed suffix alone")
+                with self.assertRaises(AuditTampered):
+                    audit.verify_anchor(trusted_anchor)
+                with self.assertRaises(AuditInvalid):
+                    audit.verify_anchor(AuditAnchor(2, "invalid"))
+
+    def test_trusted_old_anchor_survives_legitimate_appends_but_not_rewrites(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = tmp + "/audit.db"
+            with IntegrityAudit(path, key=KEY) as audit:
+                genesis = audit.anchor()
+                self.assertEqual(genesis.sequence, 0)
+                audit.record("a"*64, "pr.read", "SUCCEEDED", "b"*64, when=1800000000)
+                checkpoint = audit.anchor()
+                audit.record("a"*64, "pr.read", "SUCCEEDED", "c"*64, when=1800000001)
+                self.assertTrue(audit.verify_anchor(genesis))
+                self.assertTrue(audit.verify_anchor(checkpoint))
+                with self.assertRaises(AuditTampered):
+                    audit.verify_anchor(AuditAnchor(1, "f"*64))
