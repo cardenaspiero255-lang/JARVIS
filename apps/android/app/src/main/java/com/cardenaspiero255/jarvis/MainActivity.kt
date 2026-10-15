@@ -67,6 +67,7 @@ class MainActivity : Activity() {
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
+    private var foregroundSpeech: ForegroundSpeechRecognizer? = null
     private lateinit var visionPickerRequest: VisionPickerRequestGate
     private lateinit var screenConsentGate: ScreenConsentRequestGate
     private var screenConsentRequested = false
@@ -180,6 +181,7 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("CONFIGURAR VOZ EN ANDROID") {
             openTtsSettingsByTap()
         })
+        layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
         layout.addView(label(
@@ -280,7 +282,9 @@ class MainActivity : Activity() {
         section.addView(handsStatusText)
         section.addView(label(
             "Opcional: habilita el servicio desde los ajustes de Android. " +
-                "Después podrás autorizar solo el botón Inicio. " +
+                "El icono azul es un acceso directo del sistema: puedes " +
+                "desactivar ese acceso directo en Accesibilidad sin ocultar " +
+                "los avisos de seguridad. Después autoriza solo Inicio. " +
                 "Detener Hands desactiva inmediatamente las órdenes de JARVIS, " +
                 "sin cambiar los permisos del sistema.",
             13f, Color.rgb(164, 166, 174)
@@ -440,9 +444,10 @@ class MainActivity : Activity() {
         ))
         section.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
         section.addView(label(
-            "Visión temporal: solo con autorización Android por sesión, " +
-                "notificación visible y detención a los 10 minutos. " +
-                "No ejecuta clics ni guarda imágenes.",
+            "Visión temporal: Android exige tu permiso por cada sesión. " +
+                "El icono de transmisión y la notificación de captura " +
+                "son indicadores del sistema, no se pueden ocultar desde JARVIS. " +
+                "Se detiene a los 10 minutos. Sin clics ni imágenes guardadas.",
             13f, Color.rgb(164, 166, 174)
         ))
         section.addView(primaryButton("INICIAR VISIÓN DE PANTALLA") { requestScreenObservation() })
@@ -461,7 +466,6 @@ class MainActivity : Activity() {
             statusText.text = if (launched) "GameHub Ultra se abrió mediante Android."
                 else "No se encontró GameHub Ultra instalado o Android rechazó la apertura."
         })
-        section.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         section.addView(primaryButton("CONFIRMAR AJUSTES SOLICITADOS POR VOZ") {
             val confirmed = voiceConsent.consume(
                 VoiceRequestedAction.ACCESSIBILITY_SETTINGS,
@@ -489,15 +493,12 @@ class MainActivity : Activity() {
         section.addView(primaryButton("PERFIL: ASISTENTE BRITÁNICO LOCAL") {
             spokenReplyEngine.selectStyleByTap(VoiceStyle.BRITISH_ASSISTANT)
         })
-        section.addView(primaryButton("ACTIVAR RESPUESTAS DE VOZ") {
-            spokenReplyEngine.enableByTap()
-        })
         section.addView(primaryButton("LEER ESTADO EN VOZ ALTA") {
             spokenReplyEngine.speakByTap(SpokenMessage.LOCAL_STATUS)
         })
         section.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
             spokenReplyEngine.stop()
-            statusText.text = "Voz detenida. No volverá a hablar sin activación explícita."
+            statusText.text = "Voz detenida. PROBAR AUDIO permite una nueva prueba explícita."
         })
         section.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
             openAccessibilitySettings(explicitUserGesture = true)
@@ -525,6 +526,7 @@ class MainActivity : Activity() {
         }
         omegaScroll.addView(layout)
         setContentView(omegaScroll)
+        requestMicrophoneOnFirstLaunch()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -550,6 +552,10 @@ class MainActivity : Activity() {
         gameHubPreflight.cancel()
         revokeCaptureException()
         foregroundGate.onStop()
+        if (foregroundSpeech != null) {
+            stopForegroundSpeech()
+            recognitionRequest.cancel()
+        }
         clearVisibleReadouts()
         // The system recognizer may be another Activity: preserve only a short-lived
         // numeric answer while our explicitly started recognition is pending.
@@ -568,6 +574,7 @@ class MainActivity : Activity() {
         revokeCaptureException()
         voiceMathSession.clear()
         recognitionRequest.cancel()
+        stopForegroundSpeech()
         visionPickerRequest.cancel()
         screenConsentRequested = false
         screenConsentGate.cancel()
@@ -589,6 +596,7 @@ class MainActivity : Activity() {
                 voiceConsent.cancel()
                 voiceMathSession.clear()
                 recognitionRequest.cancel()
+                stopForegroundSpeech()
             },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to {
@@ -727,6 +735,12 @@ class MainActivity : Activity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_MICROPHONE) {
+            statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+                "Micrófono autorizado. Pulsa HABLAR CON JARVIS para empezar una escucha puntual."
+            else "Sin permiso de micrófono. Podrás volver a pedirlo al pulsar HABLAR CON JARVIS."
+            return
+        }
         if (requestCode == REQUEST_SCREEN_NOTIFICATIONS) {
             statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
                 "Notificaciones autorizadas. Pulsa INICIAR VISIÓN para pedir el permiso de captura."
@@ -761,19 +775,94 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Android owns the first-launch microphone dialog. Granting permission only
+     * unlocks the HABLAR button; it never turns on continuous listening.
+     * Never re-prompt automatically after an explicit rejection.
+     */
+    private fun requestMicrophoneOnFirstLaunch() {
+        if (Build.VERSION.SDK_INT < 23 ||
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("omega_mic_permission_v1", MODE_PRIVATE)
+        if (prefs.getBoolean("requested_once", false)) return
+        prefs.edit().putBoolean("requested_once", true).apply()
+        statusText.text = "JARVIS solicitará permiso para el micrófono. " +
+            "Solo escuchará cuando pulses HABLAR CON JARVIS, nunca al abrirse."
+        try {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+        } catch (_: RuntimeException) {
+            statusText.text = "Android no pudo solicitar permiso de micrófono. " +
+                "Puedes intentarlo pulsando HABLAR."
+        }
+    }
+
+    private fun stopForegroundSpeech() {
+        foregroundSpeech?.stop()
+        foregroundSpeech = null
+    }
+
     private fun startSpeech() {
         voiceConsent.cancel()
+        if (Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+                PackageManager.PERMISSION_GRANTED) {
+            statusText.text = "Autoriza el micrófono para una escucha puntual. " +
+                "El permiso no inicia grabación automática."
+            try {
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+            } catch (_: RuntimeException) {
+                statusText.text = "Android no permitió solicitar permiso de micrófono."
+            }
+            return
+        }
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
+        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
+            statusText.text = "Ya hay un reconocimiento de voz activo. Cancélalo antes de iniciar otro."
+            return
+        }
+        // A one-shot in-app recognizer is preferred; retain the Android voice
+        // activity as an explicit foreground fallback for OEM compatibility.
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
-        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
-            statusText.text = "Ya hay un reconocimiento de voz activo. Cancélalo antes de iniciar otro."
+        stopForegroundSpeech()
+        val recognizer = ForegroundSpeechRecognizer(
+            context = this,
+            onResult = { transcript ->
+                foregroundSpeech = null
+                val valid = recognitionRequest.consume(SystemClock.elapsedRealtime())
+                if (!valid || !foregroundGate.canAcceptRecognitionResult()) {
+                    voiceMathSession.clear()
+                    voiceConsent.cancel()
+                } else if (transcript.isNullOrBlank()) {
+                    voiceMathSession.clear()
+                    statusText.text = "No se reconoció ningún comando."
+                } else {
+                    processRecognizedSpeech(transcript)
+                }
+            },
+            onFailure = { error ->
+                foregroundSpeech = null
+                recognitionRequest.cancel()
+                voiceMathSession.clear()
+                voiceConsent.cancel()
+                statusText.text = "El reconocedor Android terminó con error " + error +
+                    ". Pulsa HABLAR para intentar nuevamente."
+            },
+            onStatus = { message -> statusText.text = message }
+        )
+        foregroundSpeech = recognizer
+        if (recognizer.start(intent)) {
+            statusText.text = "Preparando micrófono para una escucha puntual. " +
+                "Android puede usar el servicio de reconocimiento configurado."
             return
         }
+        foregroundSpeech = null
+        recognizer.stop()
         try {
             @Suppress("DEPRECATION")
             startActivityForResult(intent, SPEECH_REQUEST)
@@ -785,6 +874,10 @@ class MainActivity : Activity() {
             recognitionRequest.cancel()
             voiceMathSession.clear()
             statusText.text = "El reconocimiento de voz no tiene permisos suficientes."
+        } catch (_: RuntimeException) {
+            recognitionRequest.cancel()
+            voiceMathSession.clear()
+            statusText.text = "Android rechazó el reconocimiento de voz."
         }
     }
 
@@ -853,6 +946,10 @@ class MainActivity : Activity() {
             statusText.text = "No se reconoció ningún comando."
             return
         }
+        processRecognizedSpeech(transcript)
+    }
+
+    private fun processRecognizedSpeech(transcript: String) {
         val action = parser.parse(transcript)
         if (action != VoiceAction.UNSUPPORTED) voiceMathSession.clear()
         when (action) {
@@ -979,5 +1076,6 @@ class MainActivity : Activity() {
         private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
         private const val SCREEN_CONSENT_COUNTER_KEY = "jarvis.screen.consent.issued"
         private const val REQUEST_SCREEN_NOTIFICATIONS = 9004
+        private const val REQUEST_MICROPHONE = 9005
     }
 }
