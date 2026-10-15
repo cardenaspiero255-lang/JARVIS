@@ -31,6 +31,14 @@ class VisionPickerAuthorizationContracts(unittest.TestCase):
         self.assertIn("visionPickerRequest.cancel()", destroy)
         self.assertIn("foregroundGate.canAcceptRecognitionResult()", source)
 
+    def test_rotation_only_restores_issued_counter_not_pending_grant(self):
+        source = MAIN.read_text(encoding="utf-8")
+        self.assertIn("VisionPickerRequestGate(savedInstanceState?.getInt(", source)
+        self.assertIn("outState.putInt(VISION_PICKER_COUNTER_KEY, visionPickerRequest.issuedCount())", source)
+        self.assertIn("private const val VISION_PICKER_COUNTER_KEY", source)
+        self.assertNotIn("pendingCode", source)
+        self.assertIn("visionPickerRequest.cancel()", source)
+
     def test_picker_gate_does_not_grant_screen_capture_or_read_permissions(self):
         gate = GATE.read_text(encoding="utf-8")
         self.assertIn("MAX_AGE_MILLIS", gate)
