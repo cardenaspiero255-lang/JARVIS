@@ -34,11 +34,15 @@ class MediaProjectionLifecycleContract(unittest.TestCase):
 
     def test_one_use_approval_revoked_by_lock(self):
         service=(JAVA/"ScreenObservationService.kt").read_text()
-        self.assertIn("pendingStart.compareAndSet(true, false)",service)
-        self.assertIn("pendingStart.set(false)",service)
+        self.assertIn("pendingStart.consume()",service)
+        self.assertIn("pendingStart.revoke()",service)
         self.assertIn("fun stopNow(): Boolean",service)
         self.assertIn("fun authorizeOneStart(): Boolean",service)
         self.assertIn("terminate(stopProjection = true)",service)
+        self.assertIn("stopSelf(startId)",service)
+        gate=(JAVA/"core/ProjectionStartPermit.kt").read_text()
+        self.assertIn("AtomicBoolean(false)",gate)
+        self.assertIn("authorized.compareAndSet(true, false)",gate)
 
     def test_previous_sensitive_data_still_not_retained(self):
         service=(JAVA/"ScreenObservationService.kt").read_text()
