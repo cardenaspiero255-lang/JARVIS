@@ -47,6 +47,12 @@ class OfflineKnowledgeEngine {
     fun recognizesNewTopic(request: String?): Boolean =
         normalize(request)?.let { it in BY_ALIAS } == true
 
+    /** Restore context only when a previously typed question matches a vetted alias. */
+    fun restoreTopicHint(typedQuestion: String) {
+        val phrase = normalize(typedQuestion) ?: return
+        BY_ALIAS[phrase]?.let { current = it }
+    }
+
     /** Trusted topic identifier only, never a user message or voice transcript. */
     fun contextToken(): String? = current?.id
 
