@@ -31,7 +31,7 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
-import com.cardenaspiero255.jarvis.core.VoiceMathGate
+import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
@@ -48,6 +48,8 @@ class MainActivity : Activity() {
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
+    private val voiceMathSession = VoiceMathSession()
+    private var speechRecognitionPending = false
     private val foregroundGate = VoiceForegroundGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
@@ -328,6 +330,9 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         foregroundGate.onStop()
+        // The system recognizer may be another Activity: preserve only a short-lived
+        // numeric answer while our explicitly started recognition is pending.
+        if (!speechRecognitionPending) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
         lastChatReply = null
@@ -337,6 +342,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        voiceMathSession.clear()
+        speechRecognitionPending = false
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -350,7 +357,11 @@ class MainActivity : Activity() {
     /** Separate visible user gesture: revoke all currently merged local modules. */
     private fun lockSessionByTap() {
         val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
-            SessionLockChannel.VOICE_REQUEST to { voiceConsent.cancel() },
+            SessionLockChannel.VOICE_REQUEST to {
+                voiceConsent.cancel()
+                voiceMathSession.clear()
+                speechRecognitionPending = false
+            },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
             SessionLockChannel.HANDS to {
@@ -429,11 +440,16 @@ class MainActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
         try {
+            speechRecognitionPending = true
             @Suppress("DEPRECATION")
             startActivityForResult(intent, SPEECH_REQUEST)
         } catch (_: ActivityNotFoundException) {
+            speechRecognitionPending = false
+            voiceMathSession.clear()
             statusText.text = "No hay un proveedor de reconocimiento de voz disponible."
         } catch (_: SecurityException) {
+            speechRecognitionPending = false
+            voiceMathSession.clear()
             statusText.text = "El reconocimiento de voz no tiene permisos suficientes."
         }
     }
@@ -449,11 +465,14 @@ class MainActivity : Activity() {
             return
         }
         if (requestCode != SPEECH_REQUEST) return
+        speechRecognitionPending = false
         if (!foregroundGate.canAcceptRecognitionResult()) {
+            voiceMathSession.clear()
             voiceConsent.cancel()
             return
         }
         if (resultCode != RESULT_OK) {
+            voiceMathSession.clear()
             statusText.text = "Escucha cancelada. No se ejecutó ninguna acción."
             return
         }
@@ -461,10 +480,13 @@ class MainActivity : Activity() {
             RecognizerIntent.EXTRA_RESULTS
         )?.firstOrNull()
         if (transcript.isNullOrBlank()) {
+            voiceMathSession.clear()
             statusText.text = "No se reconoció ningún comando."
             return
         }
-        when (parser.parse(transcript)) {
+        val action = parser.parse(transcript)
+        if (action != VoiceAction.UNSUPPORTED) voiceMathSession.clear()
+        when (action) {
             VoiceAction.READ_STATUS -> {
                 if (policy.canExecute(DeviceOperation.READ_LOCAL_STATUS,
                         explicitUserGesture = false)) {
@@ -495,7 +517,8 @@ class MainActivity : Activity() {
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
-                val localAnswer = VoiceMathGate.answer(transcript)
+                val localAnswer = voiceMathSession.answer(transcript,
+                    SystemClock.elapsedRealtime())
                     ?: VoiceFaqRouter.answer(transcript)
                 if (localAnswer != null) lastChatReply = localAnswer
                 statusText.text = localAnswer ?:
