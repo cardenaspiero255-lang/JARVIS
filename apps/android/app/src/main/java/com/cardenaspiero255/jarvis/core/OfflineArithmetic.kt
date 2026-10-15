@@ -17,7 +17,7 @@ object OfflineArithmetic {
 
     fun evaluate(input: String, previous: BigDecimal? = null): Calculation? {
         val text = Normalizer.normalize(input.lowercase(Locale.ROOT), Normalizer.Form.NFD)
-            .replace(Regex("""\p{M}+"""), "").trim().trimStart('¿').trim()
+            .replace(Regex("""\p{M}+"""), "").trim().trimStart('¿').trim().trimEnd('?', ' ')
         val following = Regex("""^y\s+(por|multiplicado por|dividido por|entre|mas|menos)\s+(.+)$""")
             .matchEntire(text)
         if (following != null && previous == null) {
