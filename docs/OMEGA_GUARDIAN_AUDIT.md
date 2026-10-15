@@ -40,3 +40,11 @@ real y consentimiento de usuario.
 
 Pruebas: SQLite persistente, reinicios, tampering, huecos de secuencia,
 concurrencia, confidencialidad de metadatos y claves inválidas.
+
+## Anclaje externo para detectar truncamiento del historial
+
+Una cadena HMAC guardada **solo en la misma SQLite** puede verificar correctamente un prefijo aunque alguien elimine sus últimas filas. Por ello se añadieron `IntegrityAudit.anchor()` y `verify_anchor(AuditAnchor)`.
+
+Tras cada lote de operaciones relevantes, un controlador confiable debe **guardar el `AuditAnchor(sequence,digest)` fuera del archivo SQLite**, en almacenamiento independiente resistente a cambios (p. ej., un registro append-only con permisos mínimos). Antes de confiar en una lectura histórica, debe recuperar el último anclaje y ejecutar `verify_anchor`. Si se borran filas o se modifica la cadena hasta ese anclaje, el verificador devuelve `AuditTampered`.
+
+**Límite explícito:** aún no existe almacenamiento externo desplegado de anclajes; los tests utilizan anclajes retenidos en memoria. Ni la cadena HMAC local ni la nueva API son por sí solas una garantía contra rollback del volumen completo. La conexión de un almacén confiable es un requisito de producción, no una función certificada.
