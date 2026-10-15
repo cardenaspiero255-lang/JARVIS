@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
+import android.widget.EditText
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.view.ViewGroup
@@ -16,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
+import com.cardenaspiero255.jarvis.core.LocalDialogue
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
 import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
@@ -34,12 +37,16 @@ import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
+    private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
     private val foregroundGate = VoiceForegroundGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var visionRecognizer: VisionRecognizer
     private lateinit var handsStatusText: TextView
+    private lateinit var privateMemory: PrivateConversationStore
+    private lateinit var chatLog: TextView
+    private lateinit var chatInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,11 +73,83 @@ class MainActivity : Activity() {
         layout.addView(statusText)
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
+        privateMemory = PrivateConversationStore(this)
         layout.addView(label(
             "Puedes consultar el estado mediante voz o abrir los ajustes de accesibilidad. " +
                 "JARVIS todavía no controla otras aplicaciones.",
             14f, Color.rgb(164, 166, 174)
         ).apply { setPadding(0, dp(24), 0, dp(16)) })
+
+        layout.addView(label("OMEGA CHAT — CONVERSACIÓN LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(20), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        layout.addView(label(
+            "Conversación básica en español sin conexión a un modelo general. " +
+                "La memoria en disco está desactivada hasta que la autorices.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        chatLog = label("Sin mensajes guardados en esta sesión.", 14f, Color.WHITE)
+        layout.addView(chatLog)
+        chatInput = EditText(this).apply {
+            hint = "Escribe un mensaje para JARVIS"
+            setHintTextColor(Color.rgb(150, 150, 160))
+            setTextColor(Color.WHITE)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            maxLines = 3
+        }
+        layout.addView(chatInput)
+        layout.addView(primaryButton("ENVIAR MENSAJE") {
+            val message = chatInput.text.toString()
+            if (message.isBlank()) {
+                statusText.text = "Escribe un mensaje antes de enviarlo."
+            } else {
+                val answer = localDialogue.reply(message)
+                chatInput.text.clear()
+                chatLog.text = localDialogue.history().takeLast(8).joinToString("\\n")
+                statusText.text = answer
+                if (privateMemory.isEnabled()) {
+                    try {
+                        if (!privateMemory.save(localDialogue.history().joinToString("\\n"))) {
+                            statusText.text = "No se pudo guardar el historial cifrado."
+                        }
+                    } catch (_: Exception) {
+                        privateMemory.stop()
+                        statusText.text = "La memoria cifrada no está disponible; no se guardó."
+                    }
+                }
+            }
+        })
+        layout.addView(primaryButton("ACTIVAR MEMORIA PRIVADA CIFRADA") {
+            try {
+                if (privateMemory.enableByTap()) {
+                    val saved = privateMemory.load()
+                    if (saved != null) {
+                        localDialogue.restore(saved)
+                        chatLog.text = localDialogue.history().takeLast(8).joinToString("\\n")
+                    }
+                    statusText.text = "Memoria cifrada activada para esta sesión. Puedes borrarla."
+                }
+            } catch (_: Exception) {
+                privateMemory.stop()
+                statusText.text = "No se pudo abrir la memoria privada."
+            }
+        })
+        layout.addView(primaryButton("DETENER MEMORIA PRIVADA") {
+            privateMemory.stop()
+            statusText.text = "Memoria privada desactivada hasta nueva autorización."
+        })
+        layout.addView(primaryButton("BORRAR HISTORIAL Y CLAVE CIFRADA") {
+            try {
+                if (privateMemory.eraseByTap()) {
+                    localDialogue.clear()
+                    chatLog.text = "Historial eliminado de este dispositivo."
+                    statusText.text = "Historial y clave de memoria eliminados."
+                } else statusText.text = "Android no confirmó el borrado del historial."
+            } catch (_: Exception) {
+                statusText.text = "No se pudo confirmar el borrado. Reinténtalo."
+            }
+        })
 
         layout.addView(label("OMEGA HANDS — CONTROL LIMITADO", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(20), 0, dp(8))
@@ -178,6 +257,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         foregroundGate.onStop()
+        if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
