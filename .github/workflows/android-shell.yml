@@ -37,11 +37,19 @@ jobs:
         with:
           gradle-version: "8.13"
       - name: Unit tests and debug APK
-        run: gradle -p apps/android --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        run: gradle -p apps/android --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Upload testable debug APK
         if: success()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: jarvis-omega-debug-apk
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload device test APK
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: jarvis-omega-android-test-apk
+          path: apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
