@@ -51,6 +51,16 @@ class LocalTopicDialogue {
         if (selected != null) topic = selected else observeKnownFaq(question)
     }
 
+    /** Metadata only: an enum name, not a user message or voice transcript. */
+    fun contextToken(): String? = topic?.name
+
+    /** Invalid or tampered tokens cannot create a topic or an action. */
+    fun restoreContextToken(value: String) {
+        topic = if (value.length <= 24 && Regex("""[A-Z_]+""").matches(value)) {
+            Topic.values().firstOrNull { it.name == value }
+        } else null
+    }
+
     fun clear() { topic = null }
 
     private fun topicForQuestion(phrase: String): Topic? = when (phrase) {
