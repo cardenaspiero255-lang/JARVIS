@@ -11,9 +11,16 @@ ANDROID="{http://schemas.android.com/apk/res/android}"
 
 class OmegaPremiumShell(unittest.TestCase):
     def test_launcher_uses_uploaded_bitmap_unchanged_in_design(self):
-        source=RES/"drawable-nodpi/jarvis_reference.jpg"
-        self.assertTrue(source.is_file(),"The uploaded image must be packaged as binary drawable")
-        self.assertGreater(source.stat().st_size,10_000)
+        source=RES/"drawable-nodpi/jarvis_reference.webp"
+        self.assertTrue(source.is_file(),"The reference image must be packaged as a binary drawable")
+        binary=source.read_bytes()
+        # Validate the actual losslessly preserved resource container instead of an
+        # arbitrary JPEG extension or compression-size threshold.
+        self.assertGreater(len(binary),32)
+        self.assertEqual(b"RIFF",binary[:4])
+        self.assertEqual(len(binary)-8,int.from_bytes(binary[4:8],"little"))
+        self.assertEqual(b"WEBP",binary[8:12])
+        self.assertIn(binary[12:16],(b"VP8 ",b"VP8L",b"VP8X"))
         icon=ET.parse(RES/"mipmap-anydpi-v26/ic_launcher.xml").getroot()
         foreground=icon.find("foreground")
         self.assertEqual("@drawable/jarvis_reference",foreground.get(ANDROID+"drawable"))
