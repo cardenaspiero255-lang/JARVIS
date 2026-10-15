@@ -39,6 +39,8 @@ class ScreenObservationPolicyTest {
         assertFalse(policy.start(true, -1L))
         assertTrue(policy.start(true, 1000L))
         assertFalse(policy.sample(999L))
+        assertTrue(policy.sample(1000L))
+        assertFalse(policy.sample(999L)) // rollback after a valid sample
         assertFalse(policy.isActive(Long.MAX_VALUE))
     }
 }
