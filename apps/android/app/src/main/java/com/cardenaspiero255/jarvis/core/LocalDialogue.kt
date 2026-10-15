@@ -1,5 +1,6 @@
 package com.cardenaspiero255.jarvis.core
 
+import java.math.BigDecimal
 import java.text.Normalizer
 import java.util.Locale
 
@@ -10,16 +11,23 @@ import java.util.Locale
 class LocalDialogue {
     private val turns = mutableListOf<String>()
     private var lastAnswer: String? = null
+    private var lastNumericResult: BigDecimal? = null
 
     fun reply(input: String): String {
         val sanitized = input.replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
             .replace(Regex("\\s+"), " ").trim().take(280)
         val normalized = Normalizer.normalize(sanitized.lowercase(Locale.ROOT),
             Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+        val math = if (normalized == "repitelo" || normalized == "repite") null
+            else OfflineArithmetic.evaluate(sanitized, lastNumericResult)
         val answer = when {
             sanitized.isBlank() -> "Escribe una pregunta para conversar."
             normalized == "repitelo" || normalized == "repite" ->
                 lastAnswer ?: "No hay una respuesta anterior todavía."
+            math != null -> {
+                if (math.value != null) lastNumericResult = math.value
+                math.answer
+            }
             normalized.startsWith("hola") || normalized == "buenas" ->
                 "Hola. Soy JARVIS en modo observador. Puedo explicar mis funciones locales."
             normalized.contains("privacidad") || normalized.contains("memoria") ->
@@ -62,5 +70,6 @@ class LocalDialogue {
     fun clear() {
         turns.clear()
         lastAnswer = null
+        lastNumericResult = null
     }
 }

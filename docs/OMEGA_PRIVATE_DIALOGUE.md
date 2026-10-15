@@ -2,6 +2,7 @@
 
 ## Capacidades implementadas
 - Intercambio de mensajes escritos en español, ejecutado localmente en Android.
+- Calculadora matemática local para suma, resta, multiplicación, división y paréntesis, con decimales en formato chileno (coma decimal y punto de miles), magnitudes «mil»/«millón»/«millones» y seguimiento de resultados («y por 3», «y menos 2»). No hay evaluación de código, uso de herramientas ni transferencia de texto a servicios remotos. La división no exacta redondea a 10 posiciones decimales. El último resultado solo vive en RAM y no se reactiva tras restaurar historial cifrado.
 - Respuestas deterministas sobre estado, ayuda, identidad y privacidad. **No es una IA general**, no consulta Internet, no responde cualquier tema, no ejecuta instrucciones incluidas en el chat y no llama a otros servicios.
 - Historial de conversación acotado en RAM, sin registro de contenidos por defecto.
 - Activación de la memoria persistente **únicamente con un botón visible**; el acceso vuelve a quedar deshabilitado tras salir de la app/reiniciar el proceso.
