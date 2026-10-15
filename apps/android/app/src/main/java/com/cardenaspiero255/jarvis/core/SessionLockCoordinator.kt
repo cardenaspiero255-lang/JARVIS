@@ -5,6 +5,7 @@ enum class SessionLockChannel {
     VOICE_REQUEST,
     SPOKEN_REPLY,
     IMAGE_OCR,
+    SCREEN_PROJECTION,
     HANDS,
     PRIVATE_MEMORY,
     LOCAL_CHAT
