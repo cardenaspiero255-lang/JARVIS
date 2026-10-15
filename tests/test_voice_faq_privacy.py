@@ -17,7 +17,7 @@ class VoiceFaqPrivacyContract(unittest.TestCase):
         activity=(BASE/"MainActivity.kt").read_text()
         block=activity.split("VoiceAction.UNSUPPORTED -> {",1)[1].split("\n            }",1)[0]
         self.assertIn("VoiceFaqRouter.answer(transcript)",block)
-        self.assertIn("VoiceMathGate.answer(transcript)",block)
+        self.assertIn("voiceMathSession.answer(transcript,",block)
         self.assertNotIn("localDialogue.reply(",block)
         self.assertNotIn("privateMemory.save(",block)
         self.assertNotIn("startActivity(",block)
