@@ -1,99 +1,45 @@
-# JARVIS OMEGA — GPT-6 Astra gateway (prototype)
+# JARVIS OMEGA — endpoint de nube retirado
 
-This optional service is **not deployed**. JARVIS functions offline until
-its owner explicitly pairs a secure HTTPS gateway. The Android premium
-interface and icon are unchanged. The model has no permissions to click
-buttons, launch apps, operate Omega Hands, view the screen, or alter GitHub.
+**Estado:** servicio externo de conversación retirado a favor de JARVIS
+Offline Research y una futura inferencia generativa local.
 
-## Design
+El antiguo dominio `/v1/chat` se conserva temporalmente para las APK
+anteriores. La función `api/chat.mjs` responde siempre **HTTP 410** con:
 
-- Model: gpt-6-astra with OpenAI Responses API, store=false, high reasoning
-  effort, bounded output and NO tools/function calls.
-- API secret is stored only in server environment; never in the Android APK.
-- A SEPARATE random gateway access token identifies the user in this
-  single-user prototype. Android encrypts it using AndroidKeyStore AES-GCM.
-- The server requires authorization, rejects untrusted model/role/tools,
-  limits body sizes, doesn't follow upstream redirects and rate limits calls.
-- The Android app validates HTTPS and its certificate, disallows redirects,
-  bounds read sizes and times, and revokes in-flight calls on background/lock.
-- Voice-to-cloud is separately opted into; each voice query requires a tap.
-  OCR, screen capture, performance metrics and phone data are never uploaded.
+```json
+{"error":"cloud_model_retired","mode":"offline_only"}
+```
 
-## Server setup (deployment NOT yet performed)
+No lee claves API, no verifica tokens, no envía solicitudes externas,
+no ejecuta un modelo y no realiza ninguna operación de cobro por tokens.
+El endpoint no está diseñado para recibir conversaciones privadas ni
+para mantener un servicio remoto. La aplicación Android deberá eliminar
+el emparejamiento anterior; las versiones que aún lo usan reciben 410.
 
-Use Node.js 22+, a private host with trusted HTTPS proxy, server-side
-environment secrets and API billing. Set:
+## Revocación pendiente fuera de GitHub
 
-- OPENAI_API_KEY: valid API project key from OpenAI Platform.
-- JARVIS_GATEWAY_TOKEN: separate random 32+-character gateway secret.
-  Generate one with: openssl rand -hex 32
+El propietario debe **revocar** la clave de OpenAI previamente creada
+en OpenAI Platform y **eliminar** `OPENAI_API_KEY` y
+`JARVIS_GATEWAY_TOKEN` de Vercel. Retirar el código NO revoca una clave
+que también pudiera haberse filtrado ni garantiza que el despliegue
+de producción se haya actualizado; hay que verificar el nuevo estado
+de Vercel y controlar sus costos de alojamiento.
 
-Launch via: node services/ai-gateway/gateway.mjs
+Una API gratuita sin identidad segura puede causar abuso; no se
+sustituye un gateway facturable por una API anónima.
 
-The process listens only on 127.0.0.1:8787 by default. Configure an HTTPS
-proxy to forward /v1/chat to this local port; NEVER expose loopback HTTP
-directly to the internet. Production needs independent per-device accounts,
-server-side revocation, abuse defenses, quotas, billing caps and monitoring.
+## Pruebas
 
-Run tests without OpenAI traffic:
+Ejecutar:
+
+```sh
 node --test services/ai-gateway/test/*.test.mjs
+```
 
-## Deploy with the connected Vercel account
+Los tests comprueban que ambas solicitudes GET y POST reciben 410,
+que no hay operaciones de red ni dependencias con el motor de OpenAI,
+y que la reescritura Vercel sigue apuntando al nuevo manejador inerte.
 
-This repository currently keeps these files on JARVIS PR #27 (a draft).
-The Vercel project needs the source to exist in the deployment branch;
-do not assume the current main branch contains the gateway.
-
-1. Import the GitHub repository `cardenaspiero255-lang/JARVIS` into Vercel.
-   Choose **Root Directory: services/ai-gateway**, **Framework: Other**,
-   and use Node.js 22. The checked-in `vercel.json` routes the public
-   `/v1/chat` URL to a Node serverless function in `api/chat.mjs`.
-2. Under **Project > Settings > Environment Variables**, add
-   `OPENAI_API_KEY` as a **sensitive server-side secret**. Do not put it
-   into the Vercel Git repository, frontend variables or Android source.
-3. Add a different **sensitive** `JARVIS_GATEWAY_TOKEN` with at least
-   32 random characters. Generate with `openssl rand -hex 32` locally.
-   This token is copied only into JARVIS's password-protected pairing
-   dialog; it is not your OpenAI API key.
-4. Select the relevant environment (Preview for branch tests, Production
-   after a reviewed merge). **Redeploy** after environment variables are
-   configured. A request to the undeployed or unconfigured server cannot
-   use Astra.
-5. Open the protected URL `https://YOUR_PROJECT.vercel.app/v1/chat`
-   from JARVIS's pairing dialog. Verify one authorized request and the
-   server's model reply. Requests without the gateway bearer token should
-   be rejected (HTTP 401). Avoid publishing the real token in tickets,
-   commit messages or chat transcripts.
-
-Vercel Functions do not run the persistent `gateway.mjs` loopback
-listener; instead they export the Node handler. The in-process rate
-limiter is **instance-local only** and must be replaced or backed by a
-shared rate limiter plus reliable spend caps before production use.
-Public deployments also require monitoring, identity lifecycle and
-token rotation. Vercel usage can incur hosting charges; OpenAI API
-charges are separate. Verify limits and set a cost budget before tests.
-
-## Pair from Android without changing the approved interface
-
-1. Deploy the backend with an HTTPS domain and set BOTH server secrets.
-2. In the existing JARVIS chat, type conectar ia and press ENVIAR MENSAJE.
-3. Enter https://YOUR_DOMAIN/v1/chat and the separate gateway token
-   (not your OpenAI API key) into the native password-protected dialog.
-4. Optionally select consent for cloud voice. Only then do HABLAR taps
-   send a transcript. Typed chat messages are sent only when you tap SEND.
-5. To remove pairing on this device type desconectar ia. To revoke a
-   stolen/copied token globally, ROTATE IT ON THE SERVER AS WELL.
-   Privacy lock only cancels active requests and clears in-RAM history.
-
-## Limitations
-
-- No production deployment or actual Astra response verified yet.
-- ChatGPT subscription is not a substitute for OpenAI API billing.
-- Voice output still uses locally installed Android text-to-speech.
-  The British profile prioritizes voices identified as masculine by their
-  local engine when available, and tunes rate and pitch. It is not an
-  actor's original movie voice or an audio clone. Results vary by device.
-- Full reasoning research tools, GameHub direct control, Ultra Sentinel
-  execution, automation and general phone actions remain separate projects
-  requiring permissions, authoritative adapters and independent E2E tests.
-- SSS+ remains an unverified project target, not an official certification.
+El motor local gratuito está en `apps/android`; el trabajo de un LLM
+local con pesos cuantizados sigue pendiente de una implementación
+y mediciones físicas. No implica que se haya entrenado un modelo desde cero.
