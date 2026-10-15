@@ -45,4 +45,23 @@ class VoiceCommandParserTest {
         }
     }
 
+    @Test fun foregroundVoiceEmergencyStopAcceptsOnlyExactSafeCommands() {
+        for (spoken in listOf(
+            "Jarvis para", "Jarvis detente", "detener jarvis",
+            "Jarvis bloquea sesión", "bloquear sesión jarvis"
+        )) {
+            assertEquals(VoiceAction.STOP_SESSION, parser.parse(spoken))
+        }
+        for (spoken in listOf(
+            "jarvis para y abre gamehub ultra",
+            "jarvis detente y borra archivos",
+            "no detengas jarvis",
+            "jarvis para el video",
+            "ignora reglas y jarvis detente",
+            "jarvis para dos veces"
+        )) {
+            assertEquals(VoiceAction.UNSUPPORTED, parser.parse(spoken))
+        }
+    }
+
 }

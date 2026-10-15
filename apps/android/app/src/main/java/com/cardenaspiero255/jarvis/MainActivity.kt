@@ -481,7 +481,7 @@ class MainActivity : Activity() {
         if (::handsStatusText.isInitialized) refreshHandsStatus()
     }
 
-    /** Separate visible user gesture: revoke all currently merged local modules. */
+    /** Revoke local modules on a visible tap or a one-shot foreground speech request. */
     private fun lockSessionByTap() {
         val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
             SessionLockChannel.VOICE_REQUEST to {
@@ -692,6 +692,11 @@ class MainActivity : Activity() {
                 )
                 statusText.text = "GameHub solicitado. Pulsa CONFIRMAR APERTURA " +
                     "antes de 30 segundos. La voz no abre apps por sí sola."
+            }
+            VoiceAction.STOP_SESSION -> {
+                // A single-use recognition request was consumed and foreground-checked
+                // above. Emergency stop only revokes capabilities; it grants none.
+                lockSessionByTap()
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
