@@ -497,8 +497,11 @@ class MainActivity : Activity() {
             spokenReplyEngine.speakByTap(SpokenMessage.LOCAL_STATUS)
         })
         section.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
+            stopForegroundSpeech()
+            recognitionRequest.cancel()
+            voiceConsent.cancel()
             spokenReplyEngine.stop()
-            statusText.text = "Voz detenida. PROBAR AUDIO permite una nueva prueba explícita."
+            statusText.text = "Micrófono y voz detenidos. Pulsa HABLAR o PROBAR AUDIO para reiniciar por tu cuenta."
         })
         section.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
             openAccessibilitySettings(explicitUserGesture = true)
