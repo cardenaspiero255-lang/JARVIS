@@ -226,7 +226,7 @@ class MainActivity : Activity() {
                 statusText.text = answer
                 if (privateMemory.isEnabled()) {
                     try {
-                        if (!privateMemory.save(localDialogue.history().joinToString("\n"))) {
+                        if (!privateMemory.save(localDialogue.snapshotForStorage())) {
                             statusText.text = "No se pudo guardar el historial cifrado."
                         }
                     } catch (_: Exception) {
@@ -1027,6 +1027,19 @@ class MainActivity : Activity() {
                     spokenReplyEngine.speakRecognizedGameAfterTap(freshGame)
                 else ->
                     spokenReplyEngine.speakRecognizedAnswerAfterTap(statusText.text.toString())
+            }
+            // Only a prior visible tap on ACTIVAR MEMORIA can permit a write.
+            // A voice turn contributes an enum topic, never the ASR transcript.
+            if (privateMemory.isEnabled()) {
+                try {
+                    if (!privateMemory.save(localDialogue.snapshotForStorage())) {
+                        privateMemory.stop()
+                        statusText.text = "Memoria cifrada desactivada: no se pudo guardar el tema."
+                    }
+                } catch (_: Exception) {
+                    privateMemory.stop()
+                    statusText.text = "Memoria cifrada no disponible; tema no guardado."
+                }
             }
         }
     }
