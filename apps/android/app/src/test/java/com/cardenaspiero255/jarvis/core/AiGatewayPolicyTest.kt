@@ -18,6 +18,16 @@ class AiGatewayPolicyTest {
         assertFalse(AiGatewayPolicy.endpointAllowed("https://jarvis.example.org/other"))
     }
 
+    @Test fun officialGatewayUrlIsBakedInWithoutASecret() {
+        assertEquals("https://jarvis-ai-gateway.vercel.app/v1/chat",
+            AiGatewayPolicy.DEFAULT_ENDPOINT)
+        assertTrue(AiGatewayPolicy.endpointAllowed(AiGatewayPolicy.DEFAULT_ENDPOINT))
+        assertTrue(AiGatewayPolicy.officialEndpointAllowed(AiGatewayPolicy.DEFAULT_ENDPOINT))
+        assertFalse(AiGatewayPolicy.officialEndpointAllowed("https://evil.example.org/v1/chat"))
+        assertFalse(AiGatewayPolicy.officialEndpointAllowed(
+            "https://jarvis-ai-gateway.vercel.app/v1/chat?token=leak"))
+    }
+
     @Test fun accountPairingTokenMustBeLongAndNotAnOpenAiApiKey() {
         assertFalse(AiGatewayPolicy.tokenAllowed("short"))
         assertFalse(AiGatewayPolicy.tokenAllowed("sk-proj-" + "x".repeat(80)))
