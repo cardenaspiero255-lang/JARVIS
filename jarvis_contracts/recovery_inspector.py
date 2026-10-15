@@ -31,8 +31,6 @@ class ResumeAdvice:
         return False
 
 
-_SOURCE = re.compile(r"[A-Za-z0-9_-]{1,64}")
-_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 
 
@@ -40,14 +38,13 @@ class RecoveryInspector:
     """Safe restart state derived from the already implemented DurableStore."""
 
     def __init__(self, durable_store):
-        if (not callable(getattr(durable_store, "get", None))
-                or not callable(getattr(durable_store, "status", None))):
+        if not callable(getattr(durable_store, "snapshot", None)):
             raise TypeError("compatible durable store required")
         self._store = durable_store
 
     def inspect(self, source, key, fingerprint, *, now, deadline):
-        if (type(source) is not str or _SOURCE.fullmatch(source) is None
-                or type(key) is not str or _KEY.fullmatch(key) is None
+        if (type(source) is not str or not source.strip()
+                or type(key) is not str or not key.strip()
                 or type(fingerprint) is not str or _FINGERPRINT.fullmatch(fingerprint) is None
                 or type(now) not in (int, float) or not math.isfinite(now)
                 or type(deadline) not in (int, float) or not math.isfinite(deadline)
@@ -55,13 +52,13 @@ class RecoveryInspector:
             raise InvalidRecoveryInput("invalid principal, key, fingerprint or clock")
 
         # Detect a reused idempotency key even if this request is expired.
-        previous = self._store.get(source, key, fingerprint)
+        snapshot = self._store.snapshot(source, key, fingerprint)
         if now >= deadline:
             return ResumeAdvice(ResumeDisposition.EXPIRED)
 
-        status = self._store.status(source, key)
-        if status is None:
+        if snapshot is None:
             return ResumeAdvice(ResumeDisposition.UNSEEN)
+        status, previous = snapshot
         if status == "uncertain":
             return ResumeAdvice(ResumeDisposition.RECONCILE)
         if status == "completed":
