@@ -31,6 +31,18 @@ class SpeechUtteranceTrackerTest {
         assertTrue(tracker.failed(next))
     }
 
+    @Test fun timeoutRejectsLateAudioCallbacksWithoutCancelingNewSpeech() {
+        val tracker = SpeechUtteranceTracker()
+        val timedOut = tracker.begin()!!
+        assertTrue(tracker.timedOut(timedOut))
+        val current = tracker.begin()!!
+        assertFalse(tracker.started(timedOut))
+        assertFalse(tracker.done(timedOut))
+        assertFalse(tracker.failed(timedOut))
+        assertTrue(tracker.started(current))
+        assertTrue(tracker.done(current))
+    }
+
     @Test fun uniqueTicketPerExplicitRequest() {
         val tracker = SpeechUtteranceTracker()
         val a = tracker.begin()!!
