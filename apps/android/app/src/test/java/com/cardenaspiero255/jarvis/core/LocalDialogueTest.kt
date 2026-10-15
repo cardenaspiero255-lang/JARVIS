@@ -101,6 +101,9 @@ class LocalDialogueTest {
         assertTrue(dialogue.reply("estado").contains("modo observador"))
         assertTrue(dialogue.reply("jarvis estado").contains("modo observador"))
         assertTrue(dialogue.reply("¿Quién eres?").contains("prototipo"))
+        assertTrue(dialogue.reply("memoria").contains("cifrarse"))
+        assertTrue(dialogue.reply("¿Cómo funciona la memoria?").contains("cifrarse"))
+        assertTrue(dialogue.reply("ayúdame").contains("modo observador"))
     }
 
 }
