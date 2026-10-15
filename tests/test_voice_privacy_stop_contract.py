@@ -14,15 +14,15 @@ class VoicePrivacyStopContract(unittest.TestCase):
         self.assertIn("foregroundGate.canAcceptRecognitionResult()", before_dispatch)
         branch = callback.split("VoiceAction.STOP_SESSION ->", 1)[1].split(
             "VoiceAction.UNSUPPORTED ->", 1)[0]
-        self.assertIn("lockSessionByUserRequest()", branch)
+        self.assertIn("lockSessionByTap()", branch)
         self.assertNotIn("startSpeech(", branch)
         self.assertNotIn("startActivity(", branch)
 
     def test_emergency_stop_is_same_multichannel_revocation_as_visible_button(self):
         main = (ROOT / "MainActivity.kt").read_text(encoding="utf-8")
         button = main.split('primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD")', 1)[1]
-        self.assertIn("lockSessionByUserRequest()", button.split("})", 1)[0])
-        lock = main.split("private fun lockSessionByUserRequest()", 1)[1].split(
+        self.assertIn("lockSessionByTap()", button.split("})", 1)[0])
+        lock = main.split("private fun lockSessionByTap()", 1)[1].split(
             "private fun clearVisibleReadouts()", 1)[0]
         for name in ("VOICE_REQUEST", "SPOKEN_REPLY", "IMAGE_OCR", "HANDS",
                      "PRIVATE_MEMORY", "LOCAL_DIAGNOSTICS", "SCREEN_CAPTURE",
