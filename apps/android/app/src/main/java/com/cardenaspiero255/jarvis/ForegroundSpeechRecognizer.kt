@@ -75,9 +75,7 @@ class ForegroundSpeechRecognizer(
             recognizer.startListening(intent)
             true
         } catch (_: RuntimeException) {
-            stop()
-            false
-        } catch (_: SecurityException) {
+            // Includes SecurityException: no microphone session survives a denial.
             stop()
             false
         }
