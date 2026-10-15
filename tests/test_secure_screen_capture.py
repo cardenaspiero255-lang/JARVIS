@@ -31,7 +31,7 @@ class PrivateWindowSafetyContract(unittest.TestCase):
     def test_security_not_relaxed_in_manifest(self):
         text=(ROOT/"apps/android/app/src/main/AndroidManifest.xml").read_text()
         self.assertIn('android:allowBackup="false"',text)
-        self.assertIn("android.permission.INTERNET",text)
+        self.assertNotIn("android.permission.INTERNET",text)
         self.assertIn('android:usesCleartextTraffic="false"',text)
         self.assertNotIn("AiGatewayClient", (BASE/"ScreenObservationService.kt").read_text())
 
