@@ -293,7 +293,7 @@ class MainActivity : Activity() {
                 }
                 else -> {
                     chatInput.text.clear()
-                    if (offlineLlm.isInstalled() && LocalLlmPolicy.isValidPrompt(message)) {
+                    if (offlineLlm.isInstalled() && LocalLlmPolicy.shouldUseGenerative(message)) {
                         chatBusy = true
                         statusText.text = "Generando respuesta local en CPU ARM64..."
                         offlineLlm.generate(message) { generated, benchmark ->
