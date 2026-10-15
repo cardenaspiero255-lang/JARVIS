@@ -40,3 +40,13 @@ Cualquier fallo de AndroidKeyStore impide leer/escribir y se notifica sin devolv
 La calculadora local también reconoce cardinales españoles acotados en expresiones explícitas o con operadores: «un millón por quinientos», «dos mil quinientos más veintitrés», «cien dividido por cuatro» y «treinta y cuatro por dos». Estos ejemplos se calculan sin modelo remoto y no habilitan comandos sobre Android.
 
 Se usa una gramática cerrada de unidades, decenas, centenas, miles y millones. Las palabras ajenas a esta gramática se rechazan, en vez de interpretarse como instrucciones. Se conservan los límites de longitud, magnitud, profundidad y ausencia de contexto persistente en voz. No se garantiza reconocimiento de frases arbitrarias, dictado natural general ni todas las variantes regionales. Las pruebas en teléfono físico del proveedor de transcripción Android siguen pendientes.
+
+## Omega Voice: respuestas explicativas locales por pulsación
+
+Desde **HABLAR CON JARVIS**, una transcripción que no corresponda a un comando permitido ni a aritmética puede responder ahora a un conjunto cerrado de preguntas en español: ayuda, identidad, privacidad, OCR de imágenes seleccionadas, cómo abrir GameHub y cómo detener la sesión. No interpreta preguntas generales como instrucciones, no almacena el texto reconocido y no accede a redes para generar respuestas.
+
+Las respuestas pueden leerse posteriormente con **LEER ÚLTIMA RESPUESTA DEL CHAT**, sujeto a activación TTS local y pulsación independiente. No se habilita voz permanente. El proveedor de reconocimiento de Android puede usar conexión remota o no estar instalado; la lógica de JARVIS que procesa las transcripciones es local.
+
+Los mensajes desconocidos, compuestos con otras órdenes o demasiado extensos se rechazan. Las explicaciones indican solo funciones efectivamente fusionadas en main; la visión continua MediaProjection sigue en PR #27 borrador, no está disponible en la APK main.
+
+**Validaciones:** JUnit para expresiones, acentos, puntuación, composición maliciosa y TTS; contratos Python para impedir acciones Android, registro de transcripciones y respuestas remotas. Sigue pendiente la prueba de voz real en un dispositivo.
