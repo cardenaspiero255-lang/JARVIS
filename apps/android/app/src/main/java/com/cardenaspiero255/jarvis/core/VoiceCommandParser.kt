@@ -9,6 +9,7 @@ enum class VoiceAction {
     READ_GAME_READINESS,
     OPEN_ACCESSIBILITY_SETTINGS,
     OPEN_GAMEHUB_ULTRA,
+    STOP_SESSION,
     UNSUPPORTED
 }
 
@@ -36,6 +37,8 @@ class VoiceCommandParser {
             "abrir ajustes", "jarvis ajustes" -> VoiceAction.OPEN_ACCESSIBILITY_SETTINGS
             "jarvis abre gamehub ultra", "abre gamehub ultra",
             "abrir gamehub ultra", "jarvis inicia gamehub ultra" -> VoiceAction.OPEN_GAMEHUB_ULTRA
+            "jarvis para", "jarvis detente", "detener jarvis",
+            "jarvis bloquea sesion", "bloquear sesion jarvis" -> VoiceAction.STOP_SESSION
             else -> VoiceAction.UNSUPPORTED
         }
     }
