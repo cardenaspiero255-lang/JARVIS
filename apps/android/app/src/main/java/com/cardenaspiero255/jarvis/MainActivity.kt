@@ -19,6 +19,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.LocalDialogue
+import com.cardenaspiero255.jarvis.core.SessionLockChannel
+import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
 import com.cardenaspiero255.jarvis.core.HandsStatus
@@ -76,6 +78,9 @@ class MainActivity : Activity() {
             17f, Color.rgb(211, 213, 220)
         )
         layout.addView(statusText)
+        layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
+            lockSessionByTap()
+        })
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
@@ -318,6 +323,35 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::handsStatusText.isInitialized) refreshHandsStatus()
+    }
+
+    /** Separate visible user gesture: revoke all currently merged local modules. */
+    private fun lockSessionByTap() {
+        val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
+            SessionLockChannel.VOICE_REQUEST to { voiceConsent.cancel() },
+            SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
+            SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
+            SessionLockChannel.HANDS to {
+                OmegaHandsService.setEmergencyStop(this, true)
+                check(OmegaHandsService.isStopped(this))
+            },
+            SessionLockChannel.PRIVATE_MEMORY to { privateMemory.stop() },
+            SessionLockChannel.LOCAL_CHAT to {
+                localDialogue.clear()
+                lastChatReply = null
+                chatInput.text.clear()
+                chatLog.text = "Conversación de esta sesión eliminada de pantalla."
+            }
+        )
+        val report = SessionLockCoordinator().lock(actions)
+        if (::handsStatusText.isInitialized) refreshHandsStatus()
+        statusText.text = if (report.complete) {
+            "Sesión bloqueada: voz, OCR, Hands y memoria privada desactivados. " +
+                "El historial cifrado en disco NO se ha borrado."
+        } else {
+            "Bloqueo parcial: no se pudo confirmar " +
+                report.failed.joinToString() + ". Comprueba los controles."
+        }
     }
 
     private fun handsStatus(): String = HandsStatus.present(
