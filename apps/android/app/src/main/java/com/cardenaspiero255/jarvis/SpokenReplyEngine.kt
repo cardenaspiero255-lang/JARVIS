@@ -39,6 +39,8 @@ class SpokenReplyEngine(
     private var synth: TextToSpeech? = null
     private var ready = false
     private var closed = false
+    // A late OEM TTS init callback must never undo a user privacy stop.
+    private var autoStartBlocked = false
     private var style = VoiceStyle.SPANISH
 
     private val listener = object : UtteranceProgressListener() {
@@ -89,7 +91,7 @@ class SpokenReplyEngine(
                     if (result == TextToSpeech.SUCCESS) {
                         synth?.setOnUtteranceProgressListener(listener)
                         ready = configureOfflineVoice()
-                        if (ready) session.resume() // TTS readiness requires no microphone permission.
+                        if (ready && !autoStartBlocked) session.resume()
                     } else {
                         ready = false
                     }
@@ -151,7 +153,10 @@ class SpokenReplyEngine(
         stop()
         style = next
         ready = configureOfflineVoice()
-        if (ready) session.resume() // The profile change was an explicit tap.
+        if (ready) {
+            autoStartBlocked = false // Explicit user selection may re-enable local TTS.
+            session.resume()
+        }
         showStatus(
             if (ready) when (next) {
                 VoiceStyle.SPANISH -> "Voz española local preparada. Pulsa PROBAR AUDIO JARVIS."
@@ -170,6 +175,7 @@ class SpokenReplyEngine(
             showStatus("No se pudo preparar una voz offline. Pulsa CONFIGURAR VOZ EN ANDROID.")
             return false
         }
+        autoStartBlocked = false // Explicit audio-test tap.
         session.resume()
         return speakByTap(SpokenMessage.LOCAL_STATUS)
     }
@@ -237,6 +243,7 @@ class SpokenReplyEngine(
     }
 
     fun stop() {
+        autoStartBlocked = true
         onSpeechProgress(false)
         tracker.cancel()
         session.stop()
