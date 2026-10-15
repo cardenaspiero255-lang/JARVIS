@@ -36,3 +36,9 @@ class VisionPrivacyContracts(unittest.TestCase):
         self.assertIn("MAX_INPUT_BYTES", vision)
         self.assertIn("policy.acceptDimensions", vision)
         self.assertIn("bitmap.recycle()", vision)
+
+    def test_ocr_engine_initializes_only_after_explicit_selection(self):
+        vision = (ROOT / "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/VisionRecognizer.kt").read_text()
+        before_method = vision.split("fun inspectSelectedImage(", 1)[0]
+        self.assertNotIn("TextRecognition.getClient(", before_method)
+        self.assertIn("TextRecognition.getClient(", vision)
