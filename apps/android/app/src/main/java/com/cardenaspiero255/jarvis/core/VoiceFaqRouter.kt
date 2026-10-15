@@ -9,7 +9,7 @@ import java.util.Locale
  */
 object VoiceFaqRouter {
     const val VISION =
-        "Omega Vision reconoce texto de imágenes elegidas por ti. La visión continua aún no está incluida en esta versión."
+        "Omega Vision analiza imágenes elegidas por ti. La observación de pantalla experimental requiere tu permiso de Android, se detiene a los diez minutos y no pulsa botones."
     const val GAMEHUB =
         "Para abrir GameHub Ultra, pulsa el botón ABRIR GAMEHUB ULTRA. Por voz, confirma su apertura en la pantalla."
     const val STOP =
