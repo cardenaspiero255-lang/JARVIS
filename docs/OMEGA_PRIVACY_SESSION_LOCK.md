@@ -6,7 +6,7 @@ Un coordinador Kotlin invoca cada cierre una vez y **notifica fallos** en vez de
 
 **No borra el historial cifrado guardado**: eso requiere el botón separado BORRAR HISTORIAL Y CLAVE CIFRADA. Tampoco apaga el micrófono de servicios externos a JARVIS ni revoca permisos Android del sistema. No hay privilegios especiales, nuevas redes o registros.
 
-**Límite explícito:** el PR #16 de MediaProjection todavía no está fusionado en `main`. Este botón no detiene una futura sesión de MediaProjection hasta conectar su servicio; esa integración y su prueba física son un bloqueo obligatorio de ese PR. No presentar este botón como parada global de funciones aún no incluidas.
+**Límite explícito:** el PR #16 de MediaProjection fue cerrado sin fusionar. Su sustituto, el PR #27, sigue en borrador y tampoco está disponible en `main`. Este botón no controla una sesión futura de MediaProjection hasta que #27 incorpore las funciones y supere sus pruebas físicas. No presentar este botón como parada global de funciones aún no fusionadas.
 
 **Pruebas:** JUnit cubre orden, acciones faltantes, fallos de un módulo e idempotencia. Contratos Python comprueban la presencia de todos los cierres en la UI y ausencia de borrado implícito. CI compila la APK, pero no demuestra interrupción perceptible de voz/OCR en teléfono físico.
 
