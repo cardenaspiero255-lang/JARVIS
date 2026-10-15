@@ -26,6 +26,7 @@ import com.cardenaspiero255.jarvis.core.VoiceStyleSelector
 class SpokenReplyEngine(
     context: Context,
     private val showStatus: (String) -> Unit,
+    private val onSpeechProgress: (Boolean) -> Unit = {},
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val audioManager =
@@ -44,6 +45,7 @@ class SpokenReplyEngine(
         override fun onStart(utteranceId: String?) {
             handler.post {
                 if (!closed && tracker.started(utteranceId)) {
+                    onSpeechProgress(true)
                     showStatus("JARVIS está reproduciendo voz local por Android. " + audioHint())
                 }
             }
@@ -52,6 +54,7 @@ class SpokenReplyEngine(
         override fun onDone(utteranceId: String?) {
             handler.post {
                 if (!closed && tracker.done(utteranceId)) {
+                    onSpeechProgress(false)
                     showStatus("Android completó la síntesis de voz. " + audioHint())
                 }
             }
@@ -69,6 +72,7 @@ class SpokenReplyEngine(
         private fun notifyError(utteranceId: String?) {
             handler.post {
                 if (!closed && tracker.failed(utteranceId)) {
+                    onSpeechProgress(false)
                     showStatus("Android notificó un fallo de voz. Comprueba los datos " +
                         "de voz sin conexión en ajustes y prueba nuevamente.")
                 }
@@ -237,6 +241,7 @@ class SpokenReplyEngine(
     }
 
     fun stop() {
+        onSpeechProgress(false)
         tracker.cancel()
         session.stop()
         try { synth?.stop() } catch (_: RuntimeException) { /* fail closed */ }
