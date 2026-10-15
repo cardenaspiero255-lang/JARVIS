@@ -8,6 +8,13 @@ import java.util.Locale
  * return text; it cannot authorize an Android action, screen capture, or tool.
  */
 object AiGatewayPolicy {
+    // Public service address, not a credential. Safe to include in the APK.
+    // The OpenAI API key remains on Vercel and the device token in Keystore.
+    const val DEFAULT_ENDPOINT = "https://jarvis-ai-gateway.vercel.app/v1/chat"
+
+    fun officialEndpointAllowed(raw: String?): Boolean =
+        raw == DEFAULT_ENDPOINT && endpointAllowed(raw)
+
     fun endpointAllowed(raw: String?): Boolean {
         if (raw.isNullOrBlank() || raw.length > 220 || raw != raw.trim()) return false
         return try {
