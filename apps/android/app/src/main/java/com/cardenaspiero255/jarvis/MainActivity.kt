@@ -239,6 +239,11 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
             healthStatusText.text = DeviceHealthFormatter.format(DeviceHealthReader(this).read())
         })
+        layout.addView(primaryButton("LEER SALUD DEL TELÉFONO EN VOZ ALTA") {
+            val reading = DeviceHealthReader(this).read()
+            healthStatusText.text = DeviceHealthFormatter.format(reading)
+            spokenReplyEngine.speakHealthByTap(reading)
+        })
         layout.addView(label(
             "Datos locales consultados una sola vez al pulsar. El estado térmico " +
                 "no es una temperatura en grados. No se guardan ni transmiten lecturas.",
@@ -466,6 +471,11 @@ class MainActivity : Activity() {
                     statusText.text = "JARVIS operativo en modo observador. " +
                         "Integraciones remotas y automatización aún no habilitadas."
                 }
+            }
+            VoiceAction.READ_DEVICE_HEALTH -> {
+                // Voice recognition is read-only: no automatic TTS or Android changes.
+                val reading = DeviceHealthReader(this).read()
+                statusText.text = DeviceHealthFormatter.format(reading)
             }
             VoiceAction.OPEN_ACCESSIBILITY_SETTINGS -> {
                 voiceConsent.request(
