@@ -9,6 +9,8 @@ class SentinelHostedObserverContract(unittest.TestCase):
         script = (ROOT/"scripts/sentinel_health_check.py").read_text()
         self.assertIn('method="GET"', script)
         self.assertIn("NoRedirect", script)
+        self.assertIn("/actions/workflows/serverless-github-monitor.yml/runs?branch=main", script)
+        self.assertNotIn('"/actions/runs?branch=main', script)
         self.assertIn("JARVIS_SENTINEL_PUBLIC_REPORT", script)
         self.assertNotIn("method=\"POST\"", script)
         self.assertNotIn("requests.post(", script)
