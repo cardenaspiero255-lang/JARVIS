@@ -38,7 +38,7 @@ Fuente: issue #1. La tabla refleja **evidencia parcial**, no la certificación S
 | 32 | Seguridad y confiabilidad | Detección de inyección | Parcial — PR #2 — denegar comandos desconocidos |
 | 33 | Seguridad y confiabilidad | Aislamiento de herramientas/secretos | Parcial — PR #2 — límites de credenciales |
 | 34 | Seguridad y confiabilidad | Auditoría de acciones | Parcial — PR #9: HMAC local, sin anclaje externo |
-| 35 | Seguridad y confiabilidad | Parada de emergencia | Parcial — PR #6: stop funcional en código, prueba en dispositivo pendiente |
+| 35 | Seguridad y confiabilidad | Parada de emergencia | Parcial — PR #6 y #26: Hands/voz/OCR/memoria/chat con bloqueo por pulsación; pruebas físicas y MediaProjection #16 pendientes |
 | 36 | Seguridad y confiabilidad | Rollback compatible | Pendiente |
 | 37 | Seguridad y confiabilidad | Validación pre/post acción | Parcial — PR #3 — verificación SHA parcial |
 | 38 | Seguridad y confiabilidad | Timeouts y límites | Parcial — PR #2 — transporte acotado |
@@ -50,7 +50,7 @@ Fuente: issue #1. La tabla refleja **evidencia parcial**, no la certificación S
 | 44 | Experiencia SSS+ | Automatización programada | Pendiente |
 | 45 | Experiencia SSS+ | Sincronización multidispositivo | Pendiente |
 | 46 | Experiencia SSS+ | Integración PC | Pendiente |
-| 47 | Experiencia SSS+ | Privacidad local | Parcial — PR #4 — voz/estado local |
+| 47 | Experiencia SSS+ | Privacidad local | Parcial — PR #14 y #26: memoria privada cifrada y bloqueo de sesión; falta validación real de AndroidKeyStore y lifecycle |
 | 48 | Experiencia SSS+ | Métricas de batería | Parcial — PR #23: batería/carga, estado térmico y RAM manuales; pendiente validación física y mediciones de rendimiento |
 | 49 | Experiencia SSS+ | Personalidad y voz configurables | Parcial — PR #8: perfiles TTS local español/británico |
 | 50 | Experiencia SSS+ | Pruebas adversariales continuas | Parcial — PR #2, #6, #7 — cobertura parcial |
