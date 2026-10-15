@@ -201,8 +201,13 @@ class SpokenReplyEngine(
         showStatus("Audio solicitado a Android. Esperando inicio real... " + audioHint())
         handler.postDelayed({
             if (!closed && tracker.timedOut(ticket)) {
-                showStatus("Android no inició la voz en 10 segundos. " +
-                    "Prueba CONFIGURAR VOZ EN ANDROID y revisa Bluetooth.")
+                // A hung OEM TTS queue must not start playing unexpectedly after
+                // the timeout. This only stops the still-current ticket.
+                try { synth?.stop() } catch (_: RuntimeException) { /* fail closed */ }
+                onSpeechProgress(false)
+                showStatus("Android no inició la voz en 10 segundos; cancelé la " +
+                    "reproducción pendiente. Prueba CONFIGURAR VOZ EN ANDROID " +
+                    "y revisa Bluetooth.")
             }
         }, 10_000L)
         return true
