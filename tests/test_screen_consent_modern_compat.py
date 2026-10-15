@@ -14,6 +14,12 @@ class ModernProjectionCompatibility(unittest.TestCase):
         self.assertIn("screenConsentGate.consume(requestCode,",activity)
         self.assertIn("visionPickerRequest.consume(requestCode,",activity)
         self.assertIn("recognitionRequest.consume(",activity)
+        projection = activity.split("if (screenConsentGate.owns(requestCode))", 1)[1].split(
+            "if (visionPickerRequest.owns(requestCode))", 1)[0]
+        # A callback for a previous consent must not invalidate a newer pending request.
+        self.assertLess(projection.index("if (!authorized)"),
+                        projection.index("screenConsentRequested = false"))
+
     def test_lock_revokes_projection_without_losing_other_channels(self):
         activity=(BASE/"MainActivity.kt").read_text()
         code=activity.split("private fun lockSessionByTap()",1)[1].split("private fun clearVisibleReadouts()",1)[0]
