@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
 import com.cardenaspiero255.jarvis.core.LocalModelGate
 import com.cardenaspiero255.jarvis.core.LocalModelIntegrity
@@ -176,6 +177,8 @@ class OfflineLlmEngine(context: Context) {
                 deliver(epoch) { callback(null, null) }
                 return@execute
             }
+            // Metrics only: never log user prompts or model replies.
+            Log.i("JARVIS_LLM_BENCH", bench.summary())
             deliver(epoch) { callback(response, bench) }
         }
     }
