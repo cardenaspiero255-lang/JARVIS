@@ -274,20 +274,6 @@ class SpokenReplyEngine(
         return speakExplicitText(safe, preserveDisplayedAnswer = true)
     }
 
-    /** Read user-requested authenticated gateway text, never an Android command. */
-    fun speakAiReplyAfterRecognizedTap(modelText: String?): Boolean {
-        val safe = AiGatewayPolicy.spokenModelText(modelText) ?: return false
-        if (!resumeAfterRecognizedTap()) return false
-        return speakExplicitText(safe, preserveDisplayedAnswer = true)
-    }
-
-    /** Requires a separate visible tap on the existing chat speech button. */
-    fun speakAiReplyByTap(modelText: String?): Boolean {
-        val safe = AiGatewayPolicy.spokenModelText(modelText) ?: return false
-        if (!resumeAfterRecognizedTap()) return false
-        return speakExplicitText(safe, preserveDisplayedAnswer = true)
-    }
-
     fun speakByTap(message: SpokenMessage): Boolean {
         if (!policy.maySpeak(message, explicitTap = true, ready = ready && !closed,
                 stopped = session.stopped)) {
