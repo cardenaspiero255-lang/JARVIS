@@ -15,12 +15,15 @@ import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
 import com.cardenaspiero255.jarvis.core.LocalModelGate
 import com.cardenaspiero255.jarvis.core.LocalModelIntegrity
 import com.cardenaspiero255.jarvis.core.VerifiedModelSnapshot
+import com.cardenaspiero255.jarvis.core.OfficialQwenDownload
 import dev.ffmpegkit.llama.Llama
 import dev.ffmpegkit.llama.LlamaConfig
 import dev.ffmpegkit.llama.LlamaModel
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.IOException
+import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -106,6 +109,94 @@ class OfflineLlmEngine(context: Context) {
                 }
             } finally {
                 staging?.delete()
+            }
+        }
+    }
+
+    /**
+     * Downloads ONLY pinned official Qwen weights, on a user-confirmed action.
+     * Conversation input and model replies never leave the device. Streamed
+     * weights are authenticated and published atomically into private storage.
+     * The worker and callbacks are lifecycle-aware; no background downloader.
+     */
+    fun installOfficial(
+        onProgress: (Int) -> Unit,
+        callback: (Boolean, String) -> Unit
+    ) {
+        if (closed) return
+        val epoch = session.get()
+        worker.execute {
+            var connection: HttpsURLConnection? = null
+            try {
+                if (isInstalled() &&
+                    LocalModelIntegrity.verify(modelPath, LocalLlmPolicy.SHA256)) {
+                    deliver(epoch) { callback(true, "Qwen oficial ya está instalado y verificado.") }
+                    return@execute
+                }
+                if (!modelDir.isDirectory && !modelDir.mkdirs()) {
+                    throw IOException("Cannot create private model directory")
+                }
+                // Recover disk space after a previous process kill during import.
+                modelDir.listFiles()?.filter {
+                    it.name.startsWith("jarvis-official-qwen-") &&
+                        it.name.endsWith(".part")
+                }?.forEach { it.delete() }
+                val reserve = 64L * 1024L * 1024L
+                if (modelDir.usableSpace < LocalLlmPolicy.MODEL_BYTES + reserve) {
+                    deliver(epoch) {
+                        callback(false, "Espacio insuficiente: libera al menos 550 MB y vuelve a intentar.")
+                    }
+                    return@execute
+                }
+                val endpoint = URL(LocalLlmPolicy.MODEL_DOWNLOAD_URL)
+                if (endpoint.protocol != "https" || endpoint.host != "huggingface.co") {
+                    throw IOException("Untrusted Qwen source")
+                }
+                connection = endpoint.openConnection() as HttpsURLConnection
+                val https = connection!!
+                https.connectTimeout = 20_000
+                https.readTimeout = 60_000
+                https.instanceFollowRedirects = true
+                https.useCaches = false
+                https.setRequestProperty("Accept", "application/octet-stream")
+                if (https.responseCode != 200 || https.url.protocol != "https") {
+                    throw IOException("Qwen download unavailable over HTTPS")
+                }
+                if (https.contentLengthLong > 0 &&
+                    https.contentLengthLong != LocalLlmPolicy.MODEL_BYTES) {
+                    throw IOException("Unexpected GGUF content size")
+                }
+                // Do not alter a mapped model while llama.cpp uses it.
+                unload()
+                var lastReported = -5
+                val ok = OfficialQwenDownload.install(
+                    https.inputStream,
+                    modelPath,
+                    LocalLlmPolicy.MODEL_BYTES,
+                    LocalLlmPolicy.SHA256,
+                    isCancelled = { closed || epoch != session.get() },
+                    onBytes = { count ->
+                        val percentage = ((count * 100) / LocalLlmPolicy.MODEL_BYTES).toInt()
+                        if (percentage >= lastReported + 5) {
+                            lastReported = percentage
+                            deliver(epoch) { onProgress(percentage) }
+                        }
+                    }
+                )
+                if (!ok || !LocalModelIntegrity.verify(modelPath, LocalLlmPolicy.SHA256)) {
+                    throw IOException("Incomplete or unverified GGUF")
+                }
+                deliver(epoch) {
+                    callback(true, "Qwen oficial (491 MB) instalado y verificado. Ya puedes conversar sin internet.")
+                }
+            } catch (_: Exception) {
+                deliver(epoch) {
+                    callback(false,
+                        "Falló la descarga o verificación de Qwen. Comprueba Wi-Fi, espacio libre y vuelve a intentar. " +
+                            "El chat básico sigue disponible.")
+                }
+            } finally {
+                connection?.disconnect()
             }
         }
     }
