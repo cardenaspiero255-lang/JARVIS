@@ -137,6 +137,9 @@ class SpokenReplyEngine(
         return accepted
     }
 
+    /** Snapshot of Android's local TTS readiness, not proof that sound is audible. */
+    fun offlineVoiceReady(): Boolean = ready && !closed
+
     fun stop() {
         session.stop()
         try { synth?.stop() } catch (_: RuntimeException) { /* fail closed */ }
