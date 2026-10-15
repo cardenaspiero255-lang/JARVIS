@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
@@ -218,6 +219,15 @@ class MainActivity : Activity() {
                 "La importación necesita espacio libre adicional en disco.",
             12f, Color.rgb(164, 166, 174)
         ))
+        section.addView(primaryButton("ABRIR DESCARGA OFICIAL DE QWEN") {
+            try {
+                // Opens the official model page only by explicit user action.
+                // Inference itself remains fully offline.
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LocalLlmPolicy.MODEL_URL)))
+            } catch (_: ActivityNotFoundException) {
+                statusText.text = "No hay navegador para abrir el enlace oficial."
+            }
+        })
         section.addView(primaryButton("IMPORTAR MODELO GGUF — QWEN 0.5B") {
             if (chatBusy) {
                 statusText.text = "Termina la respuesta actual antes de importar otro modelo."
