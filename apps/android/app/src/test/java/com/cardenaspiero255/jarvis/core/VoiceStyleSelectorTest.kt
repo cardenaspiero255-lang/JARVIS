@@ -57,4 +57,20 @@ class VoiceStyleSelectorTest {
         assertNotNull(policy.safeText(SpokenMessage.PRIVACY, VoiceStyle.BRITISH_ASSISTANT))
         assertTrue(SpeechSessionState().stopped)
     }
+    @Test fun fallbackCandidatesAreOrderedAndNeverIncludeOnlineVoices() {
+        val installed = listOf(
+            InstalledVoice("cloud-es-cl", "es-CL", true),
+            InstalledVoice("offline-es-mx", "es-MX", false),
+            InstalledVoice("offline-es-cl", "es-CL", false),
+            InstalledVoice("offline-es-es", "es-ES", false),
+            InstalledVoice("cloud-es-es", "es-ES", true),
+        )
+        val choices = VoiceStyleSelector.candidates(VoiceStyle.SPANISH, installed)
+        assertEquals(listOf("offline-es-cl", "offline-es-es", "offline-es-mx"),
+            choices.map { it.name })
+        assertTrue(choices.none { it.requiresNetwork })
+        assertNull(VoiceStyleSelector.select(VoiceStyle.BRITISH_ASSISTANT, installed))
+    }
+
+
 }
