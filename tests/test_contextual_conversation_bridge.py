@@ -31,6 +31,21 @@ class ContextConversationBridgeTests(unittest.TestCase):
                           "SharedPreferences", "FileOutputStream", "Socket(", "SpeechRecognizer("):
             self.assertNotIn(forbidden,topic)
 
+    def test_encrypted_memory_is_opt_in_and_cannot_persist_raw_voice(self):
+        main=(CORE/"MainActivity.kt").read_text()
+        local=(CORE/"core/LocalDialogue.kt").read_text()
+        topic=(CORE/"core/LocalTopicDialogue.kt").read_text()
+        self.assertIn("privateMemory.isEnabled()",main)
+        self.assertIn("privateMemory.save(localDialogue.snapshotForStorage())",main)
+        self.assertNotIn("privateMemory.save(transcript)",main)
+        snapshot=local.split("fun snapshotForStorage(): String",1)[1].split(
+            "/**",1)[0]
+        self.assertIn("topicDialogue.contextToken()",snapshot)
+        self.assertNotIn("replyVoice(",snapshot)
+        self.assertNotIn("SpeechRecognizer",snapshot)
+        self.assertIn("restoreContextToken(",topic)
+        self.assertIn("Topic.values().firstOrNull",topic)
+
     def test_premium_icon_and_ui_are_unchanged(self):
         activity=(CORE/"MainActivity.kt").read_text()
         self.assertIn("OmegaUiKit.hero(this)",activity)
