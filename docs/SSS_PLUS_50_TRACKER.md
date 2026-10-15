@@ -73,6 +73,10 @@ Fusionados hasta este ciclo: PR #6 (Hands), #7 (Brain), #8 (Voice), #9 (Guardian
 
 PR #12 **Omega Vision**: OCR local de una imagen elegida desde Android, sin MediaProjection, sin automatización visual, sin lectura continua de pantalla. Esta capacidad es adicional a la detección de botones y no convierte la mejora #12 en completada. Cada afirmación funcional requiere compilación y pruebas del SHA actual.
 
+## Integración propuesta del PR #27
 
-## Visión continua bajo revisión
-El PR #27 sustituye técnicamente la propuesta antigua del PR #16, actualizando su implementación al `main` contemporáneo y conectando el bloqueo de privacidad. **Ambos PR draft/no fusionados no acreditan visión continua en el APK publicado.** La mejora permanece parcial hasta que se ejecuten los ensayos físicos y se revise la privacidad de MediaProjection.
+La observación temporal de pantalla con consentimiento explícito está
+implementada en la rama de este PR: máximo diez minutos, muestreo no más de
+una vez cada tres segundos, sin clics ni persistencia de OCR. Se mantiene como
+función **pendiente de validación física Android 14+**. La compilación por CI
+no certifica la protección de pantallas sensibles ni la revocación real.

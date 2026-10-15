@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Ref is unique for PRs and branches; main runs retain independent evidence.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
     runs-on: ubuntu-22.04

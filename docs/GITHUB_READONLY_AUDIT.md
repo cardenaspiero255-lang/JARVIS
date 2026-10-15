@@ -14,6 +14,13 @@ stored in this module.
 - Fetches the PR head again after collecting the inventory; rejects a moved HEAD.
 - Always sets authorized_to_merge to false. A complete inventory is **not**
   evidence that required checks, authorization or branch policy have passed.
+- `ReadOnlySnapshot.check_evidence` now reports OBSERVED_SUCCESS, PENDING,
+  FAILING or UNKNOWN from SHA-bound check runs. Completed success is only an
+  **observed result**, not a policy verdict; queued/in-progress checks remain
+  pending even if GitHub also returns an optimistic success conclusion.
+  Missing, skipped, neutral, malformed, stale or partial evidence is UNKNOWN.
+  Confirmed failures are surfaced even when other jobs are pending. The report
+  is immutable and always sets `authorized_to_merge=false`.
 
 ## Caller responsibilities
 

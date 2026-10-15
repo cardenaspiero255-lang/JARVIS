@@ -11,28 +11,46 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.widget.EditText
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
 import com.cardenaspiero255.jarvis.core.LocalDialogue
+import com.cardenaspiero255.jarvis.core.GameHubLaunchPolicy
+import com.cardenaspiero255.jarvis.core.LocalCapabilityDiagnostics
+import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
+import com.cardenaspiero255.jarvis.core.ReadoutRedactionPolicy
+import com.cardenaspiero255.jarvis.core.SensitiveReadout
 import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
+import com.cardenaspiero255.jarvis.core.ScreenConsentRequestGate
+import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
+import com.cardenaspiero255.jarvis.core.GameHubPreflightGate
+import com.cardenaspiero255.jarvis.core.GameReadinessLevel
+import com.cardenaspiero255.jarvis.core.GameReadinessAdvisor
+import com.cardenaspiero255.jarvis.core.GamingPreference
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
 import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
-import com.cardenaspiero255.jarvis.core.VoiceMathGate
+import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
+import com.cardenaspiero255.jarvis.core.VoiceMathSession
+import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
+import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
 import com.cardenaspiero255.jarvis.core.VoiceConsentGate
@@ -45,11 +63,20 @@ import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
  */
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
-    private var screenConsentRequested = false
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
+    private val voiceMathSession = VoiceMathSession()
+    private val recognitionRequest = VoiceRecognitionRequestGate()
+    private lateinit var visionPickerRequest: VisionPickerRequestGate
+    private lateinit var screenConsentGate: ScreenConsentRequestGate
+    private var screenConsentRequested = false
     private val foregroundGate = VoiceForegroundGate()
+    private val capturePrivacyGate = ScreenCapturePrivacyGate()
+    private val capturePrivacyHandler = Handler(Looper.getMainLooper())
+    private val capturePrivacyExpiry = Runnable { enforceCapturePrivacy() }
+    private var gamingPreference = GamingPreference.BALANCED
+    private val gameHubPreflight = GameHubPreflightGate()
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var visionRecognizer: VisionRecognizer
@@ -57,10 +84,22 @@ class MainActivity : Activity() {
     private lateinit var privateMemory: PrivateConversationStore
     private lateinit var chatLog: TextView
     private lateinit var chatInput: EditText
+    private lateinit var healthStatusText: TextView
+    private lateinit var capabilityStatusText: TextView
+    private lateinit var gameReadinessText: TextView
     private var lastChatReply: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        visionPickerRequest = VisionPickerRequestGate(
+            savedInstanceState?.getInt(VISION_PICKER_COUNTER_KEY, 0) ?: 0
+        )
+        screenConsentGate = ScreenConsentRequestGate(
+            savedInstanceState?.getInt(SCREEN_CONSENT_COUNTER_KEY, 0) ?: 0
+        )
+        // Protect chat, encrypted-memory controls and system-task thumbnails before
+        // creating any UI; a screenshot exception always requires a separate tap.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -86,6 +125,29 @@ class MainActivity : Activity() {
         layout.addView(statusText)
         layout.addView(primaryButton("BLOQUEAR SESIÓN — PRIVACIDAD") {
             lockSessionByTap()
+        })
+        layout.addView(label(
+            "Pantalla protegida contra capturas por defecto. Si necesitas compartir " +
+                "una imagen para depuración, autoriza capturas durante 60 segundos. " +
+                "Durante ese plazo Android u otra app podrían capturar información visible.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("PERMITIR CAPTURAS 60 S — DEPURACIÓN") {
+            val allowed = capturePrivacyGate.allowForDebugByTap(SystemClock.elapsedRealtime())
+            if (allowed) {
+                enforceCapturePrivacy()
+                capturePrivacyHandler.removeCallbacks(capturePrivacyExpiry)
+                capturePrivacyHandler.postDelayed(capturePrivacyExpiry, 60_000L)
+                statusText.text = "Capturas autorizadas temporalmente por 60 s. " +
+                    "BLOQUEAR SESIÓN o salir de JARVIS revoca el permiso."
+            } else {
+                enforceCapturePrivacy()
+                statusText.text = "Capturas ya autorizadas, o solicitud rechazada."
+            }
+        })
+        layout.addView(primaryButton("PROTEGER PANTALLA AHORA") {
+            revokeCaptureException()
+            statusText.text = "Pantalla protegida contra capturas y vista previa de recientes."
         })
         spokenReplyEngine = SpokenReplyEngine(this) { statusText.text = it }
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
@@ -217,22 +279,115 @@ class MainActivity : Activity() {
             refreshHandsStatus()
         })
 
+        layout.addView(label("OMEGA DIAGNÓSTICO — SOLO LECTURA", 20f,
+            Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        capabilityStatusText = label("Sin diagnóstico. Consulta manual y privada.", 13f,
+            Color.rgb(211, 213, 220))
+        layout.addView(capabilityStatusText)
+        layout.addView(primaryButton("DIAGNÓSTICO LOCAL DE JARVIS") {
+            capabilityStatusText.text = LocalCapabilityDiagnostics.format(readCapabilities())
+        })
+
         layout.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        val healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
+        healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
             Color.rgb(211, 213, 220))
         layout.addView(healthStatusText)
         layout.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
             healthStatusText.text = DeviceHealthFormatter.format(DeviceHealthReader(this).read())
+        })
+        layout.addView(primaryButton("LEER SALUD DEL TELÉFONO EN VOZ ALTA") {
+            val reading = DeviceHealthReader(this).read()
+            healthStatusText.text = DeviceHealthFormatter.format(reading)
+            spokenReplyEngine.speakHealthByTap(reading)
         })
         layout.addView(label(
             "Datos locales consultados una sola vez al pulsar. El estado térmico " +
                 "no es una temperatura en grados. No se guardan ni transmiten lecturas.",
             12f, Color.rgb(159, 161, 171)
         ))
+
+        layout.addView(label("OMEGA GAME READINESS — ASESOR PARA JUGAR", 20f,
+            Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        layout.addView(label(
+            "Evaluación local y manual de batería, estado térmico y memoria antes " +
+                "de jugar. Solo recomendaciones: no modifica el hardware ni inicia juegos.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        gameReadinessText = label(
+            "Elige un perfil y pulsa EVALUAR ANTES DE JUGAR.",
+            13f, Color.rgb(211, 213, 220)
+        )
+        layout.addView(gameReadinessText)
+        layout.addView(primaryButton("PERFIL JUEGO: EQUILIBRADO") {
+            gameHubPreflight.cancel()
+            gamingPreference = GamingPreference.BALANCED
+            gameReadinessText.text = "Perfil equilibrado seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("PERFIL JUEGO: COMPETITIVO") {
+            gameHubPreflight.cancel()
+            gamingPreference = GamingPreference.COMPETITIVE
+            gameReadinessText.text = "Perfil competitivo seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("PERFIL JUEGO: CALIDAD VISUAL") {
+            gameHubPreflight.cancel()
+            gamingPreference = GamingPreference.VISUAL_QUALITY
+            gameReadinessText.text = "Perfil calidad visual seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("EVALUAR ANTES DE JUGAR") {
+            val snapshot = DeviceHealthReader(this).read()
+            val result = GameReadinessAdvisor.assess(snapshot, gamingPreference)
+            gameReadinessText.text = GameReadinessAdvisor.format(result)
+        })
+
+        layout.addView(primaryButton("PREPARAR APERTURA SEGURA DE GAMEHUB") {
+            val latest = GameReadinessAdvisor.assess(
+                DeviceHealthReader(this).read(), gamingPreference)
+            gameReadinessText.text = GameReadinessAdvisor.format(latest)
+            val staged = gameHubPreflight.stageByTap(
+                latest.level, gamingPreference, SystemClock.elapsedRealtime())
+            statusText.text = if (staged) {
+                "GameHub preparado con lectura local. Pulsa CONFIRMAR APERTURA " +
+                    "SEGURA DE GAMEHUB en menos de 30 segundos para revalidar y abrir."
+            } else {
+                "No se preparó la apertura: precaución térmica crítica, datos " +
+                    "insuficientes o solicitud previa aún vigente. Reevalúa manualmente."
+            }
+        })
+        layout.addView(primaryButton("CONFIRMAR APERTURA SEGURA DE GAMEHUB") {
+            val authorized = gameHubPreflight.consumeByTap(
+                gamingPreference, SystemClock.elapsedRealtime())
+            if (!authorized) {
+                statusText.text = "Sin autorización vigente: vuelve a preparar la apertura segura."
+            } else {
+                // Avoid using the old snapshot for a launch decision.
+                val latest = GameReadinessAdvisor.assess(
+                    DeviceHealthReader(this).read(), gamingPreference)
+                gameReadinessText.text = GameReadinessAdvisor.format(latest)
+                if (latest.level == GameReadinessLevel.READY ||
+                    latest.level == GameReadinessLevel.CAUTION
+                ) {
+                    val launched = GameHubLauncher(this).launchOnTap()
+                    statusText.text = if (launched) {
+                        "GameHub abierto con confirmación y nueva lectura del dispositivo."
+                    } else {
+                        "Android no pudo abrir GameHub. Verifica que esté instalado."
+                    }
+                } else {
+                    statusText.text = "Apertura segura cancelada: el estado actual ya " +
+                        "no permite confirmar el inicio asistido."
+                }
+            }
+        })
 
         layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
@@ -245,15 +400,17 @@ class MainActivity : Activity() {
         ))
         layout.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
         layout.addView(label(
-            "Observación temporal: Android solicitará permiso para CADA sesión, " +
-                "con notificación visible, cierre tras 10 minutos y OCR local sin clics.",
+            "Visión temporal: solo con autorización Android por sesión, " +
+                "notificación visible y detención a los 10 minutos. " +
+                "No ejecuta clics ni guarda imágenes.",
             13f, Color.rgb(164, 166, 174)
         ))
         layout.addView(primaryButton("INICIAR VISIÓN DE PANTALLA") { requestScreenObservation() })
         layout.addView(primaryButton("DETENER VISIÓN DE PANTALLA") {
             screenConsentRequested = false
+            screenConsentGate.cancel()
             statusText.text = if (ScreenObservationService.stopNow())
-                "Observación detenida; también se revocaron inicios pendientes."
+                "Observación y autorizaciones pendientes detenidas."
             else "No se pudo confirmar la detención de la observación."
         })
         layout.addView(primaryButton("ESTADO VISIÓN DE PANTALLA") {
@@ -320,13 +477,27 @@ class MainActivity : Activity() {
         setContentView(scroll)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Keep request codes monotonic on rotation; never persist live consent.
+        outState.putInt(VISION_PICKER_COUNTER_KEY, visionPickerRequest.issuedCount())
+        outState.putInt(SCREEN_CONSENT_COUNTER_KEY, screenConsentGate.issuedCount())
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStart() {
         super.onStart()
+        enforceCapturePrivacy()
         foregroundGate.onStart()
     }
 
     override fun onStop() {
+        gameHubPreflight.cancel()
+        revokeCaptureException()
         foregroundGate.onStop()
+        clearVisibleReadouts()
+        // The system recognizer may be another Activity: preserve only a short-lived
+        // numeric answer while our explicitly started recognition is pending.
+        if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         voiceConsent.cancel()
         lastChatReply = null
@@ -336,6 +507,14 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        gameHubPreflight.cancel()
+        revokeCaptureException()
+        voiceMathSession.clear()
+        recognitionRequest.cancel()
+        visionPickerRequest.cancel()
+        screenConsentRequested = false
+        screenConsentGate.cancel()
+        ScreenObservationService.stopNow()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         super.onDestroy()
@@ -346,14 +525,22 @@ class MainActivity : Activity() {
         if (::handsStatusText.isInitialized) refreshHandsStatus()
     }
 
-    /** Separate visible user gesture: revoke all currently merged local modules. */
+    /** Revoke local modules on a visible tap or a one-shot foreground speech request. */
     private fun lockSessionByTap() {
         val actions: Map<SessionLockChannel, () -> Unit> = mapOf(
-            SessionLockChannel.VOICE_REQUEST to { voiceConsent.cancel() },
+            SessionLockChannel.VOICE_REQUEST to {
+                voiceConsent.cancel()
+                voiceMathSession.clear()
+                recognitionRequest.cancel()
+            },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
-            SessionLockChannel.IMAGE_OCR to { visionRecognizer.cancel() },
+            SessionLockChannel.IMAGE_OCR to {
+                visionPickerRequest.cancel()
+                visionRecognizer.cancel()
+            },
             SessionLockChannel.SCREEN_PROJECTION to {
                 screenConsentRequested = false
+                screenConsentGate.cancel()
                 check(ScreenObservationService.stopNow())
             },
             SessionLockChannel.HANDS to {
@@ -361,6 +548,12 @@ class MainActivity : Activity() {
                 check(OmegaHandsService.isStopped(this))
             },
             SessionLockChannel.PRIVATE_MEMORY to { privateMemory.stop() },
+            SessionLockChannel.LOCAL_DIAGNOSTICS to { clearVisibleReadouts() },
+            SessionLockChannel.GAMEHUB_PREFLIGHT to { gameHubPreflight.cancel() },
+            SessionLockChannel.SCREEN_CAPTURE to {
+                revokeCaptureException()
+                check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+            },
             SessionLockChannel.LOCAL_CHAT to {
                 localDialogue.clear()
                 lastChatReply = null
@@ -379,6 +572,60 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Hide all one-shot hardware/availability evaluations when the app leaves the
+     * foreground or the user invokes the privacy lock. Never erase encrypted disk
+     * memory or leave an old diagnostic in the visible UI.
+     */
+    private fun clearVisibleReadouts() {
+        if (::capabilityStatusText.isInitialized) {
+            capabilityStatusText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.CAPABILITIES)
+        }
+        if (::healthStatusText.isInitialized) {
+            healthStatusText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.DEVICE_HEALTH)
+        }
+        if (::gameReadinessText.isInitialized) {
+            gameReadinessText.text =
+                ReadoutRedactionPolicy.redacted(SensitiveReadout.GAME_READINESS)
+        }
+    }
+
+    /** Reinstates Android's protection, including after timeout or app switch. */
+    private fun enforceCapturePrivacy() {
+        if (capturePrivacyGate.captureAllowed(SystemClock.elapsedRealtime())) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    private fun revokeCaptureException() {
+        capturePrivacyGate.revoke()
+        capturePrivacyHandler.removeCallbacks(capturePrivacyExpiry)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    private fun readCapabilities(): LocalCapabilitySnapshot {
+        val gameHub = GameHubLaunchPolicy().packageName
+        val launchable = try {
+            packageManager.getLaunchIntentForPackage(gameHub)?.component?.packageName == gameHub
+        } catch (_: RuntimeException) { false }
+        val recognitionAvailable = try {
+            SpeechRecognizer.isRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        return LocalCapabilitySnapshot(
+            androidApi = android.os.Build.VERSION.SDK_INT,
+            gameHubLaunchable = launchable,
+            handsConnected = OmegaHandsService.isConnected(),
+            handsStopped = OmegaHandsService.isStopped(this),
+            offlineSpeechReady = spokenReplyEngine.offlineVoiceReady(),
+            speechRecognizerAvailable = recognitionAvailable,
+            encryptedMemoryUnlocked = privateMemory.isEnabled()
+        )
+    }
+
     private fun handsStatus(): String = HandsStatus.present(
         OmegaHandsService.isConnected(),
         OmegaHandsService.isStopped(this)
@@ -393,28 +640,29 @@ class MainActivity : Activity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
         if (!ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationGranted)) {
-            statusText.text = "Activa notificaciones para disponer de un aviso de " +
-                "detención visible. Pulsa INICIAR VISIÓN nuevamente tras autorizarlas."
+            statusText.text = "Autoriza las notificaciones y vuelve a pulsar INICIAR VISIÓN."
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 REQUEST_SCREEN_NOTIFICATIONS)
             return
         }
-        if (screenConsentRequested) {
-            statusText.text = "Ya se está solicitando autorización de pantalla."
-            return
-        }
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
         if (manager == null) {
-            statusText.text = "Este Android no admite la captura consentida."
+            statusText.text = "Este Android no admite MediaProjection."
+            return
+        }
+        val requestCode = screenConsentGate.begin(SystemClock.elapsedRealtime())
+        if (requestCode == null) {
+            statusText.text = "Ya existe una autorización pendiente o se agotó el cupo de sesión."
             return
         }
         try {
             screenConsentRequested = true
             @Suppress("DEPRECATION")
-            startActivityForResult(manager.createScreenCaptureIntent(), SCREEN_REQUEST)
+            startActivityForResult(manager.createScreenCaptureIntent(), requestCode)
         } catch (_: RuntimeException) {
             screenConsentRequested = false
-            statusText.text = "No se pudo solicitar autorización a Android."
+            screenConsentGate.cancel()
+            statusText.text = "Android no pudo solicitar autorización de captura."
         }
     }
 
@@ -424,23 +672,35 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_SCREEN_NOTIFICATIONS) {
             statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-                "Notificaciones autorizadas. Pulsa INICIAR VISIÓN y acepta el permiso de Android."
+                "Notificaciones autorizadas. Pulsa INICIAR VISIÓN para pedir el permiso de captura."
             else "Sin notificaciones, la observación no se inició."
         }
     }
 
     private fun pickVisionImage() {
+        // Fresh request code on every picker launch: old OS callbacks cannot
+        // authorize a new image after privacy lock, expiry, or cancellation.
+        val requestCode = visionPickerRequest.begin(SystemClock.elapsedRealtime())
+        if (requestCode == null) {
+            statusText.text = "Hay otra selección en curso o se agotó el cupo de esta sesión."
+            return
+        }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/*"
         }
         try {
             @Suppress("DEPRECATION")
-            startActivityForResult(intent, VISION_REQUEST)
+            startActivityForResult(intent, requestCode)
         } catch (_: ActivityNotFoundException) {
+            visionPickerRequest.cancel()
             statusText.text = "No se encontró un selector de imágenes en Android."
         } catch (_: SecurityException) {
+            visionPickerRequest.cancel()
             statusText.text = "Android no permitió elegir una imagen."
+        } catch (_: RuntimeException) {
+            visionPickerRequest.cancel()
+            statusText.text = "Android no pudo iniciar el selector de imágenes."
         }
     }
 
@@ -453,12 +713,20 @@ class MainActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
+        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
+            statusText.text = "Ya hay un reconocimiento de voz activo. Cancélalo antes de iniciar otro."
+            return
+        }
         try {
             @Suppress("DEPRECATION")
             startActivityForResult(intent, SPEECH_REQUEST)
         } catch (_: ActivityNotFoundException) {
+            recognitionRequest.cancel()
+            voiceMathSession.clear()
             statusText.text = "No hay un proveedor de reconocimiento de voz disponible."
         } catch (_: SecurityException) {
+            recognitionRequest.cancel()
+            voiceMathSession.clear()
             statusText.text = "El reconocimiento de voz no tiene permisos suficientes."
         }
     }
@@ -466,13 +734,14 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == SCREEN_REQUEST) {
+        if (screenConsentGate.owns(requestCode)) {
+            val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
             val requestedByTap = screenConsentRequested
             screenConsentRequested = false
             val notificationsAllowed = Build.VERSION.SDK_INT < 33 ||
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
-            if (!requestedByTap || resultCode != RESULT_OK || data == null ||
+            if (!authorized || !requestedByTap || resultCode != RESULT_OK || data == null ||
                 !foregroundGate.canAcceptRecognitionResult() ||
                 !ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationsAllowed) ||
                 !ScreenObservationService.authorizeOneStart()) {
@@ -493,19 +762,23 @@ class MainActivity : Activity() {
             }
             return
         }
-        if (requestCode == VISION_REQUEST) {
-            if (resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
+        if (visionPickerRequest.owns(requestCode)) {
+            val requested = visionPickerRequest.consume(requestCode, SystemClock.elapsedRealtime())
+            if (requested && resultCode == RESULT_OK && foregroundGate.canAcceptRecognitionResult()) {
                 val selectedUri = data?.data
                 if (selectedUri != null) visionRecognizer.inspectSelectedImage(selectedUri)
             }
             return
         }
         if (requestCode != SPEECH_REQUEST) return
-        if (!foregroundGate.canAcceptRecognitionResult()) {
+        val requested = recognitionRequest.consume(SystemClock.elapsedRealtime())
+        if (!requested || !foregroundGate.canAcceptRecognitionResult()) {
+            voiceMathSession.clear()
             voiceConsent.cancel()
             return
         }
         if (resultCode != RESULT_OK) {
+            voiceMathSession.clear()
             statusText.text = "Escucha cancelada. No se ejecutó ninguna acción."
             return
         }
@@ -513,16 +786,31 @@ class MainActivity : Activity() {
             RecognizerIntent.EXTRA_RESULTS
         )?.firstOrNull()
         if (transcript.isNullOrBlank()) {
+            voiceMathSession.clear()
             statusText.text = "No se reconoció ningún comando."
             return
         }
-        when (parser.parse(transcript)) {
+        val action = parser.parse(transcript)
+        if (action != VoiceAction.UNSUPPORTED) voiceMathSession.clear()
+        when (action) {
             VoiceAction.READ_STATUS -> {
                 if (policy.canExecute(DeviceOperation.READ_LOCAL_STATUS,
                         explicitUserGesture = false)) {
                     statusText.text = "JARVIS operativo en modo observador. " +
                         "Integraciones remotas y automatización aún no habilitadas."
                 }
+            }
+            VoiceAction.READ_DEVICE_HEALTH -> {
+                // Voice recognition is read-only: no automatic TTS or Android changes.
+                val reading = DeviceHealthReader(this).read()
+                statusText.text = DeviceHealthFormatter.format(reading)
+            }
+            VoiceAction.READ_GAME_READINESS -> {
+                // Voice only requests a one-shot, read-only advisory from Android.
+                // No app launch, hardware changes, TTS or persistent telemetry.
+                val reading = DeviceHealthReader(this).read()
+                val report = GameReadinessAdvisor.assess(reading, gamingPreference)
+                statusText.text = GameReadinessAdvisor.format(report)
             }
             VoiceAction.OPEN_ACCESSIBILITY_SETTINGS -> {
                 voiceConsent.request(
@@ -540,11 +828,18 @@ class MainActivity : Activity() {
                 statusText.text = "GameHub solicitado. Pulsa CONFIRMAR APERTURA " +
                     "antes de 30 segundos. La voz no abre apps por sí sola."
             }
+            VoiceAction.STOP_SESSION -> {
+                // A single-use recognition request was consumed and foreground-checked
+                // above. Emergency stop only revokes capabilities; it grants none.
+                lockSessionByTap()
+            }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.
-                val mathAnswer = VoiceMathGate.answer(transcript)
-                if (mathAnswer != null) lastChatReply = mathAnswer
-                statusText.text = mathAnswer ?:
+                val localAnswer = voiceMathSession.answer(transcript,
+                    SystemClock.elapsedRealtime())
+                    ?: VoiceFaqRouter.answer(transcript)
+                if (localAnswer != null) lastChatReply = localAnswer
+                statusText.text = localAnswer ?:
                     "Orden no disponible. No se realizó ninguna acción."
             }
         }
@@ -590,8 +885,8 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
-        const val VISION_REQUEST = 7002
-        const val SCREEN_REQUEST = 7003
-        const val REQUEST_SCREEN_NOTIFICATIONS = 7004
+        private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
+        private const val SCREEN_CONSENT_COUNTER_KEY = "jarvis.screen.consent.issued"
+        private const val REQUEST_SCREEN_NOTIFICATIONS = 9004
     }
 }
