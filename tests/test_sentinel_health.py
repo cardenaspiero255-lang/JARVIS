@@ -16,7 +16,7 @@ def run(*, conclusion="success", date="2026-10-15T01:30:00Z",
     return {"id": 123, "name": workflow, "head_sha": sha,
             "head_branch": "main", "event": event, "status": "completed",
             "conclusion": conclusion, "created_at": date,
-            "path": "cardenaspiero255-lang/Ultra-Sentinel/.github/workflows/serverless-github-monitor.yml@refs/heads/main"}
+            "path": ".github/workflows/serverless-github-monitor.yml"}
 
 class SentinelHealthTests(unittest.TestCase):
     def test_recent_real_workflow_success_is_observation_not_deployment_proof(self):
