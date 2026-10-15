@@ -7,7 +7,7 @@ package com.cardenaspiero255.jarvis.core
  * authorizes an action. The user must press the confirmation button while
  * the foreground Activity still owns this gate.
  */
-enum class VoiceRequestedAction { ACCESSIBILITY_SETTINGS }
+enum class VoiceRequestedAction { ACCESSIBILITY_SETTINGS, GAMEHUB_ULTRA_LAUNCH }
 
 class VoiceConsentGate {
     private var requestedAction: VoiceRequestedAction? = null
