@@ -33,7 +33,11 @@ class VisionPrivacyContracts(unittest.TestCase):
         build = (ROOT / "apps/android/app/build.gradle.kts").read_text()
         self.assertIn('com.google.mlkit:text-recognition:16.0.1', build)
         vision = (ROOT / "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/VisionRecognizer.kt").read_text()
-        self.assertIn("MAX_INPUT_BYTES", vision)
+        capped_reader = (ROOT / "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/core/BoundedImageInputStream.kt").read_text()
+        self.assertIn("MAX_INPUT_BYTES = 16L * 1024L * 1024L", capped_reader)
+        self.assertIn("ensureBudget()", capped_reader)
+        self.assertIn("override fun skip(", capped_reader)
+        self.assertEqual(vision.count("BoundedImageInputStream(input)"), 2)
         self.assertIn("policy.acceptDimensions", vision)
         self.assertIn("bitmap.recycle()", vision)
 
