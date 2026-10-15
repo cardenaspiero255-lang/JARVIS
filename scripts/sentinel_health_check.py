@@ -10,7 +10,7 @@ from pathlib import Path
 from jarvis_contracts.sentinel_health import SentinelHealthObserver, SentinelHealthError
 
 BASE = "https://api.github.com/repos/cardenaspiero255-lang/Ultra-Sentinel"
-ALLOWED = frozenset({"", "/actions/runs?branch=main&per_page=30"})
+ALLOWED = frozenset({"", "/actions/workflows/serverless-github-monitor.yml/runs?branch=main&per_page=30"})
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
