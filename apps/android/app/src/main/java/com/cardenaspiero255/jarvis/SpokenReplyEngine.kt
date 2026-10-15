@@ -8,7 +8,6 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.ChatSpeechPolicy
-import com.cardenaspiero255.jarvis.core.AiGatewayPolicy
 import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
 import com.cardenaspiero255.jarvis.core.DeviceHealthSpeechPolicy
 import com.cardenaspiero255.jarvis.core.GameReadinessReport
