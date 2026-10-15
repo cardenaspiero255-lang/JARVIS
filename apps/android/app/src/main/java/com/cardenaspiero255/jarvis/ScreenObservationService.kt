@@ -141,6 +141,7 @@ class ScreenObservationService : Service() {
 
     private fun readFrameForLocalOcr(image: android.media.Image) {
         var owned: Bitmap? = null
+        var pendingBitmap: Bitmap? = null
         var submitted = false
         try {
             val plane = image.planes.firstOrNull() ?: return
@@ -164,7 +165,8 @@ class ScreenObservationService : Service() {
                 padded.recycle()
             }
             val bitmap = owned ?: return
-            owned = null  // ML Kit owns this bitmap until the completion callback.
+            owned = null
+            pendingBitmap = bitmap // Kept until async callback owns recycling.
             val engine = recognizer ?: TextRecognition.getClient(
                 TextRecognizerOptions.DEFAULT_OPTIONS
             ).also { recognizer = it }
@@ -187,12 +189,16 @@ class ScreenObservationService : Service() {
                     processing.set(false)
                 }
             submitted = true
+            pendingBitmap = null
         } catch (_: Exception) {
             // Untrusted screen content must not kill the rest of JARVIS.
         } catch (_: OutOfMemoryError) {
         } finally {
             owned?.recycle()
-            if (!submitted) processing.set(false)
+            if (!submitted) {
+                pendingBitmap?.recycle()
+                processing.set(false)
+            }
         }
     }
 
