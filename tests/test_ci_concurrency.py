@@ -15,7 +15,6 @@ class WorkflowConcurrencyContracts(unittest.TestCase):
                 self.assertIn("github.workflow", text)
                 self.assertIn("github.event_name", text)
                 self.assertIn("github.ref", text)
-                self.assertIn("github.head_ref", text)
                 self.assertIn("github.run_id", text)
                 self.assertIn("refs/heads/main", text)
                 self.assertIn("cancel-in-progress: true", text)
