@@ -23,7 +23,7 @@ class WorkflowConcurrencyContracts(unittest.TestCase):
 
     def test_sentinel_schedule_remains_unchanged_and_uncancelled(self):
         text = (ROOT / "sentinel-health.yml").read_text(encoding="utf-8")
-        self.assertNotIn("cancel-in-progress:", text)
+        self.assertIn("cancel-in-progress: false", text)
 
 
 if __name__ == "__main__":
