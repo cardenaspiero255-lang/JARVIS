@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from pathlib import Path
 
 from jarvis_contracts.integrity_audit import IntegrityAudit, AuditAnchor, AuditInvalid, AuditTampered
@@ -126,3 +127,24 @@ class IntegrityAuditTests(unittest.TestCase):
                 self.assertTrue(audit.verify_anchor(checkpoint))
                 with self.assertRaises(AuditTampered):
                     audit.verify_anchor(AuditAnchor(1, "f"*64))
+
+    def test_concurrent_fresh_database_first_open_retries_wal_race_without_losing_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = tmp + "/fresh.db"
+            workers = 12
+            barrier = Barrier(workers)
+
+            def concurrent_init(index):
+                barrier.wait(timeout=10)
+                with IntegrityAudit(path, key=KEY) as audit:
+                    entry = audit.record(
+                        "a"*64, "pr.read", "SUCCEEDED",
+                        f"{index:064x}", when=1800000000+index)
+                    return entry.sequence
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                sequences = list(pool.map(concurrent_init, range(workers)))
+            self.assertEqual(sorted(sequences), list(range(1, workers+1)))
+            with IntegrityAudit(path, key=KEY) as audit:
+                self.assertTrue(audit.verify())
+                self.assertEqual(len(audit.entries()), workers)
