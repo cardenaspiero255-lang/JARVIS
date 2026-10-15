@@ -14,6 +14,7 @@ El texto reconocido **se considera datos no confiables**: jamás autoriza clics,
 
 - Imágenes máximo 12.000 px por dimensión y 24 megapíxeles de resolución declarada.
 - Lectura comprimida limitada a 16 MiB por pasada, imágenes decodificadas con muestreo para un máximo aproximado de 2048 px por eje.
+- El límite de bytes cubre `read()`, lecturas por bloques, `skip()` y lecturas repetidas tras `reset()`; un proveedor no puede recuperar presupuesto reubicando el cursor. Al consumir exactamente el tope, una petición adicional se rechaza de forma conservadora. Se crea un lector nuevo para cada uno de los dos pases del decodificador.
 - Decodificación en un hilo de trabajo, OCR asíncrono en dispositivo.
 - Errores de proveedor, formatos inválidos y falta de memoria se convierten en estados visibles sin ejecutar instrucciones.
 - Los documentos son seleccionados desde una app del sistema/proveedor; JARVIS no inicia vigilancia permanente de pantalla.

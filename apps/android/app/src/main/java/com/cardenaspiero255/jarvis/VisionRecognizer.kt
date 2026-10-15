@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import com.cardenaspiero255.jarvis.core.BoundedImageInputStream
 import com.cardenaspiero255.jarvis.core.VisionImagePolicy
 import com.cardenaspiero255.jarvis.core.VisionRequestGate
 import com.cardenaspiero255.jarvis.core.ButtonHintDetector
@@ -14,9 +15,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import java.io.FilterInputStream
 import java.io.IOException
-import java.io.InputStream
 import java.util.concurrent.Executors
 
 /**
@@ -52,7 +51,7 @@ class VisionRecognizer(
             try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    BitmapFactory.decodeStream(BoundedInputStream(input), null, bounds)
+                    BitmapFactory.decodeStream(BoundedImageInputStream(input), null, bounds)
                 } ?: throw IOException("unreadable content URI")
                 if (!policy.acceptDimensions(bounds.outWidth, bounds.outHeight)) {
                     displayFor(requestId, "Imagen demasiado grande o inválida para analizar con seguridad.")
@@ -63,7 +62,7 @@ class VisionRecognizer(
                     inPreferredConfig = Bitmap.Config.ARGB_8888
                 }
                 image = appContext.contentResolver.openInputStream(uri)?.use { input ->
-                    BitmapFactory.decodeStream(BoundedInputStream(input), null, options)
+                    BitmapFactory.decodeStream(BoundedImageInputStream(input), null, options)
                 } ?: throw IOException("invalid bitmap")
                 val bitmap = image ?: throw IOException("invalid bitmap")
                 image = null // Task callback owns the sampled bitmap.
@@ -135,27 +134,5 @@ class VisionRecognizer(
         main.post {
             if (!closed && resultGate.accepts(requestId)) showStatus(text)
         }
-    }
-
-    /** Cap bytes read from an untrusted document provider (per decoding pass). */
-    private class BoundedInputStream(source: InputStream) : FilterInputStream(source) {
-        private var consumed = 0L
-
-        override fun read(): Int {
-            if (consumed >= MAX_INPUT_BYTES) throw IOException("image input too large")
-            val value = super.read()
-            if (value >= 0) consumed++
-            return value
-        }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            if (consumed >= MAX_INPUT_BYTES) throw IOException("image input too large")
-            val allowed = minOf(len.toLong(), MAX_INPUT_BYTES - consumed).toInt()
-            val result = super.read(b, off, allowed)
-            if (result > 0) consumed += result
-            return result
-        }
-
-        companion object { private const val MAX_INPUT_BYTES = 16L * 1024L * 1024L }
     }
 }
