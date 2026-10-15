@@ -10,6 +10,7 @@ import com.cardenaspiero255.jarvis.core.VisionImagePolicy
 import com.cardenaspiero255.jarvis.core.VisionRequestGate
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.FilterInputStream
 import java.io.IOException
@@ -31,7 +32,7 @@ class VisionRecognizer(
     private val resultGate = VisionRequestGate()
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private var recognizer: TextRecognizer? = null
     @Volatile private var closed = false
 
     /** Called only after the user selects one image in Android's picker. */
@@ -69,7 +70,11 @@ class VisionRecognizer(
                         return@post
                     }
                     try {
-                        recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                        val engine = recognizer ?:
+                            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also {
+                                recognizer = it
+                            }
+                        engine.process(InputImage.fromBitmap(bitmap, 0))
                             .addOnSuccessListener { result ->
                                 displayFor(requestId, policy.renderPreview(result.text))
                             }
@@ -105,7 +110,8 @@ class VisionRecognizer(
         cancel()
         closed = true
         worker.shutdownNow()
-        recognizer.close()
+        try { recognizer?.close() } catch (_: RuntimeException) { /* fail closed */ }
+        recognizer = null
     }
 
     private fun display(text: String) {
