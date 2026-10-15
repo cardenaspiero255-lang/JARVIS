@@ -40,10 +40,7 @@ class SentinelHealthObserver:
     REPO = "cardenaspiero255-lang/Ultra-Sentinel"
     REPO_ID = 1418338512
     OWNER_ID = 322222186
-    WORKFLOW_PATH = (
-        "cardenaspiero255-lang/Ultra-Sentinel/"
-        ".github/workflows/serverless-github-monitor.yml@refs/heads/main"
-    )
+    WORKFLOW_PATH = ".github/workflows/serverless-github-monitor.yml"
     _SHA = re.compile(r"^[a-f0-9]{40}$")
     _EVENTS = frozenset({"schedule", "workflow_dispatch", "issues", "issue_comment"})
 
