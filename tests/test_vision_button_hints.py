@@ -17,4 +17,5 @@ class VisionButtonHintContracts(unittest.TestCase):
     def test_detector_explicitly_denies_click_execution(self):
         code=(ANDROID/"core/ButtonHintDetector.kt").read_text()
         self.assertIn("val canTap: Boolean get() = false", code)
-        self.assertIn("max", "max")  # Routine sanity: no implicit tool grant.
+        self.assertNotIn("performGlobalAction(", code)
+        self.assertNotIn("dispatch(", code)
