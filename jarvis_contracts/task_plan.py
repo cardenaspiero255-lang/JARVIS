@@ -29,7 +29,9 @@ class PlannedStep:
 @dataclass(frozen=True)
 class PlanPreview:
     steps: tuple[PlannedStep, ...]
-    risks: object
+    risks: object  # Effective risk, including all prerequisites.
+    direct_risks: object  # Original risk of each action before dependencies.
+    risk_origins: object  # Read-only IDs that explain inherited restrictions.
 
     @property
     def read_only_count(self) -> int:
@@ -112,6 +114,24 @@ class PlanCompiler:
                 ordered.append(indexed[identifier])
                 completed.add(identifier)
                 pending.remove(identifier)
-        risks = MappingProxyType({step.identifier: self._risk(step.action)
-                                  for step in ordered})
-        return PlanPreview(tuple(ordered), risks)
+        direct = {step.identifier: self._risk(step.action) for step in ordered}
+        effective = {}
+        origins = {}
+        priority = {ActionRisk.READ_ONLY: 0, ActionRisk.REQUIRES_APPROVAL: 1,
+                    ActionRisk.BLOCKED: 2}
+        # The topological order ensures all parent risks are resolved first.
+        # Never downgrade a blocked or approval-dependent step to read-only.
+        for step in ordered:
+            identifier = step.identifier
+            candidates = [direct[identifier]] + [effective[d] for d in step.dependencies]
+            level = max(candidates, key=priority.__getitem__)
+            sources = set()
+            if direct[identifier] is level and level is not ActionRisk.READ_ONLY:
+                sources.add(identifier)
+            for dependency in step.dependencies:
+                if effective[dependency] is level:
+                    sources.update(origins[dependency])
+            effective[identifier] = level
+            origins[identifier] = tuple(sorted(sources))
+        return PlanPreview(tuple(ordered), MappingProxyType(effective),
+                           MappingProxyType(direct), MappingProxyType(origins))
