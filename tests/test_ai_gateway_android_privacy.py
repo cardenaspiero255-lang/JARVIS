@@ -44,6 +44,33 @@ class AiGatewayAndroidContracts(unittest.TestCase):
         self.assertIn("aiGatewayClient.cancelAndClear()",activity)
         self.assertIn("AiGatewaySettings",activity)
 
+    def test_pinned_url_requires_no_manual_https_but_never_embeds_token(self):
+        policy=(SRC/"core/AiGatewayPolicy.kt").read_text()
+        settings=(SRC/"AiGatewaySettings.kt").read_text()
+        activity=(SRC/"MainActivity.kt").read_text()
+        self.assertIn('const val DEFAULT_ENDPOINT = "https://jarvis-ai-gateway.vercel.app/v1/chat"',policy)
+        self.assertIn("AiGatewayPolicy.DEFAULT_ENDPOINT",settings)
+        dialog=activity.split("private fun showAiSetupDialog()",1)[1].split(
+            "private fun requestAiReply(",1)[0]
+        self.assertNotIn("endpointInput",dialog)
+        self.assertIn("aiGatewaySettings.configureByTap(",dialog)
+        self.assertIn("tokenInput.text.toString()",dialog)
+        self.assertNotIn("sk-proj-",dialog)
+        self.assertNotIn("OPENAI_API_KEY",dialog)
+        self.assertNotIn("setText(\"Bearer ",dialog)
+
+    def test_connection_failures_do_not_disguise_as_local_model_unavailable(self):
+        activity=(SRC/"MainActivity.kt").read_text()
+        self.assertIn('message.equals("estado ia", ignoreCase = true)',activity)
+        self.assertIn("aiGatewaySettings.hasStoredPairing()",activity)
+        self.assertIn("IA no emparejada",activity)
+        self.assertIn("aiGatewayClient.isConfigured()",activity)
+        self.assertIn("requestAiReply(message, fromVoice = false)",activity)
+        gateway=(SRC/"AiGatewayClient.kt").read_text()
+        for marker in ("responseCode == 401", "responseCode == 403",
+                       "responseCode == 429", "responseCode == 502"):
+            self.assertIn(marker,gateway)
+
     def test_remote_text_speech_requires_explicit_voice_permission_not_auto_actions(self):
         activity=(SRC/"MainActivity.kt").read_text()
         engine=(SRC/"SpokenReplyEngine.kt").read_text()
