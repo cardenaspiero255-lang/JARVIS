@@ -37,6 +37,8 @@ import com.cardenaspiero255.jarvis.core.ScreenCapturePrivacyGate
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
+import com.cardenaspiero255.jarvis.core.DeviceHealthSnapshot
+import com.cardenaspiero255.jarvis.core.GameReadinessReport
 import com.cardenaspiero255.jarvis.core.GameHubPreflightGate
 import com.cardenaspiero255.jarvis.core.GameReadinessLevel
 import com.cardenaspiero255.jarvis.core.GameReadinessAdvisor
@@ -955,6 +957,10 @@ class MainActivity : Activity() {
     private fun processRecognizedSpeech(transcript: String) {
         val action = parser.parse(transcript)
         if (action != VoiceAction.UNSUPPORTED) voiceMathSession.clear()
+        // Fresh structured readings are kept only on the stack, never as audio
+        // recordings or background messages.
+        var freshHealth: DeviceHealthSnapshot? = null
+        var freshGame: GameReadinessReport? = null
         when (action) {
             VoiceAction.READ_STATUS -> {
                 if (policy.canExecute(DeviceOperation.READ_LOCAL_STATUS,
@@ -964,16 +970,19 @@ class MainActivity : Activity() {
                 }
             }
             VoiceAction.READ_DEVICE_HEALTH -> {
-                // Voice recognition is read-only: no automatic TTS or Android changes.
+                // One user-initiated local reading; the spoken version is bounded
+                // by the structured DeviceHealthSpeechPolicy after recognition ends.
                 val reading = DeviceHealthReader(this).read()
                 statusText.text = DeviceHealthFormatter.format(reading)
+                freshHealth = reading
             }
             VoiceAction.READ_GAME_READINESS -> {
-                // Voice only requests a one-shot, read-only advisory from Android.
-                // No app launch, hardware changes, TTS or persistent telemetry.
+                // Read-only advice, with no app launch or hardware changes.
+                // The spoken version uses a conservative fixed recommendation.
                 val reading = DeviceHealthReader(this).read()
                 val report = GameReadinessAdvisor.assess(reading, gamingPreference)
                 statusText.text = GameReadinessAdvisor.format(report)
+                freshGame = report
             }
             VoiceAction.OPEN_ACCESSIBILITY_SETTINGS -> {
                 voiceConsent.request(
@@ -1004,6 +1013,20 @@ class MainActivity : Activity() {
                 if (localAnswer != null) lastChatReply = localAnswer
                 statusText.text = localAnswer ?:
                     "Orden no disponible. No se realizó ninguna acción."
+            }
+        }
+        // Both the in-app and the external Android recognizer arrive here ONLY
+        // after the one-use recognition gate and foreground check have passed.
+        // Re-arm TTS for this explicit HABLAR tap, never for an unsolicited event.
+        // Emergency STOP revokes the session and must not cause a spoken reply.
+        if (action != VoiceAction.STOP_SESSION) {
+            when {
+                freshHealth != null ->
+                    spokenReplyEngine.speakRecognizedHealthAfterTap(freshHealth)
+                freshGame != null ->
+                    spokenReplyEngine.speakRecognizedGameAfterTap(freshGame)
+                else ->
+                    spokenReplyEngine.speakRecognizedAnswerAfterTap(statusText.text.toString())
             }
         }
     }
