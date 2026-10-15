@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
+import com.cardenaspiero255.jarvis.core.LocalBenchmarkStats
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.app.Activity
@@ -250,6 +251,9 @@ class MainActivity : Activity() {
             } else {
                 "Falta importar Qwen GGUF. El chat determinista funciona sin modelo."
             }
+        })
+        section.addView(primaryButton("MEDIR RENDIMIENTO LLM — 5 PRUEBAS") {
+            runLocalLlmBenchmark()
         })
         chatLog = label("Sin mensajes guardados en esta sesión.", 14f, Color.WHITE)
         section.addView(chatLog)
@@ -647,6 +651,48 @@ class MainActivity : Activity() {
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
+    }
+
+    /** Five user-initiated, serialized physical-device inference samples. */
+    private fun runLocalLlmBenchmark() {
+        if (chatBusy) {
+            statusText.text = "Termina la respuesta o prueba actual antes de iniciar otra."
+            return
+        }
+        if (!offlineLlm.isInstalled()) {
+            statusText.text = "Importa primero el GGUF verificado para medir inferencia real."
+            return
+        }
+        chatBusy = true
+        val measures = mutableListOf<OfflineLlmEngine.Benchmark>()
+        fun next() {
+            offlineLlm.generate("Explica la fotosíntesis en tres frases sencillas.") { generated, metric ->
+                if (metric == null || generated == null) {
+                    chatBusy = false
+                    statusText.text = "Benchmark incompleto: fallo o falta de recursos. " +
+                        "No se publicarán cifras inventadas."
+                    return@generate
+                }
+                measures.add(metric)
+                if (measures.size < 5) {
+                    statusText.text = "Prueba local ${measures.size}/5 completa; ejecutando la siguiente..."
+                    next()
+                } else {
+                    chatBusy = false
+                    val cold = measures.first()
+                    val warm = LocalBenchmarkStats.medianPositive(
+                        measures.drop(1).map { it.tokensPerSecond }
+                    )
+                    val peakPss = measures.maxOf { it.pssMiB }
+                    statusText.text = "Benchmark físico 5/5: primera respuesta ${cold.tokensPerSecond} " +
+                        "tokens/s (${cold.wallMs} ms), mediana caliente " +
+                        "${warm?.toString() ?: "N/D"} tokens/s, PSS máximo medido " +
+                        "$peakPss MiB. Revisar los 5 registros JARVIS_LLM_BENCH y la temperatura."
+                }
+            }
+        }
+        statusText.text = "Iniciando 5 inferencias reales sin nube..."
+        next()
     }
 
     private fun showChatReply(answer: String, benchmark: String?) {
