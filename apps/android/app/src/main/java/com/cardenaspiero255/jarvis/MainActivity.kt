@@ -1,6 +1,9 @@
 package com.cardenaspiero255.jarvis
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -27,6 +30,7 @@ import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
+import com.cardenaspiero255.jarvis.core.ScreenNotificationGate
 import com.cardenaspiero255.jarvis.core.VoiceConsentGate
 import com.cardenaspiero255.jarvis.core.VoiceForegroundGate
 import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
@@ -304,6 +308,15 @@ class MainActivity : Activity() {
     }
 
     private fun requestScreenObservation() {
+        val notificationGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!ScreenNotificationGate.canBegin(Build.VERSION.SDK_INT, notificationGranted)) {
+            statusText.text = "Para detener la observación con un aviso visible, " +
+                "primero autoriza las notificaciones de JARVIS. Vuelve a pulsar después."
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_SCREEN_NOTIFICATIONS)
+            return
+        }
         if (screenConsentRequested) {
             statusText.text = "Ya hay una solicitud de observación en curso."
             return
@@ -320,6 +333,17 @@ class MainActivity : Activity() {
         } catch (_: RuntimeException) {
             screenConsentRequested = false
             statusText.text = "No se pudo solicitar permiso para observar la pantalla."
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_SCREEN_NOTIFICATIONS) {
+            statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                "Notificaciones autorizadas. Pulsa INICIAR VISIÓN para solicitar permiso de Android."
+            } else "Sin notificaciones, la observación permanece detenida."
         }
     }
 
@@ -466,5 +490,6 @@ class MainActivity : Activity() {
         const val SPEECH_REQUEST = 7001
         const val VISION_REQUEST = 7002
         const val SCREEN_REQUEST = 7003
+        const val REQUEST_SCREEN_NOTIFICATIONS = 7004
     }
 }
