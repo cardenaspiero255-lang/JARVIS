@@ -26,6 +26,8 @@ import com.cardenaspiero255.jarvis.core.LocalCapabilitySnapshot
 import com.cardenaspiero255.jarvis.core.SessionLockChannel
 import com.cardenaspiero255.jarvis.core.SessionLockCoordinator
 import com.cardenaspiero255.jarvis.core.DeviceHealthFormatter
+import com.cardenaspiero255.jarvis.core.GameReadinessAdvisor
+import com.cardenaspiero255.jarvis.core.GamingPreference
 import com.cardenaspiero255.jarvis.core.DeviceActionPolicy
 import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
@@ -52,6 +54,7 @@ class MainActivity : Activity() {
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private val foregroundGate = VoiceForegroundGate()
+    private var gamingPreference = GamingPreference.BALANCED
     private lateinit var statusText: TextView
     private lateinit var spokenReplyEngine: SpokenReplyEngine
     private lateinit var visionRecognizer: VisionRecognizer
@@ -252,6 +255,39 @@ class MainActivity : Activity() {
                 "no es una temperatura en grados. No se guardan ni transmiten lecturas.",
             12f, Color.rgb(159, 161, 171)
         ))
+
+        layout.addView(label("OMEGA GAME READINESS — ASESOR PARA JUGAR", 20f,
+            Color.rgb(239, 43, 54)).apply {
+            setPadding(0, dp(24), 0, dp(8))
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        layout.addView(label(
+            "Evaluación local y manual de batería, estado térmico y memoria antes " +
+                "de jugar. Solo recomendaciones: no modifica el hardware ni inicia juegos.",
+            13f, Color.rgb(164, 166, 174)
+        ))
+        val gameReadinessText = label(
+            "Elige un perfil y pulsa EVALUAR ANTES DE JUGAR.",
+            13f, Color.rgb(211, 213, 220)
+        )
+        layout.addView(gameReadinessText)
+        layout.addView(primaryButton("PERFIL JUEGO: EQUILIBRADO") {
+            gamingPreference = GamingPreference.BALANCED
+            gameReadinessText.text = "Perfil equilibrado seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("PERFIL JUEGO: COMPETITIVO") {
+            gamingPreference = GamingPreference.COMPETITIVE
+            gameReadinessText.text = "Perfil competitivo seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("PERFIL JUEGO: CALIDAD VISUAL") {
+            gamingPreference = GamingPreference.VISUAL_QUALITY
+            gameReadinessText.text = "Perfil calidad visual seleccionado. Evalúa de nuevo."
+        })
+        layout.addView(primaryButton("EVALUAR ANTES DE JUGAR") {
+            val snapshot = DeviceHealthReader(this).read()
+            val result = GameReadinessAdvisor.assess(snapshot, gamingPreference)
+            gameReadinessText.text = GameReadinessAdvisor.format(result)
+        })
 
         layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
