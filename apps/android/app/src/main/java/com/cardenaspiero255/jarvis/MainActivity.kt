@@ -163,17 +163,19 @@ class MainActivity : Activity() {
             14f, Color.rgb(164, 166, 174)
         ).apply { setPadding(0, dp(24), 0, dp(16)) })
 
-        layout.addView(label("OMEGA CHAT — CONVERSACIÓN LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
+        var section: LinearLayout
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA CHAT — CONVERSACIÓN LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(20), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        layout.addView(label(
+        section.addView(label(
             "Chat local en español con calculadora y continuidad de resultados. Sin IA general. " +
                 "La memoria en disco está desactivada hasta que la autorices.",
             13f, Color.rgb(164, 166, 174)
         ))
         chatLog = label("Sin mensajes guardados en esta sesión.", 14f, Color.WHITE)
-        layout.addView(chatLog)
+        section.addView(chatLog)
         chatInput = EditText(this).apply {
             hint = "Escribe un mensaje para JARVIS"
             setHintTextColor(Color.rgb(150, 150, 160))
@@ -181,8 +183,8 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             maxLines = 3
         }
-        layout.addView(chatInput)
-        layout.addView(primaryButton("ENVIAR MENSAJE") {
+        section.addView(chatInput)
+        section.addView(primaryButton("ENVIAR MENSAJE") {
             val message = chatInput.text.toString()
             if (message.isBlank()) {
                 statusText.text = "Escribe un mensaje antes de enviarlo."
@@ -204,13 +206,13 @@ class MainActivity : Activity() {
                 }
             }
         })
-        layout.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
+        section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
             val answer = lastChatReply
             if (answer == null) {
                 statusText.text = "Primero genera una respuesta local en esta sesión."
             } else spokenReplyEngine.speakChatByTap(answer)
         })
-        layout.addView(primaryButton("ACTIVAR MEMORIA PRIVADA CIFRADA") {
+        section.addView(primaryButton("ACTIVAR MEMORIA PRIVADA CIFRADA") {
             try {
                 if (privateMemory.enableByTap()) {
                     val saved = privateMemory.load()
@@ -226,11 +228,11 @@ class MainActivity : Activity() {
                 statusText.text = "No se pudo abrir la memoria privada."
             }
         })
-        layout.addView(primaryButton("DETENER MEMORIA PRIVADA") {
+        section.addView(primaryButton("DETENER MEMORIA PRIVADA") {
             privateMemory.stop()
             statusText.text = "Memoria privada desactivada hasta nueva autorización."
         })
-        layout.addView(primaryButton("BORRAR HISTORIAL Y CLAVE CIFRADA") {
+        section.addView(primaryButton("BORRAR HISTORIAL Y CLAVE CIFRADA") {
             try {
                 if (privateMemory.eraseByTap()) {
                     localDialogue.clear()
@@ -243,23 +245,24 @@ class MainActivity : Activity() {
             }
         })
 
-        layout.addView(label("OMEGA HANDS — CONTROL LIMITADO", 20f, Color.rgb(239, 43, 54)).apply {
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA HANDS — CONTROL LIMITADO", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(20), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
         handsStatusText = label(handsStatus(), 15f, Color.rgb(211, 213, 220))
-        layout.addView(handsStatusText)
-        layout.addView(label(
+        section.addView(handsStatusText)
+        section.addView(label(
             "Opcional: habilita el servicio desde los ajustes de Android. " +
                 "Después podrás autorizar solo el botón Inicio. " +
                 "Detener Hands desactiva inmediatamente las órdenes de JARVIS, " +
                 "sin cambiar los permisos del sistema.",
             13f, Color.rgb(164, 166, 174)
         ))
-        layout.addView(primaryButton("CONSULTAR ESTADO HANDS") {
+        section.addView(primaryButton("CONSULTAR ESTADO HANDS") {
             refreshHandsStatus()
         })
-        layout.addView(primaryButton("AUTORIZAR HANDS — SOLO INICIO") {
+        section.addView(primaryButton("AUTORIZAR HANDS — SOLO INICIO") {
             if (!OmegaHandsService.isConnected()) {
                 statusText.text = "Primero habilita OMEGA Hands en los ajustes de accesibilidad."
             } else {
@@ -272,58 +275,61 @@ class MainActivity : Activity() {
             }
             refreshHandsStatus()
         })
-        layout.addView(primaryButton("IR A INICIO (PULSACIÓN EXPLÍCITA)") {
+        section.addView(primaryButton("IR A INICIO (PULSACIÓN EXPLÍCITA)") {
             val result = OmegaHandsService.goHome(this, explicitTap = true)
             statusText.text = if (result) "Orden Inicio aceptada por Android." else
                 "No se ejecutó. Comprueba el servicio y la parada de emergencia."
             refreshHandsStatus()
         })
-        layout.addView(primaryButton("PARADA DE EMERGENCIA HANDS") {
+        section.addView(primaryButton("PARADA DE EMERGENCIA HANDS") {
             OmegaHandsService.setEmergencyStop(this, true)
             statusText.text = "HANDS detenido. No se ejecutarán nuevas acciones."
             refreshHandsStatus()
         })
 
-        layout.addView(label("OMEGA DIAGNÓSTICO — SOLO LECTURA", 20f,
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA DIAGNÓSTICO — SOLO LECTURA", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
         capabilityStatusText = label("Sin diagnóstico. Consulta manual y privada.", 13f,
             Color.rgb(211, 213, 220))
-        layout.addView(capabilityStatusText)
-        layout.addView(primaryButton("DIAGNÓSTICO LOCAL DE JARVIS") {
+        section.addView(capabilityStatusText)
+        section.addView(primaryButton("DIAGNÓSTICO LOCAL DE JARVIS") {
             capabilityStatusText.text = LocalCapabilityDiagnostics.format(readCapabilities())
         })
 
-        layout.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
         healthStatusText = label("Sin consulta. La lectura es solo manual.", 13f,
             Color.rgb(211, 213, 220))
-        layout.addView(healthStatusText)
-        layout.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
+        section.addView(healthStatusText)
+        section.addView(primaryButton("CONSULTAR BATERÍA, ESTADO TÉRMICO Y RAM") {
             healthStatusText.text = DeviceHealthFormatter.format(DeviceHealthReader(this).read())
         })
-        layout.addView(primaryButton("LEER SALUD DEL TELÉFONO EN VOZ ALTA") {
+        section.addView(primaryButton("LEER SALUD DEL TELÉFONO EN VOZ ALTA") {
             val reading = DeviceHealthReader(this).read()
             healthStatusText.text = DeviceHealthFormatter.format(reading)
             spokenReplyEngine.speakHealthByTap(reading)
         })
-        layout.addView(label(
+        section.addView(label(
             "Datos locales consultados una sola vez al pulsar. El estado térmico " +
                 "no es una temperatura en grados. No se guardan ni transmiten lecturas.",
             12f, Color.rgb(159, 161, 171)
         ))
 
-        layout.addView(label("OMEGA GAME READINESS — ASESOR PARA JUGAR", 20f,
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA GAME READINESS — ASESOR PARA JUGAR", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        layout.addView(label(
+        section.addView(label(
             "Evaluación local y manual de batería, estado térmico y memoria antes " +
                 "de jugar. Solo recomendaciones: no modifica el hardware ni inicia juegos.",
             13f, Color.rgb(164, 166, 174)
@@ -332,29 +338,29 @@ class MainActivity : Activity() {
             "Elige un perfil y pulsa EVALUAR ANTES DE JUGAR.",
             13f, Color.rgb(211, 213, 220)
         )
-        layout.addView(gameReadinessText)
-        layout.addView(primaryButton("PERFIL JUEGO: EQUILIBRADO") {
+        section.addView(gameReadinessText)
+        section.addView(primaryButton("PERFIL JUEGO: EQUILIBRADO") {
             gameHubPreflight.cancel()
             gamingPreference = GamingPreference.BALANCED
             gameReadinessText.text = "Perfil equilibrado seleccionado. Evalúa de nuevo."
         })
-        layout.addView(primaryButton("PERFIL JUEGO: COMPETITIVO") {
+        section.addView(primaryButton("PERFIL JUEGO: COMPETITIVO") {
             gameHubPreflight.cancel()
             gamingPreference = GamingPreference.COMPETITIVE
             gameReadinessText.text = "Perfil competitivo seleccionado. Evalúa de nuevo."
         })
-        layout.addView(primaryButton("PERFIL JUEGO: CALIDAD VISUAL") {
+        section.addView(primaryButton("PERFIL JUEGO: CALIDAD VISUAL") {
             gameHubPreflight.cancel()
             gamingPreference = GamingPreference.VISUAL_QUALITY
             gameReadinessText.text = "Perfil calidad visual seleccionado. Evalúa de nuevo."
         })
-        layout.addView(primaryButton("EVALUAR ANTES DE JUGAR") {
+        section.addView(primaryButton("EVALUAR ANTES DE JUGAR") {
             val snapshot = DeviceHealthReader(this).read()
             val result = GameReadinessAdvisor.assess(snapshot, gamingPreference)
             gameReadinessText.text = GameReadinessAdvisor.format(result)
         })
 
-        layout.addView(primaryButton("PREPARAR APERTURA SEGURA DE GAMEHUB") {
+        section.addView(primaryButton("PREPARAR APERTURA SEGURA DE GAMEHUB") {
             val latest = GameReadinessAdvisor.assess(
                 DeviceHealthReader(this).read(), gamingPreference)
             gameReadinessText.text = GameReadinessAdvisor.format(latest)
@@ -368,7 +374,7 @@ class MainActivity : Activity() {
                     "insuficientes o solicitud previa aún vigente. Reevalúa manualmente."
             }
         })
-        layout.addView(primaryButton("CONFIRMAR APERTURA SEGURA DE GAMEHUB") {
+        section.addView(primaryButton("CONFIRMAR APERTURA SEGURA DE GAMEHUB") {
             val authorized = gameHubPreflight.consumeByTap(
                 gamingPreference, SystemClock.elapsedRealtime())
             if (!authorized) {
@@ -394,40 +400,41 @@ class MainActivity : Activity() {
             }
         })
 
-        layout.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
+        section = OmegaUiKit.createSection(this, layout)
+        section.addView(label("OMEGA VISION — OCR LOCAL", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
         })
-        layout.addView(label(
+        section.addView(label(
             "Selecciona una captura o imagen para reconocer su texto en el teléfono. " +
                 "JARVIS no ve tu pantalla continuamente ni convierte el texto en comandos.",
             13f, Color.rgb(164, 166, 174)
         ))
-        layout.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
-        layout.addView(label(
+        section.addView(primaryButton("ANALIZAR IMAGEN SELECCIONADA") { pickVisionImage() })
+        section.addView(label(
             "Visión temporal: solo con autorización Android por sesión, " +
                 "notificación visible y detención a los 10 minutos. " +
                 "No ejecuta clics ni guarda imágenes.",
             13f, Color.rgb(164, 166, 174)
         ))
-        layout.addView(primaryButton("INICIAR VISIÓN DE PANTALLA") { requestScreenObservation() })
-        layout.addView(primaryButton("DETENER VISIÓN DE PANTALLA") {
+        section.addView(primaryButton("INICIAR VISIÓN DE PANTALLA") { requestScreenObservation() })
+        section.addView(primaryButton("DETENER VISIÓN DE PANTALLA") {
             screenConsentRequested = false
             screenConsentGate.cancel()
             statusText.text = if (ScreenObservationService.stopNow())
                 "Observación y autorizaciones pendientes detenidas."
             else "No se pudo confirmar la detención de la observación."
         })
-        layout.addView(primaryButton("ESTADO VISIÓN DE PANTALLA") {
+        section.addView(primaryButton("ESTADO VISIÓN DE PANTALLA") {
             statusText.text = ScreenObservationService.status()
         })
-        layout.addView(primaryButton("ABRIR GAMEHUB ULTRA") {
+        section.addView(primaryButton("ABRIR GAMEHUB ULTRA") {
             val launched = GameHubLauncher(this).launchOnTap()
             statusText.text = if (launched) "GameHub Ultra se abrió mediante Android."
                 else "No se encontró GameHub Ultra instalado o Android rechazó la apertura."
         })
-        layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
-        layout.addView(primaryButton("CONFIRMAR AJUSTES SOLICITADOS POR VOZ") {
+        section.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
+        section.addView(primaryButton("CONFIRMAR AJUSTES SOLICITADOS POR VOZ") {
             val confirmed = voiceConsent.consume(
                 VoiceRequestedAction.ACCESSIBILITY_SETTINGS,
                 SystemClock.elapsedRealtime()
@@ -435,7 +442,7 @@ class MainActivity : Activity() {
             if (confirmed) openAccessibilitySettings(explicitUserGesture = true)
             else statusText.text = "Sin solicitud vigente. Vuelve a pedir los ajustes por voz."
         })
-        layout.addView(primaryButton("CONFIRMAR APERTURA DE GAMEHUB POR VOZ") {
+        section.addView(primaryButton("CONFIRMAR APERTURA DE GAMEHUB POR VOZ") {
             val confirmed = voiceConsent.consume(
                 VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH,
                 SystemClock.elapsedRealtime()
@@ -448,26 +455,26 @@ class MainActivity : Activity() {
                     else "No se pudo abrir GameHub Ultra; comprueba si está instalado."
             }
         })
-        layout.addView(primaryButton("PERFIL: ESPAÑOL LOCAL") {
+        section.addView(primaryButton("PERFIL: ESPAÑOL LOCAL") {
             spokenReplyEngine.selectStyleByTap(VoiceStyle.SPANISH)
         })
-        layout.addView(primaryButton("PERFIL: ASISTENTE BRITÁNICO LOCAL") {
+        section.addView(primaryButton("PERFIL: ASISTENTE BRITÁNICO LOCAL") {
             spokenReplyEngine.selectStyleByTap(VoiceStyle.BRITISH_ASSISTANT)
         })
-        layout.addView(primaryButton("ACTIVAR RESPUESTAS DE VOZ") {
+        section.addView(primaryButton("ACTIVAR RESPUESTAS DE VOZ") {
             spokenReplyEngine.enableByTap()
         })
-        layout.addView(primaryButton("LEER ESTADO EN VOZ ALTA") {
+        section.addView(primaryButton("LEER ESTADO EN VOZ ALTA") {
             spokenReplyEngine.speakByTap(SpokenMessage.LOCAL_STATUS)
         })
-        layout.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
+        section.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
             spokenReplyEngine.stop()
             statusText.text = "Voz detenida. No volverá a hablar sin activación explícita."
         })
-        layout.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
+        section.addView(primaryButton("ABRIR AJUSTES DE ACCESIBILIDAD") {
             openAccessibilitySettings(explicitUserGesture = true)
         })
-        layout.addView(label(
+        section.addView(label(
             "Privacidad: el reconocimiento de voz lo realiza la aplicación de voz de Android. " +
                 "Puede requerir conexión y usar un servicio externo. " +
                 "JARVIS no graba de forma continua ni guarda transcripciones. " +
