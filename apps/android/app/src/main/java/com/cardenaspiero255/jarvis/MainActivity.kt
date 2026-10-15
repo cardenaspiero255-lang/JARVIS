@@ -227,6 +227,19 @@ class MainActivity : Activity() {
             if (confirmed) openAccessibilitySettings(explicitUserGesture = true)
             else statusText.text = "Sin solicitud vigente. Vuelve a pedir los ajustes por voz."
         })
+        layout.addView(primaryButton("CONFIRMAR APERTURA DE GAMEHUB POR VOZ") {
+            val confirmed = voiceConsent.consume(
+                VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH,
+                SystemClock.elapsedRealtime()
+            )
+            if (!confirmed) {
+                statusText.text = "Sin solicitud válida para GameHub. Vuelve a pedirlo por voz."
+            } else {
+                val launched = GameHubLauncher(this).launchOnTap()
+                statusText.text = if (launched) "GameHub Ultra se abrió tras tu confirmación."
+                    else "No se pudo abrir GameHub Ultra; comprueba si está instalado."
+            }
+        })
         layout.addView(primaryButton("PERFIL: ESPAÑOL LOCAL") {
             spokenReplyEngine.selectStyleByTap(VoiceStyle.SPANISH)
         })
@@ -370,6 +383,15 @@ class MainActivity : Activity() {
                     SystemClock.elapsedRealtime()
                 )
                 statusText.text = "Solicitud recibida. Pulsa CONFIRMAR AJUSTES antes de 30 segundos."
+            }
+            VoiceAction.OPEN_GAMEHUB_ULTRA -> {
+                // Voice only requests; the separate on-screen button authorizes launch.
+                voiceConsent.request(
+                    VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH,
+                    SystemClock.elapsedRealtime()
+                )
+                statusText.text = "GameHub solicitado. Pulsa CONFIRMAR APERTURA " +
+                    "antes de 30 segundos. La voz no abre apps por sí sola."
             }
             VoiceAction.UNSUPPORTED -> {
                 // Read-only math fallback: no Android actions or saved transcript.

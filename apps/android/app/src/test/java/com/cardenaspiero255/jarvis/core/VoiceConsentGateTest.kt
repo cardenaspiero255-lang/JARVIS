@@ -49,4 +49,31 @@ class VoiceConsentGateTest {
         val restarted = VoiceConsentGate()
         assertFalse(restarted.consume(VoiceRequestedAction.ACCESSIBILITY_SETTINGS, 101))
     }
+    @Test fun gameHubVoiceRequestNeedsItsOwnButtonWithinThirtySeconds() {
+        val gate = VoiceConsentGate()
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100))
+        assertTrue(gate.request(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100))
+        assertTrue(gate.hasPending(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 29999))
+        assertTrue(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 29999))
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 30000))
+    }
+
+    @Test fun crossActionConfirmationRevokesTheRequest() {
+        val gate = VoiceConsentGate()
+        gate.request(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100)
+        assertFalse(gate.consume(VoiceRequestedAction.ACCESSIBILITY_SETTINGS, 101))
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 102))
+    }
+
+    @Test fun gameHubRequestExpiresWhenBackgroundedOrClockMovesBack() {
+        val gate = VoiceConsentGate()
+        gate.request(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100)
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 99))
+        gate.request(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100)
+        gate.cancel()
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 101))
+        gate.request(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 100)
+        assertFalse(gate.consume(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, 30100))
+    }
+
 }
