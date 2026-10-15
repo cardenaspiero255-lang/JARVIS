@@ -174,6 +174,7 @@ class MainActivity : Activity() {
     override fun onStop() {
         foregroundGate.onStop()
         voiceConsent.cancel()
+        if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
         super.onStop()
     }
