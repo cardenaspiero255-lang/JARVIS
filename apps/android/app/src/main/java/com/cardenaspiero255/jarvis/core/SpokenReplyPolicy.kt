@@ -14,11 +14,21 @@ class SpokenReplyPolicy {
         stopped: Boolean,
     ): Boolean = explicitTap && ready && !stopped
 
-    fun safeText(message: SpokenMessage): String = when (message) {
-        SpokenMessage.LOCAL_STATUS ->
-            "JARVIS está disponible en modo observador. Las funciones de control remoto están desactivadas."
-        SpokenMessage.PRIVACY ->
-            "La escucha continua está desactivada. Para hablar, pulsa el botón de voz."
+    fun safeText(message: SpokenMessage): String = safeText(message, VoiceStyle.SPANISH)
+
+    fun safeText(message: SpokenMessage, style: VoiceStyle): String = when (style) {
+        VoiceStyle.SPANISH -> when (message) {
+            SpokenMessage.LOCAL_STATUS ->
+                "JARVIS está disponible en modo observador. Las funciones de control remoto están desactivadas."
+            SpokenMessage.PRIVACY ->
+                "La escucha continua está desactivada. Para hablar, pulsa el botón de voz."
+        }
+        VoiceStyle.BRITISH_ASSISTANT -> when (message) {
+            SpokenMessage.LOCAL_STATUS ->
+                "Good evening. JARVIS is standing by in observer mode. Remote control is disabled."
+            SpokenMessage.PRIVACY ->
+                "Continuous listening is disabled. Press the voice button to speak."
+        }
     }
 }
 
