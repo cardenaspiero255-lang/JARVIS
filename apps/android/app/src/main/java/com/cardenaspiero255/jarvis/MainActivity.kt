@@ -736,6 +736,12 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (screenConsentGate.owns(requestCode)) {
             val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
+            if (!authorized) {
+                // A delayed callback from an older session must not cancel the
+                // user consent currently in flight for a different request code.
+                statusText.text = "Resultado anterior de captura ignorado."
+                return
+            }
             val requestedByTap = screenConsentRequested
             screenConsentRequested = false
             val notificationsAllowed = Build.VERSION.SDK_INT < 33 ||
