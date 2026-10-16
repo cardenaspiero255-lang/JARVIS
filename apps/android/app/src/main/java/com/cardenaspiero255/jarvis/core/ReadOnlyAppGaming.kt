@@ -9,13 +9,14 @@ data class LaunchableApp(val title: String, val packageName: String)
 
 object ReadOnlyAppInventory {
     /** Only launcher-visible apps; no QUERY_ALL_PACKAGES or cross-user enumeration. */
+    @Suppress("DEPRECATION")
     fun list(context: Context, limit: Int = 30): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val pm = context.packageManager
         val matches = try {
             if (Build.VERSION.SDK_INT >= 33)
                 pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0L))
-            else @Suppress("DEPRECATION") pm.queryIntentActivities(intent, 0)
+            else pm.queryIntentActivities(intent, 0)
         } catch (_: RuntimeException) { emptyList() }
         return matches.mapNotNull { item ->
             val pkg = item.activityInfo?.packageName ?: return@mapNotNull null
