@@ -156,6 +156,19 @@ internal class CompanionActionAdapters(private val activity: Activity) :
             else "No se pudo enviar la solicitud Termux. Revisa permisos."
             sent
         }
+        SafeAutomationStep.PREVIEW_SHIZUKU_ADVANCED -> shizukuReady()
+        SafeAutomationStep.PREVIEW_ADB_SETTINGS -> shizukuReady()
+        SafeAutomationStep.PREVIEW_GAMEHUB_PROFILE -> {
+            val snapshot = ReadOnlyDeviceInspection.capture(activity)
+            val recommendation = GamingReadinessPolicy.message(
+                GamingReadinessPolicy.classify(snapshot.availableRamMb, snapshot.lowMemory))
+            lastReadout = "Vista previa de perfil GameHub Ultra (SIN APLICAR):\\n" +
+                "Estado de memoria: $recommendation\\n" +
+                "Perfil sugerido: conservador. Sin tocar procesos, red, frecuencia " +
+                "ni ajustes. Todavía no hay una integración autenticada " +
+                "que confirme un perfil activo en GameHub."
+            true
+        }
         SafeAutomationStep.OPEN_ANDROID_SETTINGS -> try {
             activity.startActivity(Intent(Settings.ACTION_SETTINGS))
             true
