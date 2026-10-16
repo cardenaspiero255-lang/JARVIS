@@ -52,6 +52,17 @@ El debug APK está identificado como
 preexistente `com.cardenaspiero255.jarvis`, sin sobrescribirla ni
 compartir sus datos. Funtouch sigue instalado.
 
+En el módulo **JARVIS**, «ABRIR JARVIS / IA Y VOZ» abre el asistente
+**compacto V2** que está dentro de esta APK; su memoria local es separada
+de la del JARVIS previamente instalado. El acceso secundario **JARVIS
+ORIGINAL / HISTORIAL ANTERIOR** permite seguir usando la instalación y
+la memoria originales, si existen. Jamás se migran ni borran sus datos
+automáticamente.
+
+En el módulo **GAMING**, «ABRIR ASESOR DE JUEGOS» abre solo la sección
+«JUEGOS Y RENDIMIENTO» del asistente V2. Eso **no** inicia juegos, no
+consulta permisos, no altera perfiles ni ejecuta un preflight sin pulsar.
+
 Para volver al launcher Vivo: **SISTEMA → ELEGIR PANTALLA DE INICIO**,
 elige la app de inicio original de Vivo. Si ese ajuste directo no existe,
 **SISTEMA → AJUSTES ORIGINALES DE ANDROID**, luego apps predeterminadas.
