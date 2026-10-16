@@ -42,6 +42,10 @@ class JarvisHomeActivity : Activity() {
     private lateinit var appList: LinearLayout
     private lateinit var search: EditText
     private lateinit var catalogStatus: TextView
+    private val modules = linkedMapOf<String, LinearLayout>()
+    private val moduleTabs = linkedMapOf<String, TextView>()
+    private var activeModule = MODULE_JARVIS
+    private var showAllApps = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,7 +73,7 @@ class JarvisHomeActivity : Activity() {
         }
         val identity = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         identity.addView(text("J A R V I S   O S", 26f, Color.WHITE, bold = true))
-        identity.addView(text("HOME SHELL  /  V1  /  LOCAL", 10f, scarlet, bold = true))
+        identity.addView(text("HOME SHELL  /  V2  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
         top.addView(identity, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(text("F U N T O U C H\nI N T A C T O", 9f, muted).apply {
             gravity = Gravity.END
@@ -87,12 +91,36 @@ class JarvisHomeActivity : Activity() {
             letterSpacing = .10f
         })
         column.addView(text(
-            "Tu asistente, tus aplicaciones y tus herramientas. Todo sobre Funtouch OS.",
+            "Una pantalla. Cuatro módulos. Tus funciones cuando las necesites.",
             13f, muted
         ).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(14), dp(12), dp(18))
+            setPadding(dp(12), dp(12), dp(12), dp(14))
         })
+        // Four first-level actions, never a wall of buttons or automatic commands.
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        listOf(MODULE_JARVIS, MODULE_APPS, MODULE_GAMING, MODULE_SISTEMA).forEach { name ->
+            val tab = text(name, 11.5f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                minHeight = dp(55)
+                letterSpacing = .015f
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Módulo $name"
+                setOnClickListener { selectModule(name) }
+            }
+            moduleTabs[name] = tab
+            nav.addView(tab, LinearLayout.LayoutParams(0, dp(55), 1f).apply {
+                marginStart = dp(3)
+                marginEnd = dp(3)
+            })
+        }
+        column.addView(nav, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
 
         val quickCard = card()
         quickCard.addView(text("CENTRO DE CONTROL", 12f, scarlet, true))
