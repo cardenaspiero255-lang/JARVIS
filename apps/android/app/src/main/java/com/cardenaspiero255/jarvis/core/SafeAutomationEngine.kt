@@ -106,8 +106,10 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
 /** Spoken text is untrusted: exact matching returns a PREVIEW only, never executes. */
 object SafeAutomationVoiceRouter {
     fun parse(spokenText: String): SafeRoutine? {
-        val normalized = spokenText.lowercase(java.util.Locale.ROOT)
-            .replace(",", "").trim().replace(Regex("\\s+"), " ")
+        val normalized = java.text.Normalizer.normalize(
+            spokenText.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD
+        ).replace(Regex("\\p{M}+"), "")
+            .replace(Regex("[^a-z0-9]+"), " ").trim()
         return when (normalized) {
             "jarvis revisa shizuku" -> SafeRoutine.SHIZUKU_ASSIST
             "jarvis revisa dhizuku" -> SafeRoutine.DHIZUKU_ASSIST
