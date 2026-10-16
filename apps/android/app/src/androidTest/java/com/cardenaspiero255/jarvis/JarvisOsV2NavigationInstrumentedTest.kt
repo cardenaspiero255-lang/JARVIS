@@ -29,7 +29,7 @@ class JarvisOsV2NavigationInstrumentedTest {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val activity = instrument.startActivitySync(
             Intent(instrument.targetContext, JarvisHomeActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         ) as JarvisHomeActivity
         try {
             instrument.waitForIdleSync()
@@ -70,7 +70,7 @@ class JarvisOsV2NavigationInstrumentedTest {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val activity = instrument.startActivitySync(
             Intent(instrument.targetContext, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 .putExtra("jarvis.omega.ui.panel", "JUEGOS Y RENDIMIENTO")
         ) as MainActivity
         try {
@@ -91,7 +91,7 @@ class JarvisOsV2NavigationInstrumentedTest {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val activity = instrument.startActivitySync(
             Intent(instrument.targetContext, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         ) as MainActivity
         try {
             instrument.waitForIdleSync()
