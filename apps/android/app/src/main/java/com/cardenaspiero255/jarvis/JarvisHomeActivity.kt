@@ -26,8 +26,6 @@ import android.widget.TextView
 import android.widget.Toast
 import com.cardenaspiero255.jarvis.core.JarvisHomeApp
 import com.cardenaspiero255.jarvis.core.JarvisHomeCatalog
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /**
@@ -59,7 +57,7 @@ class JarvisHomeActivity : Activity() {
             )
         }
         val scroll = ScrollView(this).apply {
-            fillViewport = true
+            isFillViewport = true
             isVerticalScrollBarEnabled = false
             addView(column)
         }
