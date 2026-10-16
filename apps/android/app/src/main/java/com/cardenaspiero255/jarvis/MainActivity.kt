@@ -121,6 +121,10 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(9, 11, 19))
         }
         layout.addView(OmegaUiKit.hero(this))
+        // Preview is an explicit user action. HOME selection remains controlled by Android.
+        layout.addView(primaryButton("PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH") {
+            startActivity(Intent(this, JarvisHomeActivity::class.java))
+        })
         omegaCore = OmegaPulseCore(this)
         layout.addView(omegaCore)
         layout.addView(label("NÚCLEO OMEGA  /  SISTEMA EN OBSERVACIÓN", 11f,
