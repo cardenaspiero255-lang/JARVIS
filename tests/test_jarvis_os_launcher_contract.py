@@ -73,9 +73,22 @@ class JarvisOsLauncherContract(unittest.TestCase):
             self.assertNotIn(forbidden, home)
 
     def test_not_double_launcher_or_self_installing_new_os(self):
-        manifest = (SRC / "AndroidManifest.xml").read_text()
-        self.assertEqual(1, manifest.count('<category android:name="android.intent.category.HOME" />'))
-        self.assertEqual(1, manifest.count('<category android:name="android.intent.category.LAUNCHER" />') - 1)
+        root = ET.parse(SRC / "AndroidManifest.xml").getroot()
+        activities = root.findall("./application/activity")
+        home_owners = []
+        launcher_owners = []
+        for activity in activities:
+            categories = {
+                child.get(ANDROID + "name")
+                for intent_filter in activity.findall("intent-filter")
+                for child in intent_filter.findall("category")
+            }
+            if "android.intent.category.HOME" in categories:
+                home_owners.append(activity.get(ANDROID + "name"))
+            if "android.intent.category.LAUNCHER" in categories:
+                launcher_owners.append(activity.get(ANDROID + "name"))
+        self.assertEqual([".JarvisHomeActivity"], home_owners)
+        self.assertEqual([".MainActivity"], launcher_owners)
         home = (JAVA / "JarvisHomeActivity.kt").read_text()
         self.assertIn("Funtouch OS", home)
         self.assertIn("Reversible HOME launcher", home)
