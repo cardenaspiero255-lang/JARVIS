@@ -56,6 +56,7 @@ import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
+import com.cardenaspiero255.jarvis.core.ForegroundVoiceTurnPolicy
 import com.cardenaspiero255.jarvis.core.ForegroundListeningSession
 import com.cardenaspiero255.jarvis.core.SpeechLevelPolicy
 import com.cardenaspiero255.jarvis.core.ListeningDecision
@@ -1002,6 +1003,10 @@ class MainActivity : Activity() {
 
     private fun scheduleListeningRestart(delayMs: Long) {
         listeningCycleHandler.removeCallbacks(listeningRestart)
+        if (hasPendingVoiceConfirmation()) {
+            stopContinuousListening()
+            return
+        }
         if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
             listeningCycleHandler.postDelayed(listeningRestart, delayMs)
         }
@@ -1009,8 +1014,19 @@ class MainActivity : Activity() {
 
     private fun startSpeech() { startSpeech(fromContinuous = false) }
 
+    private fun hasPendingVoiceConfirmation(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        return voiceConsent.hasPending(VoiceRequestedAction.ACCESSIBILITY_SETTINGS, now) ||
+            voiceConsent.hasPending(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, now)
+    }
+
     private fun startSpeech(fromContinuous: Boolean) {
         if (fromContinuous && !foregroundListening.active) return
+        if (hasPendingVoiceConfirmation()) {
+            if (foregroundListening.active) stopContinuousListening()
+            statusText.text = "Confirma la acción pendiente en pantalla o espera 30 segundos."
+            return
+        }
         if (!fromContinuous && foregroundListening.active) stopContinuousListening()
         voiceConsent.cancel()
         if (Build.VERSION.SDK_INT >= 23 &&
@@ -1065,15 +1081,20 @@ class MainActivity : Activity() {
                 } else {
                     if (::micStatusText.isInitialized) micStatusText.text =
                         "Palabras reconocidas. Procesando orden local."
+                    // Suspend BEFORE creating the pending on-screen confirmation.
+                    // A privileged request, STOP or automation preview cannot rearm ASR.
+                    val suspendListening = ForegroundVoiceTurnPolicy.mustSuspend(
+                        parser.parse(transcript),
+                        SafeAutomationVoiceRouter.parse(transcript) != null
+                    )
                     if (foregroundListening.active) {
-                        // A voice operation opens a consent dialog; never listen
-                        // behind it or mistake assistant audio for a new command.
-                        if (com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter.parse(
-                                transcript) != null) stopContinuousListening()
+                        if (suspendListening) stopContinuousListening()
                         else foregroundListening.onResult()
                     }
                     processRecognizedSpeech(transcript)
-                    scheduleListeningRestart(ForegroundListeningSession.AFTER_REPLY_DELAY_MS)
+                    if (!suspendListening) scheduleListeningRestart(
+                        ForegroundListeningSession.AFTER_REPLY_DELAY_MS
+                    )
                 }
             },
             onFailure = { error ->
