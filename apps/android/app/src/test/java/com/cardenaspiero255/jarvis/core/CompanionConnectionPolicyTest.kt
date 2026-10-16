@@ -22,7 +22,7 @@ class CompanionConnectionPolicyTest {
     }
 
     @Test fun installedDhizukuOwnDroidAndTermuxAreNotMistakenForAuthorizedBridges() {
-        listOf(CompanionKind.DHIZUKU, CompanionKind.OWNDROID, CompanionKind.TERMUX)
+        listOf(CompanionKind.OWNDROID, CompanionKind.TERMUX)
             .forEach { kind ->
                 assertEquals(CompanionState.NOT_INSTALLED,
                     policy.state(kind, CompanionEvidence(installed = false)))
@@ -30,6 +30,19 @@ class CompanionConnectionPolicyTest {
                     policy.state(kind, CompanionEvidence(
                         installed = true, transportReady = true, authorized = true)))
             }
+    }
+
+    @Test fun dhizukuMustInitializeAndBeApprovedBeforeShowingReady() {
+        assertEquals(CompanionState.NOT_INSTALLED,
+            policy.state(CompanionKind.DHIZUKU, CompanionEvidence(false)))
+        assertEquals(CompanionState.NEEDS_SETUP,
+            policy.state(CompanionKind.DHIZUKU, CompanionEvidence(true)))
+        assertEquals(CompanionState.NEEDS_PERMISSION,
+            policy.state(CompanionKind.DHIZUKU, CompanionEvidence(
+                installed = true, transportReady = true)))
+        assertEquals(CompanionState.READY,
+            policy.state(CompanionKind.DHIZUKU, CompanionEvidence(
+                installed = true, transportReady = true, authorized = true)))
     }
 
     @Test fun companionLaunchNeedsTheOwnerToTap() {
