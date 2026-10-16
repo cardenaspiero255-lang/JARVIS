@@ -85,6 +85,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var omegaCore: OmegaPulseCore
     private lateinit var omegaScroll: ScrollView
+    private lateinit var compactPanels: OmegaCompactPanels
     private lateinit var chatCard: LinearLayout
     private lateinit var visionCard: LinearLayout
     private lateinit var gameCard: LinearLayout
@@ -134,9 +135,9 @@ class MainActivity : Activity() {
             setPadding(0, dp(0), 0, dp(18))
         })
         layout.addView(OmegaUiKit.quickActions(this,
-            onChat = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, chatCard.top) },
-            onVision = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, visionCard.top) },
-            onGame = { if (::omegaScroll.isInitialized) omegaScroll.smoothScrollTo(0, gameCard.top) }
+            onChat = { if (::compactPanels.isInitialized) compactPanels.show("CHAT Y MEMORIA") },
+            onVision = { if (::compactPanels.isInitialized) compactPanels.show("VISIÓN Y PANTALLA") },
+            onGame = { if (::compactPanels.isInitialized) compactPanels.show("JUEGOS Y RENDIMIENTO") }
         ))
         layout.addView(label("OBJETIVO SSS+ | PROTOTIPO ANDROID", 12f,
             Color.rgb(163, 165, 176)))
@@ -305,6 +306,7 @@ class MainActivity : Activity() {
         })
 
         section = OmegaUiKit.createSection(this, layout)
+        val handsCard = section
         section.addView(label("OMEGA HANDS — CONTROL LIMITADO", 20f, Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(20), 0, dp(8))
             typeface = Typeface.DEFAULT_BOLD
@@ -349,6 +351,7 @@ class MainActivity : Activity() {
         })
 
         section = OmegaUiKit.createSection(this, layout)
+        val diagnosticsCard = section
         section.addView(label("OMEGA DIAGNÓSTICO — SOLO LECTURA", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
@@ -362,6 +365,7 @@ class MainActivity : Activity() {
         })
 
         section = OmegaUiKit.createSection(this, layout)
+        val performanceCard = section
         section.addView(label("OMEGA PERFORMANCE — SALUD DEL TELÉFONO", 20f,
             Color.rgb(239, 43, 54)).apply {
             setPadding(0, dp(24), 0, dp(8))
@@ -548,6 +552,35 @@ class MainActivity : Activity() {
                 "Si no se encuentra una voz compatible, instálala desde los ajustes de texto a voz.",
             12f, Color.rgb(159, 161, 171)
         ).apply { setPadding(0, dp(24), 0, 0) })
+
+        // Reorganize the existing 37 action handlers, never cloning or triggering
+        // them automatically. Emergency privacy lock and start-talking remain visible.
+        val advancedNames = setOf(
+            "PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH",
+            "PERMITIR CAPTURAS 60 S — DEPURACIÓN",
+            "PROTEGER PANTALLA AHORA",
+            "PROBAR AUDIO JARVIS",
+            "CONFIGURAR VOZ EN ANDROID"
+        )
+        val advancedControls = (0 until layout.childCount)
+            .map { layout.getChildAt(it) }
+            .filterIsInstance<Button>()
+            .filter { it.text.toString() in advancedNames }
+        compactPanels = OmegaCompactPanels(this, layout) { header ->
+            if (::omegaScroll.isInitialized) {
+                omegaScroll.post {
+                    val shell = header.parent as? android.view.View
+                    if (shell != null) omegaScroll.smoothScrollTo(0, shell.top)
+                }
+            }
+        }
+        compactPanels.addGroup("CHAT Y MEMORIA", listOf(chatCard))
+        compactPanels.addGroup("JUEGOS Y RENDIMIENTO", listOf(gameCard, performanceCard))
+        compactPanels.addGroup("VISIÓN Y PANTALLA", listOf(visionCard))
+        compactPanels.addGroup(
+            "SISTEMA Y PRIVACIDAD",
+            listOf(handsCard, diagnosticsCard) + advancedControls
+        )
 
         omegaScroll = ScrollView(this).apply {
             isFillViewport = true
