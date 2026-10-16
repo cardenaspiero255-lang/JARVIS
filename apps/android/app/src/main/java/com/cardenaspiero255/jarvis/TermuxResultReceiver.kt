@@ -22,9 +22,18 @@ class TermuxResultReceiver : BroadcastReceiver() {
         val token = intent.getIntExtra(EXTRA_TOKEN, -1)
         if (token < 0) return
         val result: Bundle = try {
-            intent.getBundleExtra("result") ?: return
-        } catch (_: RuntimeException) { return }
-        if (!result.containsKey("exitCode") || !result.containsKey("err")) return
+            intent.getBundleExtra("result") ?: run {
+                TermuxResultSession.tracker.cancel(token)
+                return
+            }
+        } catch (_: RuntimeException) {
+            TermuxResultSession.tracker.cancel(token)
+            return
+        }
+        if (!result.containsKey("exitCode") || !result.containsKey("err")) {
+            TermuxResultSession.tracker.cancel(token)
+            return
+        }
         try {
             // Process only a bounded read-only /usr/bin/id proof, never transcript data.
             val exitCode = result.getInt("exitCode", Int.MIN_VALUE)
