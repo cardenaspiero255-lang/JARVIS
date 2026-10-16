@@ -924,6 +924,30 @@ class MainActivity : Activity() {
         foregroundSpeech = null
     }
 
+    /** Optional OEM fallback; only after a separate tap on the error-7 dialog. */
+    private fun openAndroidSystemVoiceByTap() {
+        if (!foregroundGate.canAcceptRecognitionResult()) return
+        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
+            statusText.text = "Ya hay una escucha pendiente."
+            return
+        }
+        val systemIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            // Broad Spanish locale for OEM providers lacking a Chilean model.
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(systemIntent, SPEECH_REQUEST)
+        } catch (_: RuntimeException) {
+            recognitionRequest.cancel()
+            statusText.text = "La voz del sistema no está disponible. Revisa " +
+                "el reconocimiento de voz y sus idiomas en Ajustes."
+        }
+    }
+
     private fun updateListeningButton() {
         if (::continuousListeningButton.isInitialized) {
             continuousListeningButton.text = if (foregroundListening.active)
@@ -1032,6 +1056,15 @@ class MainActivity : Activity() {
                             statusText.text = "Escucha continua detenida tras cinco intentos. " +
                                 "Revisa el micrófono y vuelve a activarla."
                         }
+                    } else if (error == SpeechRecognizer.ERROR_NO_MATCH && !isFinishing) {
+                        AlertDialog.Builder(this)
+                            .setTitle("No se reconoció tu voz")
+                            .setMessage("El servicio de Android no entendió la frase. " +
+                                "Puedes probar el cuadro de voz del sistema con idioma español.")
+                            .setNegativeButton("CANCELAR", null)
+                            .setPositiveButton("PROBAR VOZ DE ANDROID") { _, _ ->
+                                openAndroidSystemVoiceByTap()
+                            }.show()
                     }
                 } else {
                     if (foregroundListening.active) stopContinuousListening()
