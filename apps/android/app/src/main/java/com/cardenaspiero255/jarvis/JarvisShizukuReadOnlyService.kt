@@ -3,6 +3,7 @@ package com.cardenaspiero255.jarvis
 import android.os.Process
 import com.cardenaspiero255.jarvis.core.ShizukuFixedProbe
 import com.cardenaspiero255.jarvis.core.ShizukuFixedProbePolicy
+import com.cardenaspiero255.jarvis.core.ShizukuRequestBudget
 import java.util.concurrent.TimeUnit
 
 /**
@@ -18,7 +19,7 @@ class JarvisShizukuReadOnlyService : IJarvisShizukuReadOnly.Stub() {
         var command: java.lang.Process? = null
         return try {
             command = ProcessBuilder(probe.command).start()
-            if (!command.waitFor(4, TimeUnit.SECONDS)) {
+            if (!command.waitFor(ShizukuRequestBudget.PROCESS_WAIT_MS, TimeUnit.MILLISECONDS)) {
                 command.destroyForcibly()
                 "ERROR:TIMEOUT"
             } else if (command.exitValue() != 0) {
