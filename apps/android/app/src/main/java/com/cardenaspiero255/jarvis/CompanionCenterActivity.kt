@@ -26,7 +26,7 @@ import rikka.shizuku.Shizuku
  */
 class CompanionCenterActivity : Activity() {
     private val policy = CompanionConnectionPolicy()
-    private val background = Color.rgb(10, 12, 20)
+    private val darkSurface = Color.rgb(10, 12, 20)
     private val accent = Color.rgb(239, 59, 81)
     private lateinit var content: LinearLayout
     private val shizukuPermissionListener =
@@ -34,11 +34,11 @@ class CompanionCenterActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = background
-        window.navigationBarColor = background
+        window.statusBarColor = darkSurface
+        window.navigationBarColor = darkSurface
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(background)
+            setBackgroundColor(darkSurface)
             setPadding(dp(20), dp(24), dp(20), dp(24))
         }
         setContentView(ScrollView(this).apply { addView(content) })
