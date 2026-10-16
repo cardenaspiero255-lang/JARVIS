@@ -17,6 +17,8 @@ import com.cardenaspiero255.jarvis.core.ReadOnlyDeviceInspection
 import com.cardenaspiero255.jarvis.core.DeviceInspectionFormatter
 import com.cardenaspiero255.jarvis.core.GamingReadinessPolicy
 import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
+import com.cardenaspiero255.jarvis.core.TermuxProbe
+import com.cardenaspiero255.jarvis.core.TermuxResultState
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import rikka.shizuku.Shizuku
@@ -125,6 +127,31 @@ internal class CompanionActionAdapters(private val activity: Activity) :
                 else visible.take(12).joinToString("\n") { it.title }
             true
         }
+        SafeAutomationStep.READ_TERMUX_LAST_RESULT -> {
+            val status = TermuxResultSession.tracker.status(SystemClock.elapsedRealtime())
+            lastReadout = if (status == TermuxResultState.VERIFIED)
+                "Termux verificado en esta sesión: " +
+                    "${TermuxResultSession.tracker.verifiedProbe(SystemClock.elapsedRealtime())?.label}. " +
+                    "Esto no otorga permisos de Shizuku."
+            else "Termux aún no tiene un resultado verificado en esta sesión: $status."
+            true
+        }
+        SafeAutomationStep.REQUEST_TERMUX_ID -> {
+            val sent = requestTermuxDiagnostic(TermuxProbe.IDENTITY)
+            lastReadout = if (sent)
+                "Solicitud local id enviada; resultado PENDIENTE, no verificado. " +
+                    "Usa TERMUX: CONSULTAR RESULTADO."
+            else "No se pudo enviar la solicitud Termux. Revisa permisos."
+            sent
+        }
+        SafeAutomationStep.REQUEST_TERMUX_VERSION -> {
+            val sent = requestTermuxDiagnostic(TermuxProbe.ANDROID_VERSION)
+            lastReadout = if (sent)
+                "Solicitud de versión Android enviada; resultado PENDIENTE, no verificado. " +
+                    "Usa TERMUX: CONSULTAR RESULTADO."
+            else "No se pudo enviar la solicitud Termux. Revisa permisos."
+            sent
+        }
         SafeAutomationStep.OPEN_ANDROID_SETTINGS -> try {
             activity.startActivity(Intent(Settings.ACTION_SETTINGS))
             true
@@ -144,11 +171,13 @@ internal class CompanionActionAdapters(private val activity: Activity) :
      * Execute only fixed read-only `id`; request a one-shot response token from
      * Termux >=0.109. Dispatch is WAITING, never success until callback exitCode.
      */
-    fun requestTermuxIdentityCheck(): Boolean {
+    fun requestTermuxIdentityCheck(): Boolean = requestTermuxDiagnostic(TermuxProbe.IDENTITY)
+
+    fun requestTermuxDiagnostic(probe: TermuxProbe): Boolean {
         if (activity.checkSelfPermission("com.termux.permission.RUN_COMMAND") !=
             PackageManager.PERMISSION_GRANTED) return false
         val now = SystemClock.elapsedRealtime()
-        val token = TermuxResultSession.tracker.begin(now)
+        val token = TermuxResultSession.tracker.begin(now, probe)
         return try {
             val replyIntent = Intent(activity, TermuxResultReceiver::class.java)
                 .setAction(TermuxResultReceiver.ACTION_RESULT)
@@ -158,9 +187,8 @@ internal class CompanionActionAdapters(private val activity: Activity) :
             val pending = PendingIntent.getBroadcast(activity, token, replyIntent, flags)
             val request = Intent("com.termux.RUN_COMMAND")
                 .setClassName("com.termux", "com.termux.app.RunCommandService")
-                .putExtra("com.termux.RUN_COMMAND_PATH",
-                    "/data/data/com.termux/files/usr/bin/id")
-                .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", emptyArray<String>())
+                .putExtra("com.termux.RUN_COMMAND_PATH", probe.executable)
+                .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", probe.arguments.toTypedArray())
                 .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
                 .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending)
             if (activity.startService(request) == null) {
