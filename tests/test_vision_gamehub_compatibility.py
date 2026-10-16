@@ -17,6 +17,13 @@ class VisionGameHubCompatibility(unittest.TestCase):
     def test_package_visibility_and_mlkit_dependency_are_both_preserved(self):
         root = ET.parse(ROOT / "apps/android/app/src/main/AndroidManifest.xml").getroot()
         packages = [p.get(ANDROID+"name") for p in root.findall("./queries/package")]
-        self.assertEqual(packages, ["com.cardenaspiero255.gamehubultra"])
+        self.assertEqual(set(packages), {
+            "com.cardenaspiero255.gamehubultra",
+            "moe.shizuku.privileged.api",
+            "com.rosan.dhizuku",
+            "com.bintianqi.owndroid",
+            "com.termux",
+        })
+        self.assertEqual(len(packages), 5)  # No duplicates or unrelated app visibility.
         build = (ROOT / "apps/android/app/build.gradle.kts").read_text()
         self.assertIn("com.google.mlkit:text-recognition:16.0.1", build)

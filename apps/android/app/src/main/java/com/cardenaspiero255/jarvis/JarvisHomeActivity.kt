@@ -224,6 +224,15 @@ class JarvisHomeActivity : Activity() {
         systemCard.addView(action("AJUSTES ORIGINALES DE ANDROID") {
             launchSettings(Settings.ACTION_SETTINGS)
         })
+        systemCard.addView(action("CONEXIONES  /  SHIZUKU Y HERRAMIENTAS") {
+            try {
+                startActivity(Intent(this, CompanionCenterActivity::class.java))
+            } catch (_: ActivityNotFoundException) {
+                showMessage("No se encontró el centro de conexiones.")
+            } catch (_: SecurityException) {
+                showMessage("Android bloqueó el centro de conexiones.")
+            }
+        })
         column.addView(systemCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(14) })
