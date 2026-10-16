@@ -26,6 +26,7 @@ class JarvisOsV2CompactContract(unittest.TestCase):
         home = (JAVA / "JarvisHomeActivity.kt").read_text(encoding="utf-8")
         self.assertIn("val maxVisible = if (query.isBlank() && !showAllApps) 12 else 60", home)
         self.assertIn('action("VER TODAS LAS APLICACIONES")', home)
+        self.assertIn("full.size > maxVisible && query.isBlank() && !showAllApps", home)
         self.assertIn("JarvisHomeCatalog.visible(installedApps, query, packageName, 200)", home)
 
     def test_original_assistant_callbacks_preserved_behind_opt_in_groups(self):
