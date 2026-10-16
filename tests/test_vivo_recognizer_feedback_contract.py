@@ -36,7 +36,8 @@ class VivoSpeechFeedbackContract(unittest.TestCase):
         self.assertIn("openAndroidSystemVoiceByTap()", activity)
         self.assertIn("recognitionRequest.begin(SystemClock.elapsedRealtime())", activity)
         self.assertIn("startActivityForResult(systemIntent, SPEECH_REQUEST)", activity)
-        self.assertIn("recording", "recording")  # No user audio persisted here.
+        self.assertNotIn("MediaRecorder(", activity)
+        self.assertNotIn("AudioRecord(", activity)
 
 if __name__ == "__main__":
     unittest.main()
