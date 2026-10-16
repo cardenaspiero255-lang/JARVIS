@@ -245,14 +245,22 @@ class CompanionCenterActivity : Activity() {
             }
         }
         addLine("CONTROLES AVANZADOS — Shizuku + GameHub", 17f, Color.WHITE, true)
-        action("SHIZUKU: PROCESOS, SERVICIOS Y APLICACIONES") {
-            confirmAdvancedShizuku()
-        }
-        action("AJUSTES ADB: CONSULTAR / VISTA PREVIA") {
-            confirmAdvancedShizuku()
-        }
-        action("GAMEHUB: PERFIL RECOMENDADO (SIN APLICAR)") {
-            confirmRoutine(SafeRoutine.GAMEHUB_PROFILE_PREVIEW)
+        action("FUNCIONES AVANZADAS: SHIZUKU + GAMEHUB") {
+            val choices = arrayOf(
+                "Shizuku: procesos, servicios y aplicaciones",
+                "Ajustes ADB: consultar sin cambiar",
+                "GameHub: perfil recomendado (sin aplicar)"
+            )
+            AlertDialog.Builder(this)
+                .setTitle("Controles avanzados — seguros")
+                .setItems(choices) { _, selection ->
+                    when (selection) {
+                        0, 1 -> confirmAdvancedShizuku()
+                        2 -> confirmRoutine(SafeRoutine.GAMEHUB_PROFILE_PREVIEW)
+                    }
+                }
+                .setNegativeButton("CANCELAR", null)
+                .show()
         }
         addLine("Los ajustes ADB son solo lectura hasta acreditar autorización, " +
             "verificación y rollback E2E. No se alteran servicios, procesos ni FPS.",
