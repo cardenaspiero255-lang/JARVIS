@@ -23,8 +23,8 @@ android {
         // never replacing its app package, local memory or installed signature.
         debug {
             applicationIdSuffix = ".osv2preview"
-            versionNameSuffix = "-jarvis-os-v2-preview"
-            resValue("string", "jarvis_application_label", "JARVIS OS V2 PREVIEW")
+            versionNameSuffix = "-jarvis-os-v3-preview"
+            resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")
         }
         release {
             isMinifyEnabled = false

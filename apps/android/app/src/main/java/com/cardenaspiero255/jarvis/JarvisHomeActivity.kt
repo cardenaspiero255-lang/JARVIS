@@ -73,7 +73,7 @@ class JarvisHomeActivity : Activity() {
         }
         val identity = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         identity.addView(text("J A R V I S   O S", 26f, Color.WHITE, bold = true))
-        identity.addView(text("HOME SHELL  /  V2  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
+        identity.addView(text("HOME SHELL  /  V3  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
         top.addView(identity, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(text("F U N T O U C H\nI N T A C T O", 9f, muted).apply {
             gravity = Gravity.END
@@ -133,7 +133,7 @@ class JarvisHomeActivity : Activity() {
             openAssistant()
         })
         quickCard.addView(text(
-            "La versión V2 tiene memoria local separada. " +
+            "Esta versión de prueba tiene memoria local separada. " +
                 "Tu JARVIS original y sus datos permanecen intactos.", 11.5f, muted
         ).apply { setPadding(dp(6), dp(12), dp(6), dp(2)) })
         quickCard.addView(action("JARVIS ORIGINAL  /  HISTORIAL ANTERIOR") {
@@ -237,7 +237,7 @@ class JarvisHomeActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(14) })
         modules[MODULE_SISTEMA] = systemCard
-        column.addView(text("JARVIS OS V2  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
+        column.addView(text("JARVIS OS V3  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(18), 0, dp(4))
         })

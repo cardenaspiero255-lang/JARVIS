@@ -60,7 +60,7 @@ class JarvisOsLauncherContract(unittest.TestCase):
         manifest = (SRC / "AndroidManifest.xml").read_text()
         self.assertIn('applicationId = "com.cardenaspiero255.jarvis"', gradle)
         self.assertIn('applicationIdSuffix = ".osv2preview"', gradle)
-        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V2 PREVIEW")', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")', gradle)
         self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OMEGA")', gradle)
         self.assertIn('android:label="@string/jarvis_application_label"', manifest)
         self.assertIn('packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)', home)

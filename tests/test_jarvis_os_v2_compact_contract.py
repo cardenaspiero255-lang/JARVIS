@@ -70,7 +70,7 @@ class JarvisOsV2CompactContract(unittest.TestCase):
         gradle = (ANDROID / "build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn('applicationIdSuffix = ".osv2preview"', gradle)
         self.assertNotIn('applicationIdSuffix = ".ospreview"', gradle)
-        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V2 PREVIEW")', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")', gradle)
         self.assertNotIn("android.permission.QUERY_ALL_PACKAGES", manifest)
         for content in (home, panels):
             for forbidden in (
