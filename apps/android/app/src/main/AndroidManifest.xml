@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <queries>
         <package android:name="com.cardenaspiero255.gamehubultra" />
+        <!-- Scoped package visibility: launchable apps only, no QUERY_ALL_PACKAGES. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
         </intent>
@@ -24,6 +29,17 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
+        <!-- Optional HOME candidate: Android lets the user choose, never changes default automatically. -->
+        <activity
+            android:name=".JarvisHomeActivity"
+            android:exported="true"
+            android:label="JARVIS OS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
