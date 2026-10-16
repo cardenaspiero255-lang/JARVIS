@@ -9,6 +9,7 @@ import com.cardenaspiero255.jarvis.core.CompanionEvidence
 import com.cardenaspiero255.jarvis.core.SafeAutomationGateway
 import com.cardenaspiero255.jarvis.core.SafeAutomationStep
 import com.rosan.dhizuku.api.Dhizuku
+import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import rikka.shizuku.Shizuku
 
 /**
@@ -42,11 +43,13 @@ internal class CompanionActionAdapters(private val activity: Activity) :
                 onResult()
                 return true
             }
-            Dhizuku.requestPermission { _ ->
-                activity.runOnUiThread {
-                    if (!activity.isFinishing && !activity.isDestroyed) onResult()
+            Dhizuku.requestPermission(object : DhizukuRequestPermissionListener() {
+                override fun onRequestPermission(grantResult: Int) {
+                    activity.runOnUiThread {
+                        if (!activity.isFinishing && !activity.isDestroyed) onResult()
+                    }
                 }
-            }
+            })
             true
         } catch (_: Exception) { false }
     }
