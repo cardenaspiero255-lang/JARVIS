@@ -15,7 +15,7 @@ class JarvisShizukuReadOnlyService : IJarvisShizukuReadOnly.Stub() {
     override fun readProbe(fixedCode: Int): String {
         if (!ShizukuFixedProbePolicy.isAllowedUid(Process.myUid())) return "ERROR:IDENTITY"
         val probe = ShizukuFixedProbe.fromCode(fixedCode) ?: return "ERROR:NOT_ALLOWED"
-        var command: Process? = null
+        var command: java.lang.Process? = null
         return try {
             command = ProcessBuilder(probe.command).start()
             if (!command.waitFor(4, TimeUnit.SECONDS)) {
