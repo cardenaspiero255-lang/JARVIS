@@ -13,6 +13,10 @@ import com.cardenaspiero255.jarvis.core.SafeAutomationGateway
 import com.cardenaspiero255.jarvis.core.SafeAutomationStep
 import com.cardenaspiero255.jarvis.core.ShizukuReadOnlyProbePolicy
 import com.cardenaspiero255.jarvis.core.ShizukuReadOnlyStatus
+import com.cardenaspiero255.jarvis.core.ReadOnlyDeviceInspection
+import com.cardenaspiero255.jarvis.core.DeviceInspectionFormatter
+import com.cardenaspiero255.jarvis.core.GamingReadinessPolicy
+import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import rikka.shizuku.Shizuku
@@ -23,6 +27,11 @@ import rikka.shizuku.Shizuku
  */
 internal class CompanionActionAdapters(private val activity: Activity) :
     SafeAutomationGateway {
+
+    private var lastReadout: String? = null
+
+    /** Only the single foreground Activity receives this ephemeral result. */
+    fun takeLastReadout(): String? = lastReadout.also { lastReadout = null }
 
     fun shizukuReady(): Boolean = try {
         Shizuku.pingBinder() &&
@@ -99,6 +108,23 @@ internal class CompanionActionAdapters(private val activity: Activity) :
         SafeAutomationStep.OPEN_DHIZUKU -> openCompanion("com.rosan.dhizuku")
         SafeAutomationStep.OPEN_TERMUX -> openCompanion("com.termux")
         SafeAutomationStep.OPEN_OWNDROID -> openCompanion("com.bintianqi.owndroid")
+        SafeAutomationStep.READ_DEVICE_DIAGNOSTIC -> {
+            lastReadout = DeviceInspectionFormatter.describe(
+                ReadOnlyDeviceInspection.capture(activity))
+            true
+        }
+        SafeAutomationStep.READ_GAMING_STATUS -> {
+            val snapshot = ReadOnlyDeviceInspection.capture(activity)
+            lastReadout = GamingReadinessPolicy.message(GamingReadinessPolicy.classify(
+                snapshot.availableRamMb, snapshot.lowMemory))
+            true
+        }
+        SafeAutomationStep.LIST_LAUNCHABLE_APPS -> {
+            val visible = ReadOnlyAppInventory.list(activity)
+            lastReadout = if (visible.isEmpty()) "No se encontraron aplicaciones visibles."
+                else visible.take(12).joinToString("\n") { it.title }
+            true
+        }
         SafeAutomationStep.OPEN_ANDROID_SETTINGS -> try {
             activity.startActivity(Intent(Settings.ACTION_SETTINGS))
             true
