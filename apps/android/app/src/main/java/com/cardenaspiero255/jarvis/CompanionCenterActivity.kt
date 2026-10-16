@@ -1,6 +1,7 @@
 package com.cardenaspiero255.jarvis
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,9 +9,12 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
+import android.view.View
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -18,6 +22,9 @@ import com.cardenaspiero255.jarvis.core.CompanionConnectionPolicy
 import com.cardenaspiero255.jarvis.core.CompanionEvidence
 import com.cardenaspiero255.jarvis.core.CompanionKind
 import com.cardenaspiero255.jarvis.core.CompanionState
+import com.cardenaspiero255.jarvis.core.SafeAutomationEngine
+import com.cardenaspiero255.jarvis.core.SafeAutomationOutcome
+import com.cardenaspiero255.jarvis.core.SafeRoutine
 import rikka.shizuku.Shizuku
 
 /**
@@ -26,6 +33,8 @@ import rikka.shizuku.Shizuku
  */
 class CompanionCenterActivity : Activity() {
     private val policy = CompanionConnectionPolicy()
+    private lateinit var adapters: CompanionActionAdapters
+    private lateinit var automation: SafeAutomationEngine
     private val darkSurface = Color.rgb(10, 12, 20)
     private val accent = Color.rgb(239, 59, 81)
     private lateinit var content: LinearLayout
@@ -34,6 +43,8 @@ class CompanionCenterActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        adapters = CompanionActionAdapters(this)
+        automation = SafeAutomationEngine(adapters)
         window.statusBarColor = darkSurface
         window.navigationBarColor = darkSurface
         content = LinearLayout(this).apply {
@@ -53,6 +64,7 @@ class CompanionCenterActivity : Activity() {
 
     override fun onDestroy() {
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        if (::automation.isInitialized) automation.stop()
         super.onDestroy()
     }
 
@@ -63,9 +75,9 @@ class CompanionCenterActivity : Activity() {
         addLine("Sin root. Funtouch OS permanece intacto.", 13f, accent)
         addLine(
             "Detectar una aplicación NO significa que tenga permisos operativos. " +
-                "Solo Shizuku comprueba aquí su servicio y autorización real. " +
-                "Dhizuku, OwnDroid y Termux requieren configuración y verificación " +
-                "adicional antes de ejecutar cualquier comando.", 13f, Color.LTGRAY
+                "Shizuku y Dhizuku comprueban aquí sus permisos de SDK. " +
+                "OwnDroid requiere clave propia y Termux necesita permisos externos; " +
+                "detectar una APK no demuestra que sus comandos funcionen.", 13f, Color.LTGRAY
         )
         CompanionKind.values().forEach { kind ->
             val companionPackage = when (kind) {
@@ -75,16 +87,19 @@ class CompanionCenterActivity : Activity() {
                 CompanionKind.TERMUX -> "com.termux"
             }
             val installed = isInstalled(companionPackage)
-            val evidence = if (kind == CompanionKind.SHIZUKU) shizukuEvidence(installed)
-                           else CompanionEvidence(installed)
+            val evidence = when (kind) {
+                CompanionKind.SHIZUKU -> shizukuEvidence(installed)
+                CompanionKind.DHIZUKU -> adapters.dhizukuEvidence(installed)
+                else -> CompanionEvidence(installed)
+            }
             val state = policy.state(kind, evidence)
             addLine(kind.name, 18f, Color.WHITE, true)
             addLine(when (state) {
                 CompanionState.NOT_INSTALLED -> "No instalada o no visible para Android"
-                CompanionState.NEEDS_START -> "Instalada; inicia el servicio Shizuku"
+                CompanionState.NEEDS_START -> "Instalada; inicia el servicio correspondiente"
                 CompanionState.NEEDS_PERMISSION -> "Servicio activo; falta autorización a JARVIS"
                 CompanionState.NEEDS_SETUP -> "Detectada; integración privilegiada aún no configurada"
-                CompanionState.READY -> "Shizuku conectado y permiso concedido; acciones aún bloqueadas"
+                CompanionState.READY -> "API autorizada; políticas administrativas no habilitadas"
             }, 12f, if (state == CompanionState.READY) Color.GREEN else Color.LTGRAY)
 
             if (policy.canOpenCompanion(installed, explicitTap = true)) {
@@ -101,12 +116,118 @@ class CompanionCenterActivity : Activity() {
                     }
                 }
             }
+            if (kind == CompanionKind.DHIZUKU &&
+                state == CompanionState.NEEDS_PERMISSION) {
+                action("AUTORIZAR JARVIS EN DHIZUKU") {
+                    if (!adapters.requestDhizukuPermission { redraw() }) {
+                        message("Dhizuku no está activado o rechazó la solicitud.")
+                    }
+                }
+            }
+            if (kind == CompanionKind.TERMUX && installed) {
+                action("TERMUX: PROBAR COMANDO LOCAL id") { confirmTermuxCheck() }
+            }
+            if (kind == CompanionKind.OWNDROID && installed) {
+                action("OWNDROID: BLOQUEAR PANTALLA (CONFIRMAR)") { confirmOwnDroidLock() }
+            }
+        }
+        addLine("MOTOR LOCAL DE AUTOMATIZACIÓN", 17f, Color.WHITE, true)
+        addLine("Rutinas fijas, autorización de un solo uso, sin Tasker. " +
+            "Las palabras reconocidas por voz nunca ejecutan por sí mismas.", 12f, Color.LTGRAY)
+        action("ELEGIR RUTINA SEGURA") { selectRoutine() }
+        action("PARADA DE EMERGENCIA  /  CANCELAR RUTINA") {
+            automation.stop()
+            message("Rutinas detenidas y autorización pendiente revocada.")
         }
         addLine(
-            "Privilegios de administración, scripts y ADB: deshabilitados " +
-                "hasta que sus adaptadores tengan pruebas y autorización específica.",
+            "No hay root ni cambios de Device Owner, borrado de datos, políticas " +
+                "administrativas automáticas o shell arbitraria.",
             12f, accent
         )
+    }
+
+    private fun selectRoutine() {
+        val choices = SafeRoutine.values()
+        AlertDialog.Builder(this)
+            .setTitle("Automatizaciones locales")
+            .setItems(choices.map { it.name.replace('_', ' ') }.toTypedArray()) { _, index ->
+                confirmRoutine(choices[index])
+            }
+            .setNegativeButton("CANCELAR", null)
+            .show()
+    }
+
+    private fun confirmRoutine(routine: SafeRoutine) {
+        val preview = automation.prepare(routine)
+        AlertDialog.Builder(this)
+            .setTitle("Autorizar UNA ejecución")
+            .setMessage(preview + "\\n\\nEsta autorización caduca al ejecutar o cancelar.")
+            .setNegativeButton("CANCELAR") { _, _ -> automation.stop() }
+            .setOnCancelListener { automation.stop() }
+            .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
+                val report = automation.confirmAndRun(routine, explicitTap = true)
+                val status = when (report.outcome) {
+                    SafeAutomationOutcome.COMPLETED -> "Acciones locales solicitadas"
+                    SafeAutomationOutcome.FAILED -> "Detenida por falta de acceso"
+                    SafeAutomationOutcome.STOPPED -> "Detenida por el usuario"
+                    SafeAutomationOutcome.DENIED -> "Autorización no válida"
+                }
+                message("$status: ${report.completedSteps}/${report.totalSteps}.")
+            }
+            .show()
+    }
+
+    private fun confirmTermuxCheck() {
+        AlertDialog.Builder(this)
+            .setTitle("Prueba aislada de Termux")
+            .setMessage("Se solicitará ÚNICAMENTE /data/data/com.termux/files/usr/bin/id, " +
+                "sin argumentos ni scripts. Requiere permiso RUN_COMMAND y " +
+                "allow-external-apps=true en Termux. El envío NO demuestra la ejecución.")
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
+                if (adapters.requestTermuxIdentityCheck()) {
+                    message("Solicitud enviada a Termux; resultado NO verificado.")
+                } else {
+                    message("Falta permiso o Termux rechazó iniciar la prueba.")
+                }
+            }
+            .show()
+    }
+
+    private fun confirmOwnDroidLock() {
+        val keyInput = EditText(this).apply {
+            hint = "Clave API configurada en OwnDroid"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            maxLines = 1
+        }
+        AlertDialog.Builder(this)
+            .setTitle("OwnDroid — bloqueo de pantalla")
+            .setMessage("Escribe tu clave API. JARVIS no la guardará. " +
+                "OwnDroid debe tener API habilitada. Es una petición administrativa.")
+            .setView(keyInput)
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("SIGUIENTE") { _, _ ->
+                val ephemeralKey = keyInput.text.toString()
+                if (ephemeralKey.isBlank() || ephemeralKey.length > 256) {
+                    message("Clave API no válida.")
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("¿Bloquear el dispositivo ahora?")
+                        .setMessage("OwnDroid recibirá la orden LOCK. " +
+                            "La pantalla puede bloquearse y necesitar tu PIN.")
+                        .setNegativeButton("CANCELAR", null)
+                        .setPositiveButton("CONFIRMAR BLOQUEO") { _, _ ->
+                            if (adapters.sendExplicitOwnDroidLock(ephemeralKey)) {
+                                message("Solicitud LOCK enviada; ejecución NO verificada.")
+                            } else {
+                                message("OwnDroid no aceptó el envío.")
+                            }
+                        }
+                        .show()
+                }
+            }
+            .show()
     }
 
     private fun shizukuEvidence(installed: Boolean): CompanionEvidence {
