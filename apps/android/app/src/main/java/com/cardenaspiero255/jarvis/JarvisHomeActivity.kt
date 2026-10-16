@@ -302,7 +302,7 @@ class JarvisHomeActivity : Activity() {
         filtered.forEach { app ->
             appList.addView(action(app.label) { openInstalledApp(app) })
         }
-        if (full.size > maxVisible && query.isBlank()) {
+        if (full.size > maxVisible && query.isBlank() && !showAllApps) {
             appList.addView(action("VER TODAS LAS APLICACIONES") {
                 showAllApps = true
                 showApps("")
