@@ -5,7 +5,13 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- User must grant JARVIS access in Shizuku; package installation is not permission. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API" />
     <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="com.rosan.dhizuku" />
+        <package android:name="com.bintianqi.owndroid" />
+        <package android:name="com.termux" />
         <package android:name="com.cardenaspiero255.gamehubultra" />
         <!-- Scoped package visibility: launchable apps only, no QUERY_ALL_PACKAGES. -->
         <intent>
@@ -40,6 +46,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".CompanionCenterActivity"
+            android:exported="false" />
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
