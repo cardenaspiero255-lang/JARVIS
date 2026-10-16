@@ -79,7 +79,8 @@ class JarvisOsV2NavigationInstrumentedTest {
                 val root = activity.window.decorView
                 assertTrue(findText(root, "EVALUAR ANTES DE JUGAR")?.isShown == true)
                 assertFalse(findText(root, "ENVIAR MENSAJE")?.isShown == true)
-                assertFalse(findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
+                assertTrue("Screenshot opt-in should be discoverable after Vivo bug report",
+                    findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
             }
         } finally {
             instrument.runOnMainSync { activity.finish() }
@@ -103,14 +104,15 @@ class JarvisOsV2NavigationInstrumentedTest {
                 assertTrue("Game group affordance visible", findText(root, "JUEGOS Y RENDIMIENTO")?.isShown == true)
                 assertFalse("One-tap erase not exposed initially",
                     findText(root, "BORRAR HISTORIAL Y CLAVE CIFRADA")?.isShown == true)
-                assertFalse("Capture exception stays collapsed",
+                assertTrue("Screenshot opt-in must stay discoverable",
                     findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
                 assertFalse("Chat send collapsed until entered",
                     findText(root, "ENVIAR MENSAJE")?.isShown == true)
 
                 assertTrue(findText(root, "CHAT Y MEMORIA")!!.performClick())
                 assertTrue(findText(root, "ENVIAR MENSAJE")?.isShown == true)
-                assertFalse(findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
+                assertTrue("Screenshot opt-in should be discoverable after Vivo bug report",
+                    findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
                 assertTrue(findText(root, "JUEGOS Y RENDIMIENTO")!!.performClick())
                 assertTrue(findText(root, "EVALUAR ANTES DE JUGAR")?.isShown == true)
                 assertFalse(findText(root, "ENVIAR MENSAJE")?.isShown == true)
