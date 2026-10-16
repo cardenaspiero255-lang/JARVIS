@@ -51,6 +51,10 @@
         <activity
             android:name=".CompanionCenterActivity"
             android:exported="false" />
+        <!-- Receives Termux one-shot result only through an explicit PendingIntent. -->
+        <receiver
+            android:name=".TermuxResultReceiver"
+            android:exported="false" />
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
