@@ -125,8 +125,8 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
                 "${probe.label}: ${value.take(120)}"
             else "${probe.label}: no verificable"
         }
-        return "\\n\\nDiagnóstico avanzado (solo lectura):\\n" + results.joinToString("\\n") +
-            "\\nLa disponibilidad depende de Android/Funtouch OS; no se aplicaron cambios."
+        return "\n\nDiagnóstico avanzado (solo lectura):\n" + results.joinToString("\n") +
+            "\nLa disponibilidad depende de Android/Funtouch OS; no se aplicaron cambios."
     }
 
     private fun complete(message: String, requestId: Int) {
