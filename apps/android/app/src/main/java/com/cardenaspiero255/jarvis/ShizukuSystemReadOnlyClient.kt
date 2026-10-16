@@ -26,7 +26,11 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
     private var connection: ServiceConnection? = null
     private var timeout: Runnable? = null
 
-    fun request(callback: (String) -> Unit) {
+    fun request(callback: (String) -> Unit) = requestInternal(false, callback)
+
+    fun requestAdvanced(callback: (String) -> Unit) = requestInternal(true, callback)
+
+    private fun requestInternal(advanced: Boolean, callback: (String) -> Unit) {
         cancel()
         if (closed) return
         val requestId = generation
@@ -75,7 +79,8 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
                                 "Consulta ADB/shell verificada (UserService remoto UID $uid).\n" +
                                     "Versión Android: $release\n" +
                                     "Paquete de sistema: $systemPackage\n" +
-                                    "No se modificaron configuraciones ni permisos."
+                                    "No se modificaron configuraciones ni permisos." +
+                                    if (advanced) advancedReport(remote) else ""
                             } else {
                                 "El UserService respondió, pero una de las consultas fue " +
                                     "rechazada o no pudo validarse. No se acredita la operación."
@@ -103,6 +108,25 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
         } catch (_: RuntimeException) {
             complete("Shizuku rechazó iniciar el servicio remoto; revisa sus permisos.", requestId)
         }
+    }
+
+    /** Extra read-only checks; each result must pass its own strict validator. */
+    private fun advancedReport(remote: IJarvisShizukuReadOnly): String {
+        val probes = listOf(
+            ShizukuFixedProbe.ZYGOTE_SERVICE,
+            ShizukuFixedProbe.DISPLAY_SERVICE,
+            ShizukuFixedProbe.SYSTEM_SERVER_PID,
+            ShizukuFixedProbe.SETTINGS_PACKAGE,
+            ShizukuFixedProbe.WINDOW_ANIMATION_SCALE
+        )
+        val results = probes.map { probe ->
+            val value = try { remote.readProbe(probe.code) } catch (_: Exception) { "" }
+            if (ShizukuFixedProbePolicy.isValid(probe, value))
+                "${probe.label}: ${value.take(120)}"
+            else "${probe.label}: no verificable"
+        }
+        return "\\n\\nDiagnóstico avanzado (solo lectura):\\n" + results.joinToString("\\n") +
+            "\\nLa disponibilidad depende de Android/Funtouch OS; no se aplicaron cambios."
     }
 
     private fun complete(message: String, requestId: Int) {
