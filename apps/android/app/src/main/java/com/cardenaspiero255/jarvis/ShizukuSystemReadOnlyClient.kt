@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.Looper
 import com.cardenaspiero255.jarvis.core.ShizukuFixedProbe
 import com.cardenaspiero255.jarvis.core.ShizukuFixedProbePolicy
+import com.cardenaspiero255.jarvis.core.ShizukuRequestBudget
 import java.util.concurrent.Executors
 import rikka.shizuku.Shizuku
 
@@ -102,7 +103,7 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
             complete("Tiempo de espera agotado al consultar Shizuku.", requestId)
         }
         timeout = timer
-        main.postDelayed(timer, 12_000L)
+        main.postDelayed(timer, ShizukuRequestBudget.timeoutMs(advanced))
         try {
             Shizuku.bindUserService(newArgs, conn)
         } catch (_: RuntimeException) {
