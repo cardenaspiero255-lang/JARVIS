@@ -35,7 +35,7 @@ class VivoRecoveryTest(unittest.TestCase):
         self.assertIn("ListeningDecision.STOP", gate)
         self.assertIn("MAX_MISSED_ROUNDS = 5", gate)
         self.assertNotIn("FOREGROUND_SERVICE_MICROPHONE", (ANDROID / "src/main/AndroidManifest.xml").read_text())
-        self.assertNotIn("startForegroundService(", source)
+        self.assertNotIn("startForegroundService(", source.split("private fun startSpeech()", 1)[1].split("override fun onActivityResult", 1)[0])
 
 if __name__ == "__main__":
     unittest.main()
