@@ -141,23 +141,10 @@ class JarvisHomeActivity : Activity() {
                 showMessage("Android impidió abrir JARVIS.")
             }
         })
-        quickCard.addView(action("GAMEHUB ULTRA  /  JUEGOS") {
-            val intent = packageManager.getLaunchIntentForPackage(GAMEHUB_PACKAGE)
-            if (intent == null) {
-                showMessage("GameHub Ultra no está instalado o no es visible.")
-            } else {
-                try {
-                    startActivity(intent)
-                } catch (_: ActivityNotFoundException) {
-                    showMessage("No se pudo abrir GameHub Ultra.")
-                } catch (_: SecurityException) {
-                    showMessage("Android no permite abrir esa aplicación.")
-                }
-            }
-        })
         column.addView(quickCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(16) })
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_JARVIS] = quickCard
 
         val drawer = card()
         drawer.addView(text("APLICACIONES INSTALADAS", 12f, scarlet, true))
@@ -195,7 +182,36 @@ class JarvisHomeActivity : Activity() {
         drawer.addView(appList)
         column.addView(drawer, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(16) })
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_APPS] = drawer
+
+        val gamingCard = card()
+        gamingCard.addView(text("MODO GAMING  /  GAMEHUB ULTRA", 12f, scarlet, true))
+        gamingCard.addView(text(
+            "Abre GameHub o entra al asistente para consultar los perfiles de juego. " +
+                "No se modifica el hardware automáticamente.", 12f, muted
+        ).apply { setPadding(0, dp(10), 0, dp(8)) })
+        gamingCard.addView(action("GAMEHUB ULTRA  /  JUEGOS") {
+            val intent = packageManager.getLaunchIntentForPackage(GAMEHUB_PACKAGE)
+            if (intent == null) {
+                showMessage("GameHub Ultra no está instalado o no es visible.")
+            } else {
+                try {
+                    startActivity(intent)
+                } catch (_: ActivityNotFoundException) {
+                    showMessage("No se pudo abrir GameHub Ultra.")
+                } catch (_: SecurityException) {
+                    showMessage("Android no permite abrir esa aplicación.")
+                }
+            }
+        })
+        gamingCard.addView(action("ABRIR ASESOR DE JUEGOS") {
+            openAssistant()
+        })
+        column.addView(gamingCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_GAMING] = gamingCard
 
         val systemCard = card()
         systemCard.addView(text("FUNTOUCH OS SIGUE AQUÍ", 12f, scarlet, true))
@@ -210,16 +226,43 @@ class JarvisHomeActivity : Activity() {
         systemCard.addView(action("AJUSTES ORIGINALES DE ANDROID") {
             launchSettings(Settings.ACTION_SETTINGS)
         })
-        column.addView(systemCard)
-        column.addView(text("JARVIS OS V1  ·  SIN ROOT  ·  SIN BORRAR DATOS", 10f, muted).apply {
+        column.addView(systemCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_SISTEMA] = systemCard
+        column.addView(text("JARVIS OS V2  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
             gravity = Gravity.CENTER
-            setPadding(0, dp(22), 0, dp(4))
+            setPadding(0, dp(18), 0, dp(4))
         })
+        selectModule(savedInstanceState?.getString(SELECTED_MODULE_KEY) ?: MODULE_JARVIS)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(SELECTED_MODULE_KEY, activeModule)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
         super.onResume()
-        if (::appList.isInitialized) loadInstalledApps()
+        if (activeModule == MODULE_APPS && ::appList.isInitialized) loadInstalledApps()
+    }
+
+    private fun selectModule(name: String) {
+        if (name !in modules) return
+        activeModule = name
+        modules.forEach { (key, panel) ->
+            panel.visibility = if (key == name) View.VISIBLE else View.GONE
+        }
+        moduleTabs.forEach { (key, tab) ->
+            val selected = key == name
+            tab.setTextColor(if (selected) Color.WHITE else muted)
+            tab.background = surface(
+                if (selected) Color.rgb(143, 29, 54) else Color.rgb(29, 28, 43),
+                if (selected) scarlet else Color.rgb(80, 50, 66),
+                15f
+            )
+        }
+        if (name == MODULE_APPS && ::appList.isInitialized) loadInstalledApps()
     }
 
     private fun loadInstalledApps() {
