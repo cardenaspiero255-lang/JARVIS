@@ -42,6 +42,10 @@ class JarvisHomeActivity : Activity() {
     private lateinit var appList: LinearLayout
     private lateinit var search: EditText
     private lateinit var catalogStatus: TextView
+    private val modules = linkedMapOf<String, LinearLayout>()
+    private val moduleTabs = linkedMapOf<String, TextView>()
+    private var activeModule = MODULE_JARVIS
+    private var showAllApps = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,7 +73,7 @@ class JarvisHomeActivity : Activity() {
         }
         val identity = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         identity.addView(text("J A R V I S   O S", 26f, Color.WHITE, bold = true))
-        identity.addView(text("HOME SHELL  /  V1  /  LOCAL", 10f, scarlet, bold = true))
+        identity.addView(text("HOME SHELL  /  V2  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
         top.addView(identity, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(text("F U N T O U C H\nI N T A C T O", 9f, muted).apply {
             gravity = Gravity.END
@@ -87,12 +91,36 @@ class JarvisHomeActivity : Activity() {
             letterSpacing = .10f
         })
         column.addView(text(
-            "Tu asistente, tus aplicaciones y tus herramientas. Todo sobre Funtouch OS.",
+            "Una pantalla. Cuatro módulos. Tus funciones cuando las necesites.",
             13f, muted
         ).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(14), dp(12), dp(18))
+            setPadding(dp(12), dp(12), dp(12), dp(14))
         })
+        // Four first-level actions, never a wall of buttons or automatic commands.
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        listOf(MODULE_JARVIS, MODULE_APPS, MODULE_GAMING, MODULE_SISTEMA).forEach { name ->
+            val tab = text(name, 11.5f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                minHeight = dp(55)
+                letterSpacing = .015f
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Módulo $name"
+                setOnClickListener { selectModule(name) }
+            }
+            moduleTabs[name] = tab
+            nav.addView(tab, LinearLayout.LayoutParams(0, dp(55), 1f).apply {
+                marginStart = dp(3)
+                marginEnd = dp(3)
+            })
+        }
+        column.addView(nav, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
 
         val quickCard = card()
         quickCard.addView(text("CENTRO DE CONTROL", 12f, scarlet, true))
@@ -100,36 +128,21 @@ class JarvisHomeActivity : Activity() {
             setPadding(0, dp(6), 0, dp(4))
         })
         quickCard.addView(action("ABRIR JARVIS  /  IA Y VOZ") {
-            // The preview APK uses a different applicationId: prefer the
-            // user's existing JARVIS app, preserving its conversation store.
-            val existing = if (packageName != ORIGINAL_JARVIS_PACKAGE) {
-                packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
-            } else null
-            try {
-                startActivity(existing ?: Intent(this, MainActivity::class.java))
-            } catch (_: ActivityNotFoundException) {
-                showMessage("JARVIS no está disponible en este momento.")
-            } catch (_: SecurityException) {
-                showMessage("Android impidió abrir JARVIS.")
-            }
+            // Use the compact V2 assistant bundled in this preview, not the
+            // unchanged 37-button original installation.
+            openAssistant()
         })
-        quickCard.addView(action("GAMEHUB ULTRA  /  JUEGOS") {
-            val intent = packageManager.getLaunchIntentForPackage(GAMEHUB_PACKAGE)
-            if (intent == null) {
-                showMessage("GameHub Ultra no está instalado o no es visible.")
-            } else {
-                try {
-                    startActivity(intent)
-                } catch (_: ActivityNotFoundException) {
-                    showMessage("No se pudo abrir GameHub Ultra.")
-                } catch (_: SecurityException) {
-                    showMessage("Android no permite abrir esa aplicación.")
-                }
-            }
+        quickCard.addView(text(
+            "La versión V2 tiene memoria local separada. " +
+                "Tu JARVIS original y sus datos permanecen intactos.", 11.5f, muted
+        ).apply { setPadding(dp(6), dp(12), dp(6), dp(2)) })
+        quickCard.addView(action("JARVIS ORIGINAL  /  HISTORIAL ANTERIOR") {
+            openOriginalAssistant()
         })
         column.addView(quickCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(16) })
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_JARVIS] = quickCard
 
         val drawer = card()
         drawer.addView(text("APLICACIONES INSTALADAS", 12f, scarlet, true))
@@ -167,7 +180,36 @@ class JarvisHomeActivity : Activity() {
         drawer.addView(appList)
         column.addView(drawer, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(16) })
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_APPS] = drawer
+
+        val gamingCard = card()
+        gamingCard.addView(text("MODO GAMING  /  GAMEHUB ULTRA", 12f, scarlet, true))
+        gamingCard.addView(text(
+            "Abre GameHub o entra al asistente para consultar los perfiles de juego. " +
+                "No se modifica el hardware automáticamente.", 12f, muted
+        ).apply { setPadding(0, dp(10), 0, dp(8)) })
+        gamingCard.addView(action("GAMEHUB ULTRA  /  JUEGOS") {
+            val intent = packageManager.getLaunchIntentForPackage(GAMEHUB_PACKAGE)
+            if (intent == null) {
+                showMessage("GameHub Ultra no está instalado o no es visible.")
+            } else {
+                try {
+                    startActivity(intent)
+                } catch (_: ActivityNotFoundException) {
+                    showMessage("No se pudo abrir GameHub Ultra.")
+                } catch (_: SecurityException) {
+                    showMessage("Android no permite abrir esa aplicación.")
+                }
+            }
+        })
+        gamingCard.addView(action("ABRIR ASESOR DE JUEGOS") {
+            openAssistant("JUEGOS Y RENDIMIENTO")
+        })
+        column.addView(gamingCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_GAMING] = gamingCard
 
         val systemCard = card()
         systemCard.addView(text("FUNTOUCH OS SIGUE AQUÍ", 12f, scarlet, true))
@@ -182,16 +224,43 @@ class JarvisHomeActivity : Activity() {
         systemCard.addView(action("AJUSTES ORIGINALES DE ANDROID") {
             launchSettings(Settings.ACTION_SETTINGS)
         })
-        column.addView(systemCard)
-        column.addView(text("JARVIS OS V1  ·  SIN ROOT  ·  SIN BORRAR DATOS", 10f, muted).apply {
+        column.addView(systemCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+        modules[MODULE_SISTEMA] = systemCard
+        column.addView(text("JARVIS OS V2  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
             gravity = Gravity.CENTER
-            setPadding(0, dp(22), 0, dp(4))
+            setPadding(0, dp(18), 0, dp(4))
         })
+        selectModule(savedInstanceState?.getString(SELECTED_MODULE_KEY) ?: MODULE_JARVIS)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(SELECTED_MODULE_KEY, activeModule)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
         super.onResume()
-        if (::appList.isInitialized) loadInstalledApps()
+        if (activeModule == MODULE_APPS && ::appList.isInitialized) loadInstalledApps()
+    }
+
+    private fun selectModule(name: String) {
+        if (name !in modules) return
+        activeModule = name
+        modules.forEach { (key, panel) ->
+            panel.visibility = if (key == name) View.VISIBLE else View.GONE
+        }
+        moduleTabs.forEach { (key, tab) ->
+            val selected = key == name
+            tab.setTextColor(if (selected) Color.WHITE else muted)
+            tab.background = surface(
+                if (selected) Color.rgb(143, 29, 54) else Color.rgb(29, 28, 43),
+                if (selected) scarlet else Color.rgb(80, 50, 66),
+                15f
+            )
+        }
+        if (name == MODULE_APPS && ::appList.isInitialized) loadInstalledApps()
     }
 
     private fun loadInstalledApps() {
@@ -220,14 +289,57 @@ class JarvisHomeActivity : Activity() {
     private fun showApps(query: String) {
         if (!::appList.isInitialized || !::catalogStatus.isInitialized) return
         appList.removeAllViews()
-        val filtered = JarvisHomeCatalog.visible(installedApps, query, packageName, 60)
+        // Display 12 initially; search always reaches the entire installed app catalog.
+        val full = JarvisHomeCatalog.visible(installedApps, query, packageName, 200)
+        val maxVisible = if (query.isBlank() && !showAllApps) 12 else 60
+        val filtered = full.take(maxVisible)
         catalogStatus.text = when {
             filtered.isEmpty() -> "No hay aplicaciones coincidentes."
-            query.isBlank() -> "Mostrando hasta 60 aplicaciones. Busca para encontrar más."
-            else -> "Coincidencias: " + filtered.size + " (máximo 60 visibles)"
+            query.isBlank() -> "Aplicaciones: " + filtered.size + " de " + full.size +
+                ". Busca para encontrar cualquiera."
+            else -> "Coincidencias: " + filtered.size + " de " + full.size
         }
         filtered.forEach { app ->
             appList.addView(action(app.label) { openInstalledApp(app) })
+        }
+        if (full.size > maxVisible && query.isBlank() && !showAllApps) {
+            appList.addView(action("VER TODAS LAS APLICACIONES") {
+                showAllApps = true
+                showApps("")
+            })
+        }
+    }
+
+    private fun openAssistant(initialPanel: String? = null) {
+        try {
+            val destination = Intent(this, MainActivity::class.java)
+            // The extra selects a VIEW only. MainActivity checks an exact allowlist
+            // and never launches games, captures or privileged actions from it.
+            if (initialPanel != null) destination.putExtra("jarvis.omega.ui.panel", initialPanel)
+            startActivity(destination)
+        } catch (_: ActivityNotFoundException) {
+            showMessage("No se encontró el asistente JARVIS V2.")
+        } catch (_: SecurityException) {
+            showMessage("Android impidió abrir JARVIS V2.")
+        }
+    }
+
+    private fun openOriginalAssistant() {
+        if (packageName == ORIGINAL_JARVIS_PACKAGE) {
+            openAssistant()
+            return
+        }
+        val original = packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
+        if (original == null) {
+            showMessage("JARVIS original no está instalado.")
+            return
+        }
+        try {
+            startActivity(original)
+        } catch (_: ActivityNotFoundException) {
+            showMessage("JARVIS original ya no está disponible.")
+        } catch (_: SecurityException) {
+            showMessage("Android no permitió abrir JARVIS original.")
         }
     }
 
@@ -352,5 +464,10 @@ class JarvisHomeActivity : Activity() {
     private companion object {
         const val GAMEHUB_PACKAGE = "com.cardenaspiero255.gamehubultra"
         const val ORIGINAL_JARVIS_PACKAGE = "com.cardenaspiero255.jarvis"
+        private const val MODULE_JARVIS = "JARVIS"
+        private const val MODULE_APPS = "APPS"
+        private const val MODULE_GAMING = "GAMING"
+        private const val MODULE_SISTEMA = "SISTEMA"
+        private const val SELECTED_MODULE_KEY = "jarvis.home.selected.module"
     }
 }
