@@ -578,6 +578,7 @@ class MainActivity : Activity() {
         })
         section.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
             stopContinuousListening()
+            stopForegroundSpeech()
             recognitionRequest.cancel()
             voiceConsent.cancel()
             spokenReplyEngine.stop()
@@ -950,7 +951,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startSpeech(fromContinuous: Boolean = false) {
+    private fun startSpeech() { startSpeech(fromContinuous = false) }
+
+    private fun startSpeech(fromContinuous: Boolean) {
         if (fromContinuous && !foregroundListening.active) return
         if (!fromContinuous && foregroundListening.active) stopContinuousListening()
         voiceConsent.cancel()
