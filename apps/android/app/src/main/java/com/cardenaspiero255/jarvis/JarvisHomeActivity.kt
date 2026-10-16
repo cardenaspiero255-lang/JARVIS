@@ -133,7 +133,7 @@ class JarvisHomeActivity : Activity() {
             openAssistant()
         })
         quickCard.addView(text(
-            "La versión V2 tiene memoria local separada. " +
+            "Esta versión de prueba tiene memoria local separada. " +
                 "Tu JARVIS original y sus datos permanecen intactos.", 11.5f, muted
         ).apply { setPadding(dp(6), dp(12), dp(6), dp(2)) })
         quickCard.addView(action("JARVIS ORIGINAL  /  HISTORIAL ANTERIOR") {
