@@ -100,7 +100,18 @@ class JarvisHomeActivity : Activity() {
             setPadding(0, dp(6), 0, dp(4))
         })
         quickCard.addView(action("ABRIR JARVIS  /  IA Y VOZ") {
-            startActivity(Intent(this, MainActivity::class.java))
+            // The preview APK uses a different applicationId: prefer the
+            // user's existing JARVIS app, preserving its conversation store.
+            val existing = if (packageName != ORIGINAL_JARVIS_PACKAGE) {
+                packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
+            } else null
+            try {
+                startActivity(existing ?: Intent(this, MainActivity::class.java))
+            } catch (_: ActivityNotFoundException) {
+                showMessage("JARVIS no está disponible en este momento.")
+            } catch (_: SecurityException) {
+                showMessage("Android impidió abrir JARVIS.")
+            }
         })
         quickCard.addView(action("GAMEHUB ULTRA  /  JUEGOS") {
             val intent = packageManager.getLaunchIntentForPackage(GAMEHUB_PACKAGE)
@@ -340,5 +351,6 @@ class JarvisHomeActivity : Activity() {
 
     private companion object {
         const val GAMEHUB_PACKAGE = "com.cardenaspiero255.gamehubultra"
+        const val ORIGINAL_JARVIS_PACKAGE = "com.cardenaspiero255.jarvis"
     }
 }
