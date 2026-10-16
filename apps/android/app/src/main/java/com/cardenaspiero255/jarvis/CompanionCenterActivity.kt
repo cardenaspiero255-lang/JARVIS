@@ -121,6 +121,15 @@ class CompanionCenterActivity : Activity() {
             if (policy.canOpenCompanion(installed, explicitTap = true)) {
                 action("ABRIR " + kind.name) { openCompanion(companionPackage) }
             }
+            if (kind == CompanionKind.SHIZUKU && installed) {
+                action("SHIZUKU: PROBAR LECTURA REMOTA") {
+                    AlertDialog.Builder(this)
+                        .setTitle("Diagnóstico Shizuku de solo lectura")
+                        .setMessage(adapters.shizukuReadOnlyDiagnostic())
+                        .setPositiveButton("CERRAR", null)
+                        .show()
+                }
+            }
             if (kind == CompanionKind.SHIZUKU &&
                 state == CompanionState.NEEDS_PERMISSION) {
                 action("AUTORIZAR JARVIS EN SHIZUKU") {
