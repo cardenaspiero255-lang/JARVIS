@@ -13,6 +13,11 @@ data class CompanionEvidence(
 class CompanionConnectionPolicy {
     fun state(kind: CompanionKind, evidence: CompanionEvidence): CompanionState {
         if (!evidence.installed) return CompanionState.NOT_INSTALLED
+        if (kind == CompanionKind.DHIZUKU) {
+            if (!evidence.transportReady) return CompanionState.NEEDS_SETUP
+            if (!evidence.authorized) return CompanionState.NEEDS_PERMISSION
+            return CompanionState.READY
+        }
         if (kind != CompanionKind.SHIZUKU) {
             // Dhizuku needs Device Owner + API permission; OwnDroid needs an
             // authenticated API key; Termux needs two separate user opt-ins.
@@ -27,6 +32,6 @@ class CompanionConnectionPolicy {
     fun canOpenCompanion(installed: Boolean, explicitTap: Boolean) =
         installed && explicitTap
 
-    /** No shell, administrative policy, broadcasts or scripts in the discovery phase. */
+    /** Detection itself never grants access to any privileged operation. */
     fun mayExecutePrivilegedAction(): Boolean = false
 }
