@@ -291,14 +291,37 @@ class JarvisHomeActivity : Activity() {
     private fun showApps(query: String) {
         if (!::appList.isInitialized || !::catalogStatus.isInitialized) return
         appList.removeAllViews()
-        val filtered = JarvisHomeCatalog.visible(installedApps, query, packageName, 60)
+        // Display 12 initially; search always reaches the entire installed app catalog.
+        val full = JarvisHomeCatalog.visible(installedApps, query, packageName, 200)
+        val maxVisible = if (query.isBlank() && !showAllApps) 12 else 60
+        val filtered = full.take(maxVisible)
         catalogStatus.text = when {
             filtered.isEmpty() -> "No hay aplicaciones coincidentes."
-            query.isBlank() -> "Mostrando hasta 60 aplicaciones. Busca para encontrar más."
-            else -> "Coincidencias: " + filtered.size + " (máximo 60 visibles)"
+            query.isBlank() -> "Aplicaciones: " + filtered.size + " de " + full.size +
+                ". Busca para encontrar cualquiera."
+            else -> "Coincidencias: " + filtered.size + " de " + full.size
         }
         filtered.forEach { app ->
             appList.addView(action(app.label) { openInstalledApp(app) })
+        }
+        if (full.size > maxVisible && query.isBlank()) {
+            appList.addView(action("VER TODAS LAS APLICACIONES") {
+                showAllApps = true
+                showApps("")
+            })
+        }
+    }
+
+    private fun openAssistant() {
+        val original = if (packageName != ORIGINAL_JARVIS_PACKAGE) {
+            packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
+        } else null
+        try {
+            startActivity(original ?: Intent(this, MainActivity::class.java))
+        } catch (_: ActivityNotFoundException) {
+            showMessage("JARVIS no está disponible en este momento.")
+        } catch (_: SecurityException) {
+            showMessage("Android impidió abrir JARVIS.")
         }
     }
 
@@ -423,5 +446,10 @@ class JarvisHomeActivity : Activity() {
     private companion object {
         const val GAMEHUB_PACKAGE = "com.cardenaspiero255.gamehubultra"
         const val ORIGINAL_JARVIS_PACKAGE = "com.cardenaspiero255.jarvis"
+        private const val MODULE_JARVIS = "JARVIS"
+        private const val MODULE_APPS = "APPS"
+        private const val MODULE_GAMING = "GAMING"
+        private const val MODULE_SISTEMA = "SISTEMA"
+        private const val SELECTED_MODULE_KEY = "jarvis.home.selected.module"
     }
 }
