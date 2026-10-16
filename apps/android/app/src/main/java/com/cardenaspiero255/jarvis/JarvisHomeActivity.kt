@@ -204,7 +204,7 @@ class JarvisHomeActivity : Activity() {
             }
         })
         gamingCard.addView(action("ABRIR ASESOR DE JUEGOS") {
-            openAssistant()
+            openAssistant("JUEGOS Y RENDIMIENTO")
         })
         column.addView(gamingCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -310,9 +310,13 @@ class JarvisHomeActivity : Activity() {
         }
     }
 
-    private fun openAssistant() {
+    private fun openAssistant(initialPanel: String? = null) {
         try {
-            startActivity(Intent(this, MainActivity::class.java))
+            val destination = Intent(this, MainActivity::class.java)
+            // The extra selects a VIEW only. MainActivity checks an exact allowlist
+            // and never launches games, captures or privileged actions from it.
+            if (initialPanel != null) destination.putExtra("jarvis.omega.ui.panel", initialPanel)
+            startActivity(destination)
         } catch (_: ActivityNotFoundException) {
             showMessage("No se encontró el asistente JARVIS V2.")
         } catch (_: SecurityException) {
