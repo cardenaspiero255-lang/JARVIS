@@ -66,12 +66,14 @@ internal class CompanionActionAdapters(private val activity: Activity) :
         } catch (_: Exception) { false }
     }
 
-    private fun openCompanion(packageName: String): Boolean = try {
-        val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
-            ?: return false
-        activity.startActivity(intent)
-        true
-    } catch (_: Exception) { false }
+    private fun openCompanion(packageName: String): Boolean {
+        return try {
+            val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
+                ?: return false
+            activity.startActivity(intent)
+            true
+        } catch (_: Exception) { false }
+    }
 
     /** Fixed, read-only `id` command; no interpolated paths, parameters or stdin. */
     fun requestTermuxIdentityCheck(): Boolean {
