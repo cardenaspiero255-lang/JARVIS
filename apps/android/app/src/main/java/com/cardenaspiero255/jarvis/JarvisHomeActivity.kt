@@ -128,18 +128,16 @@ class JarvisHomeActivity : Activity() {
             setPadding(0, dp(6), 0, dp(4))
         })
         quickCard.addView(action("ABRIR JARVIS  /  IA Y VOZ") {
-            // The preview APK uses a different applicationId: prefer the
-            // user's existing JARVIS app, preserving its conversation store.
-            val existing = if (packageName != ORIGINAL_JARVIS_PACKAGE) {
-                packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
-            } else null
-            try {
-                startActivity(existing ?: Intent(this, MainActivity::class.java))
-            } catch (_: ActivityNotFoundException) {
-                showMessage("JARVIS no está disponible en este momento.")
-            } catch (_: SecurityException) {
-                showMessage("Android impidió abrir JARVIS.")
-            }
+            // Use the compact V2 assistant bundled in this preview, not the
+            // unchanged 37-button original installation.
+            openAssistant()
+        })
+        quickCard.addView(text(
+            "La versión V2 tiene memoria local separada. " +
+                "Tu JARVIS original y sus datos permanecen intactos.", 11.5f, muted
+        ).apply { setPadding(dp(6), dp(12), dp(6), dp(2)) })
+        quickCard.addView(action("JARVIS ORIGINAL  /  HISTORIAL ANTERIOR") {
+            openOriginalAssistant()
         })
         column.addView(quickCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -313,15 +311,31 @@ class JarvisHomeActivity : Activity() {
     }
 
     private fun openAssistant() {
-        val original = if (packageName != ORIGINAL_JARVIS_PACKAGE) {
-            packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
-        } else null
         try {
-            startActivity(original ?: Intent(this, MainActivity::class.java))
+            startActivity(Intent(this, MainActivity::class.java))
         } catch (_: ActivityNotFoundException) {
-            showMessage("JARVIS no está disponible en este momento.")
+            showMessage("No se encontró el asistente JARVIS V2.")
         } catch (_: SecurityException) {
-            showMessage("Android impidió abrir JARVIS.")
+            showMessage("Android impidió abrir JARVIS V2.")
+        }
+    }
+
+    private fun openOriginalAssistant() {
+        if (packageName == ORIGINAL_JARVIS_PACKAGE) {
+            openAssistant()
+            return
+        }
+        val original = packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)
+        if (original == null) {
+            showMessage("JARVIS original no está instalado.")
+            return
+        }
+        try {
+            startActivity(original)
+        } catch (_: ActivityNotFoundException) {
+            showMessage("JARVIS original ya no está disponible.")
+        } catch (_: SecurityException) {
+            showMessage("Android no permitió abrir JARVIS original.")
         }
     }
 
