@@ -40,6 +40,9 @@ class JarvisOsV2CompactContract(unittest.TestCase):
             self.assertIn(f'compactPanels.addGroup("{label}"', main) if label != "SISTEMA Y PRIVACIDAD" else self.assertIn('"SISTEMA Y PRIVACIDAD"', main)
         self.assertIn("group.content.visibility = if (selected) View.VISIBLE else View.GONE", panels)
         self.assertIn("visibility = View.GONE", panels)
+        # Deep-linked gaming panel must be shown after ScrollView exists, so
+        # its panel can actually scroll into view rather than only be VISIBLE.
+        self.assertIn('omegaScroll.post { compactPanels.show(requestedPanel) }', main)
         self.assertIn("views.forEach { view ->", panels)
         self.assertIn("heading.setOnClickListener", panels)
         # All formerly exposed actions must still exist and retain explicit handlers.
