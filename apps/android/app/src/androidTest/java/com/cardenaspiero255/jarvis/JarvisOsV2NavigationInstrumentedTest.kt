@@ -39,6 +39,8 @@ class JarvisOsV2NavigationInstrumentedTest {
                     assertTrue("Module must be visible: $module", findText(root, module)?.isShown == true)
                 }
                 assertTrue(findText(root, "ABRIR JARVIS  /  IA Y VOZ")?.isShown == true)
+                assertTrue("Original JARVIS is still accessible",
+                    findText(root, "JARVIS ORIGINAL  /  HISTORIAL ANTERIOR")?.isShown == true)
                 assertFalse("Apps drawer must be collapsed", findText(root, "APLICACIONES INSTALADAS")?.isShown == true)
                 assertFalse("System tools are opt-in", findText(root, "ELEGIR PANTALLA DE INICIO")?.isShown == true)
                 assertFalse("Game controls must be collapsed", findText(root, "GAMEHUB ULTRA  /  JUEGOS")?.isShown == true)
