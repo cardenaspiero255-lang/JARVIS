@@ -13,6 +13,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.net.Uri
+import android.provider.Settings
 import android.text.InputType
 import android.view.View
 import android.view.Gravity
@@ -33,6 +35,7 @@ import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
 import com.cardenaspiero255.jarvis.core.OwnDroidLockState
 import com.cardenaspiero255.jarvis.core.TermuxResultState
 import com.cardenaspiero255.jarvis.core.TermuxProbe
+import com.cardenaspiero255.jarvis.core.TermuxDispatchExplanation
 import com.cardenaspiero255.jarvis.core.ReadOnlyDeviceInspection
 import com.cardenaspiero255.jarvis.core.DeviceInspectionFormatter
 import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
@@ -328,7 +331,22 @@ class CompanionCenterActivity : Activity() {
                     message("Termux: solicitud enviada; consulta el resultado verificado.")
                 } else {
                     redraw()
-                    message("Falta permiso o Termux rechazó iniciar la prueba.")
+                    val reason = adapters.lastTermuxDispatchStatus()
+                    val dialog = AlertDialog.Builder(this)
+                        .setTitle("No se pudo iniciar Termux")
+                        .setMessage(TermuxDispatchExplanation.describe(reason))
+                        .setNegativeButton("CERRAR", null)
+                    if (TermuxDispatchExplanation.shouldOfferAppSettings(reason)) {
+                        dialog.setPositiveButton("AJUSTES DE JARVIS") { _, _ ->
+                            try {
+                                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(Uri.parse("package:$packageName")))
+                            } catch (_: RuntimeException) {
+                                message("No se pudieron abrir los ajustes de la aplicación.")
+                            }
+                        }
+                    }
+                    dialog.show()
                 }
             }
             .show()
