@@ -12,6 +12,9 @@ enum class SafeAutomationStep {
     READ_DEVICE_DIAGNOSTIC,
     READ_GAMING_STATUS,
     LIST_LAUNCHABLE_APPS,
+    READ_TERMUX_LAST_RESULT,
+    REQUEST_TERMUX_ID,
+    REQUEST_TERMUX_VERSION,
 }
 
 enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String) {
@@ -46,6 +49,18 @@ enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String)
     LIST_APPS(
         listOf(SafeAutomationStep.LIST_LAUNCHABLE_APPS),
         "Mostrar un resumen de aplicaciones visibles; no instalarlas ni modificarlas."
+    ),
+    TERMUX_LAST_RESULT(
+        listOf(SafeAutomationStep.READ_TERMUX_LAST_RESULT),
+        "Consultar únicamente el resultado verificado de Termux en esta sesión."
+    ),
+    TERMUX_ID_PROBE(
+        listOf(SafeAutomationStep.REQUEST_TERMUX_ID),
+        "Solicitar el comando fijo id en Termux. El envío no confirma ejecución; consulta el resultado."
+    ),
+    TERMUX_VERSION_PROBE(
+        listOf(SafeAutomationStep.REQUEST_TERMUX_VERSION),
+        "Solicitar la versión Android con getprop ro.build.version.release. No modificar ajustes."
     ),
 }
 
@@ -136,6 +151,9 @@ object SafeAutomationVoiceRouter {
             "jarvis prepara juego" -> SafeRoutine.GAMING_READINESS
             "jarvis evalua modo juego" -> SafeRoutine.GAMING_READINESS
             "jarvis muestra aplicaciones" -> SafeRoutine.LIST_APPS
+            "jarvis revisa conexion termux" -> SafeRoutine.TERMUX_LAST_RESULT
+            "jarvis prueba termux" -> SafeRoutine.TERMUX_ID_PROBE
+            "jarvis consulta version android con termux" -> SafeRoutine.TERMUX_VERSION_PROBE
             else -> null
         }
     }
