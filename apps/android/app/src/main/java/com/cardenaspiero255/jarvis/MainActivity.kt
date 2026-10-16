@@ -579,8 +579,13 @@ class MainActivity : Activity() {
         compactPanels.addGroup("VISIÓN Y PANTALLA", listOf(visionCard))
         compactPanels.addGroup(
             "SISTEMA Y PRIVACIDAD",
-            listOf(handsCard, diagnosticsCard) + advancedControls
+            listOf<android.view.View>(handsCard, diagnosticsCard) + advancedControls
         )
+        // Exact allowlist for a UI-only deep link; never triggers a sensitive action.
+        val requestedPanel = intent?.getStringExtra("jarvis.omega.ui.panel")
+        if (requestedPanel == "JUEGOS Y RENDIMIENTO") {
+            compactPanels.show(requestedPanel)
+        }
 
         omegaScroll = ScrollView(this).apply {
             isFillViewport = true
