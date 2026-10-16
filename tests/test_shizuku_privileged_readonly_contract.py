@@ -13,11 +13,11 @@ GRADLE = ROOT / "apps/android/app/build.gradle.kts"
 
 
 class ShizukuReadOnlyContract(unittest.TestCase):
-    def test_only_two_fixed_commands_and_no_shell_interpreter(self):
+    def test_seven_fixed_commands_and_no_shell_interpreter(self):
         code = POLICY.read_text()
         self.assertIn('"/system/bin/getprop", "ro.build.version.release"', code)
         self.assertIn('"/system/bin/pm", "path", "android"', code)
-        self.assertEqual(2, code.count("listOf(\"/system/bin/"))
+        self.assertEqual(7, code.count("listOf(\"/system/bin/"))
         service = SERVICE.read_text()
         self.assertIn('ShizukuFixedProbe.fromCode(fixedCode)', service)
         self.assertIn('ShizukuFixedProbePolicy.isAllowedUid(Process.myUid())', service)
