@@ -583,9 +583,6 @@ class MainActivity : Activity() {
         )
         // Exact allowlist for a UI-only deep link; never triggers a sensitive action.
         val requestedPanel = intent?.getStringExtra("jarvis.omega.ui.panel")
-        if (requestedPanel == "JUEGOS Y RENDIMIENTO") {
-            compactPanels.show(requestedPanel)
-        }
 
         omegaScroll = ScrollView(this).apply {
             isFillViewport = true
@@ -600,6 +597,11 @@ class MainActivity : Activity() {
         }
         omegaScroll.addView(layout)
         setContentView(omegaScroll)
+        // Defer until the hierarchy has measured; the permitted panel opens
+        // visibly and scrolls into view, without invoking its child actions.
+        if (requestedPanel == "JUEGOS Y RENDIMIENTO") {
+            omegaScroll.post { compactPanels.show(requestedPanel) }
+        }
         requestMicrophoneOnFirstLaunch()
     }
 
