@@ -13,10 +13,18 @@ nativos de Android, sin servicios residentes adicionales.
 ## Cómo probar sin cambiar la pantalla de inicio
 
 1. Instala el APK **de prueba** desde el workflow de Android shell.
-2. Abre la aplicación **JARVIS OMEGA** desde su icono.
-3. Toca **PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH**.
+   **IMPORTANTE:** el build `debug` de este PR usa el identificador separado
+   `com.cardenaspiero255.jarvis.ospreview` y aparece como **JARVIS OS PREVIEW**.
+   **No reemplaza ni desinstala tu JARVIS OMEGA actual**; tampoco comparte sus
+   datos privados, y al pulsar **ABRIR JARVIS** abre la app original si existe.
+2. Abre **JARVIS OS PREVIEW** y explora la pantalla de inicio; puedes abrir la
+   pantalla del asistente de prueba desde su icono o botón.
+3. Si estás en la pantalla JARVIS OMEGA del APK de prueba, pulsa
+   **PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH**.
 4. Recorre la interfaz, busca una aplicación y comprueba el botón JARVIS.
 5. Usa Atrás para abandonar la vista previa. Funtouch sigue siendo el launcher.
+6. Si no necesitas más la prueba, desinstala solo **JARVIS OS PREVIEW**. Eso no
+   desinstala la app original ni cambia las particiones de Android.
 
 Para utilizar JARVIS OS como launcher opcional, ve a **ELEGIR PANTALLA DE INICIO**,
 que abre la pantalla de inicio predeterminada de Android si el fabricante la
@@ -30,8 +38,9 @@ cambia de forma silenciosa esa selección.
    (el nombre depende de la versión de Funtouch OS).
 3. Si Vivo no abre ese panel directo, usa **AJUSTES ORIGINALES DE ANDROID** y
    localiza Apps > Apps predeterminadas > App de inicio.
-4. Desinstalar la APK *también* elimina este launcher, pero no lo recomendamos
-   como primer método porque la aplicación contiene el asistente y memoria local.
+4. Desinstalar la APK **JARVIS OS PREVIEW** también elimina el launcher.
+   Antes de hacerlo, vuelve a seleccionar el inicio original. Nunca desinstales
+   la app **JARVIS OMEGA** preexistente ni sus datos para instalar la prueba.
 
 ## Límites técnicos
 
