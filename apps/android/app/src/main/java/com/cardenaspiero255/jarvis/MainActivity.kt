@@ -79,11 +79,13 @@ class MainActivity : Activity() {
     private val foregroundListening = ForegroundListeningSession()
     private var replyAudioInProgress = false
     private val listeningCycleHandler = Handler(Looper.getMainLooper())
-    private val listeningRestart = Runnable {
-        if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
-            if (replyAudioInProgress) {
-                listeningCycleHandler.postDelayed(listeningRestart, 1000L)
-            } else startSpeech(fromContinuous = true)
+    private val listeningRestart: Runnable = object : Runnable {
+        override fun run() {
+            if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
+                if (replyAudioInProgress) {
+                    listeningCycleHandler.postDelayed(this, 1000L)
+                } else startSpeech(fromContinuous = true)
+            }
         }
     }
     private lateinit var continuousListeningButton: Button
