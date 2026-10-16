@@ -24,6 +24,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -56,6 +57,7 @@ import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
 import com.cardenaspiero255.jarvis.core.ForegroundListeningSession
+import com.cardenaspiero255.jarvis.core.SpeechLevelPolicy
 import com.cardenaspiero255.jarvis.core.ListeningDecision
 import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
@@ -99,6 +101,8 @@ class MainActivity : Activity() {
     private var gamingPreference = GamingPreference.BALANCED
     private val gameHubPreflight = GameHubPreflightGate()
     private lateinit var statusText: TextView
+    private lateinit var micStatusText: TextView
+    private lateinit var micMeter: ProgressBar
     private lateinit var omegaCore: OmegaPulseCore
     private lateinit var omegaScroll: ScrollView
     private lateinit var compactPanels: OmegaCompactPanels
@@ -209,6 +213,26 @@ class MainActivity : Activity() {
         })
         layout.addView(primaryButton("CONFIGURAR VOZ EN ANDROID") {
             openTtsSettingsByTap()
+        })
+        micStatusText = label(
+            "MICRÓFONO DETENIDO — pulsa HABLAR o ACTIVA ESCUCHA CONTINUA.",
+            14f, Color.rgb(211, 213, 220)
+        )
+        layout.addView(micStatusText)
+        micMeter = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            contentDescription = "Intensidad de audio comunicada por Android"
+        }
+        layout.addView(micMeter)
+        layout.addView(label(
+            "La barra depende del proveedor de Android: algunos no informan niveles " +
+                "aunque sí reconozcan la voz.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("PROBAR MICRÓFONO DE ANDROID") {
+            stopContinuousListening()
+            openAndroidSystemVoiceByTap()
         })
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
         continuousListeningButton = primaryButton("ACTIVAR ESCUCHA CONTINUA") {
@@ -674,6 +698,8 @@ class MainActivity : Activity() {
         revokeCaptureException()
         foregroundGate.onStop()
         stopContinuousListening()
+        if (::micMeter.isInitialized) micMeter.progress = 0
+        if (::micStatusText.isInitialized) micStatusText.text = "MICRÓFONO DETENIDO"
         if (foregroundSpeech != null) {
             stopForegroundSpeech()
             recognitionRequest.cancel()
@@ -926,6 +952,8 @@ class MainActivity : Activity() {
     private fun stopForegroundSpeech() {
         foregroundSpeech?.stop()
         foregroundSpeech = null
+        if (::micMeter.isInitialized) micMeter.progress = 0
+        if (::micStatusText.isInitialized) micStatusText.text = "MICRÓFONO DETENIDO"
     }
 
     /** Optional OEM fallback; only after a separate tap on the error-7 dialog. */
@@ -1011,6 +1039,9 @@ class MainActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
         stopForegroundSpeech()
+        if (::micStatusText.isInitialized) {
+            micStatusText.text = "Solicitando reconocimiento de voz a Android..."
+        }
         val recognizer = ForegroundSpeechRecognizer(
             context = this,
             onResult = { transcript ->
@@ -1032,6 +1063,8 @@ class MainActivity : Activity() {
                         }
                     }
                 } else {
+                    if (::micStatusText.isInitialized) micStatusText.text =
+                        "Palabras reconocidas. Procesando orden local."
                     if (foregroundListening.active) {
                         // A voice operation opens a consent dialog; never listen
                         // behind it or mistake assistant audio for a new command.
@@ -1048,7 +1081,14 @@ class MainActivity : Activity() {
                 recognitionRequest.cancel()
                 voiceMathSession.clear()
                 voiceConsent.cancel()
-                if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                if (error == ForegroundSpeechRecognizer.ERROR_NO_READY_CALLBACK) {
+                    stopContinuousListening()
+                    statusText.text = "Android no inició el servicio de micrófono " +
+                        "para JARVIS. Prueba PROBAR MICRÓFONO DE ANDROID y revisa " +
+                        "el acceso al micrófono en Ajustes."
+                    if (::micStatusText.isInitialized) micStatusText.text =
+                        "El proveedor no confirmó que comenzó a escuchar."
+                } else if (error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                     statusText.text = "Android no reconoció una frase (código $error). " +
                         "Prueba hablar más cerca y revisa el idioma del reconocimiento."
@@ -1076,7 +1116,15 @@ class MainActivity : Activity() {
                         "Comprueba micrófono, servicio de voz y permisos en Ajustes."
                 }
             },
-            onStatus = { message -> statusText.text = message }
+            onStatus = { message ->
+                statusText.text = message
+                if (::micStatusText.isInitialized) micStatusText.text = message
+            },
+            onAudioLevel = { rms ->
+                if (::micMeter.isInitialized) {
+                    micMeter.progress = SpeechLevelPolicy.progress(rms)
+                }
+            }
         )
         foregroundSpeech = recognizer
         if (recognizer.start(intent)) {
