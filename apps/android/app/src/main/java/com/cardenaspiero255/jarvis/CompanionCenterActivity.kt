@@ -244,6 +244,19 @@ class CompanionCenterActivity : Activity() {
                 action("OWNDROID: BLOQUEAR PANTALLA (CONFIRMAR)") { confirmOwnDroidLock() }
             }
         }
+        addLine("CONTROLES AVANZADOS — Shizuku + GameHub", 17f, Color.WHITE, true)
+        action("SHIZUKU: PROCESOS, SERVICIOS Y APLICACIONES") {
+            confirmAdvancedShizuku()
+        }
+        action("AJUSTES ADB: CONSULTAR / VISTA PREVIA") {
+            confirmAdvancedShizuku()
+        }
+        action("GAMEHUB: PERFIL RECOMENDADO (SIN APLICAR)") {
+            confirmRoutine(SafeRoutine.GAMEHUB_PROFILE_PREVIEW)
+        }
+        addLine("Los ajustes ADB son solo lectura hasta acreditar autorización, " +
+            "verificación y rollback E2E. No se alteran servicios, procesos ni FPS.",
+            12f, Color.LTGRAY)
         addLine("DIAGNÓSTICO Y MODO JUEGO — SOLO LECTURA", 17f, Color.WHITE, true)
         action("DIAGNÓSTICO DEL TELÉFONO Y AJUSTES") { showReadOnlyDeviceReport() }
         action("APLICACIONES: CONSULTAR Y ABRIR") { chooseVisibleApp() }
@@ -256,6 +269,7 @@ class CompanionCenterActivity : Activity() {
         action("ELEGIR RUTINA SEGURA") { selectRoutine() }
         action("PARADA DE EMERGENCIA  /  CANCELAR RUTINA") {
             automation.stop()
+            shizukuSystemReadOnly.cancel()
             message("Rutinas detenidas y autorización pendiente revocada.")
         }
         addLine(
@@ -309,6 +323,38 @@ class CompanionCenterActivity : Activity() {
             .show()
     }
 
+    private fun confirmAdvancedShizuku() {
+        AlertDialog.Builder(this)
+            .setTitle("Diagnóstico ADB: autorización")
+            .setMessage("Se comprobará el estado de servicios Android, el PID de " +
+                "system_server, la ruta del paquete de Ajustes y la escala de " +
+                "animaciones. Solo lectura, sin root, sin comandos arbitrarios. " +
+                "Los cambios ADB permanecen deshabilitados.")
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ -> runAdvancedShizuku() }
+            .show()
+    }
+
+    private fun runAdvancedShizuku() {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("ADB / Shizuku: diagnóstico avanzado")
+            .setMessage("Esperando las respuestas verificadas del UserService...")
+            .setNegativeButton("CANCELAR", null)
+            .create()
+        dialog.setOnCancelListener { shizukuSystemReadOnly.cancel() }
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+            shizukuSystemReadOnly.cancel()
+            dialog.dismiss()
+        }
+        shizukuSystemReadOnly.requestAdvanced { report ->
+            if (!isFinishing && !isDestroyed && dialog.isShowing) {
+                dialog.setMessage(report)
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).text = "CERRAR"
+            }
+        }
+    }
+
     private fun selectRoutine() {
         val choices = SafeRoutine.values()
         AlertDialog.Builder(this)
@@ -336,7 +382,11 @@ class CompanionCenterActivity : Activity() {
                     SafeAutomationOutcome.DENIED -> "Autorización no válida"
                 }
                 message("$status: ${report.completedSteps}/${report.totalSteps}.")
-                if (report.outcome == SafeAutomationOutcome.COMPLETED) {
+                if (report.outcome == SafeAutomationOutcome.COMPLETED &&
+                    (routine == SafeRoutine.SHIZUKU_ADVANCED_DIAGNOSTIC ||
+                     routine == SafeRoutine.ADB_SETTINGS_PREVIEW)) {
+                    runAdvancedShizuku()
+                } else if (report.outcome == SafeAutomationOutcome.COMPLETED) {
                     adapters.takeLastReadout()?.let { readout ->
                         AlertDialog.Builder(this)
                             .setTitle("Resultado de solo lectura")
