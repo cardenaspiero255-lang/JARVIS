@@ -40,15 +40,26 @@ class SafeAutomationContract(unittest.TestCase):
                           'wipeData(', 'clearApplicationUserData('):
             self.assertNotIn(forbidden, adapter)
 
-    def test_termux_only_dispatches_one_hardcoded_readonly_command(self):
+    def test_termux_dispatches_only_two_fixed_readonly_commands(self):
         adapter = (SRC / "CompanionActionAdapters.kt").read_text()
+        policy = (SRC / "core/CompanionResultPolicy.kt").read_text()
         manifest = (APP / "src/main/AndroidManifest.xml").read_text()
         self.assertIn('com.termux.permission.RUN_COMMAND', manifest)
         self.assertIn('checkSelfPermission("com.termux.permission.RUN_COMMAND")', adapter)
-        self.assertIn('"/data/data/com.termux/files/usr/bin/id"', adapter)
-        self.assertIn('emptyArray<String>()', adapter)
+        self.assertIn('"/data/data/com.termux/files/usr/bin/id"', policy)
+        self.assertIn('"/system/bin/getprop"', policy)
+        self.assertIn('"ro.build.version.release"', policy)
+        self.assertIn('emptyList()', policy)
+        self.assertIn('probe.executable', adapter)
+        self.assertIn('probe.arguments.toTypedArray()', adapter)
+        # No dynamic shell strings or unreviewed executable paths.
         self.assertNotIn('com.termux.RUN_COMMAND_STDIN', adapter)
-        self.assertNotIn('com.termux.RUN_COMMAND_ARGUMENTS", arrayOf', adapter)
+        self.assertNotIn('ProcessBuilder', adapter)
+        self.assertNotIn('Runtime.getRuntime()', adapter)
+        self.assertNotIn('"/system/bin/sh"', policy)
+        self.assertIn('enum class TermuxProbe(', policy)
+        self.assertEqual(1, policy.count('    IDENTITY('))
+        self.assertEqual(1, policy.count('    ANDROID_VERSION('))
 
     def test_owndroid_only_supports_explicit_lock_and_nonpersistent_key(self):
         adapter = (SRC / "CompanionActionAdapters.kt").read_text()
