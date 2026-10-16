@@ -931,10 +931,15 @@ class MainActivity : Activity() {
     }
 
     private fun stopContinuousListening() {
+        val wasActive = foregroundListening.active
         foregroundListening.stop()
         listeningCycleHandler.removeCallbacks(listeningRestart)
-        stopForegroundSpeech()
-        recognitionRequest.cancel()
+        // Do not invalidate a separate user-triggered external speech dialog
+        // when Android temporarily stops this activity for that dialog.
+        if (wasActive) {
+            stopForegroundSpeech()
+            recognitionRequest.cancel()
+        }
         updateListeningButton()
     }
 
