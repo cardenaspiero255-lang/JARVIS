@@ -10,7 +10,14 @@ class GameHubPackageVisibilityTests(unittest.TestCase):
     def test_exact_package_visibility_not_all_packages(self):
         root = ET.parse(ROOT / "apps/android/app/src/main/AndroidManifest.xml").getroot()
         packages = [p.get(ANDROID + "name") for p in root.findall("./queries/package")]
-        self.assertEqual(packages, ["com.cardenaspiero255.gamehubultra"])
+        self.assertEqual(set(packages), {
+            "com.cardenaspiero255.gamehubultra",
+            "moe.shizuku.privileged.api",
+            "com.rosan.dhizuku",
+            "com.bintianqi.owndroid",
+            "com.termux",
+        })
+        self.assertEqual(len(packages), 5)  # No duplicates or unrelated app visibility.
         permissions = [p.get(ANDROID + "name") for p in root.findall("uses-permission")]
         self.assertNotIn("android.permission.QUERY_ALL_PACKAGES", permissions)
 
