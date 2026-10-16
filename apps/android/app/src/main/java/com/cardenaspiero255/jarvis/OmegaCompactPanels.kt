@@ -41,7 +41,7 @@ internal class OmegaCompactPanels(
         val heading = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minHeight = dp(56)
+            setMinimumHeight(dp(56))
             isClickable = true
             isFocusable = true
             contentDescription = "Abrir o cerrar $title"
