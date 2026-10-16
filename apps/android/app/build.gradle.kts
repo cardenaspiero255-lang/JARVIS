@@ -19,8 +19,16 @@ android {
     }
 
     buildTypes {
+        // The preview/debug APK installs alongside the user's existing JARVIS,
+        // never replacing its app package, local memory or installed signature.
+        debug {
+            applicationIdSuffix = ".ospreview"
+            versionNameSuffix = "-jarvis-os-preview"
+            resValue("string", "jarvis_application_label", "JARVIS OS PREVIEW")
+        }
         release {
             isMinifyEnabled = false
+            resValue("string", "jarvis_application_label", "JARVIS OMEGA")
         }
     }
 
