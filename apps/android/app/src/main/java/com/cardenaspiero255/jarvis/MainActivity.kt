@@ -77,10 +77,13 @@ class MainActivity : Activity() {
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private var foregroundSpeech: ForegroundSpeechRecognizer? = null
     private val foregroundListening = ForegroundListeningSession()
+    private var replyAudioInProgress = false
     private val listeningCycleHandler = Handler(Looper.getMainLooper())
     private val listeningRestart = Runnable {
         if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
-            startSpeech(fromContinuous = true)
+            if (replyAudioInProgress) {
+                listeningCycleHandler.postDelayed(listeningRestart, 1000L)
+            } else startSpeech(fromContinuous = true)
         }
     }
     private lateinit var continuousListeningButton: Button
@@ -194,7 +197,10 @@ class MainActivity : Activity() {
         })
         spokenReplyEngine = SpokenReplyEngine(this,
             showStatus = { statusText.text = it },
-            onSpeechProgress = { omegaCore.setSpeaking(it) }
+            onSpeechProgress = {
+                replyAudioInProgress = it
+                omegaCore.setSpeaking(it)
+            }
         )
         layout.addView(primaryButton("PROBAR AUDIO JARVIS") {
             spokenReplyEngine.testVoiceByTap()
@@ -594,7 +600,6 @@ class MainActivity : Activity() {
         // them automatically. Emergency privacy lock and start-talking remain visible.
         val advancedNames = setOf(
             "PROTEGER PANTALLA AHORA",
-            "PROBAR AUDIO JARVIS",
             "CONFIGURAR VOZ EN ANDROID"
         )
         val advancedControls = (0 until layout.childCount)
