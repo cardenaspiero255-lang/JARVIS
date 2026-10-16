@@ -1,10 +1,13 @@
 package com.cardenaspiero255.jarvis
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import android.os.Build
+import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.CompanionEvidence
 import com.cardenaspiero255.jarvis.core.SafeAutomationGateway
 import com.cardenaspiero255.jarvis.core.SafeAutomationStep
@@ -78,20 +81,38 @@ internal class CompanionActionAdapters(private val activity: Activity) :
         } catch (_: Exception) { false }
     }
 
-    /** Fixed, read-only `id` command; no interpolated paths, parameters or stdin. */
+    /**
+     * Execute only fixed read-only `id`; request a one-shot response token from
+     * Termux >=0.109. Dispatch is WAITING, never success until callback exitCode.
+     */
     fun requestTermuxIdentityCheck(): Boolean {
         if (activity.checkSelfPermission("com.termux.permission.RUN_COMMAND") !=
             PackageManager.PERMISSION_GRANTED) return false
+        val now = SystemClock.elapsedRealtime()
+        val token = TermuxResultSession.tracker.begin(now)
         return try {
+            val replyIntent = Intent(activity, TermuxResultReceiver::class.java)
+                .setAction(TermuxResultReceiver.ACTION_RESULT)
+                .putExtra(TermuxResultReceiver.EXTRA_TOKEN, token)
+            val flags = PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_CANCEL_CURRENT or
+                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+            val pending = PendingIntent.getBroadcast(activity, token, replyIntent, flags)
             val request = Intent("com.termux.RUN_COMMAND")
                 .setClassName("com.termux", "com.termux.app.RunCommandService")
-                .putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/id")
+                .putExtra("com.termux.RUN_COMMAND_PATH",
+                    "/data/data/com.termux/files/usr/bin/id")
                 .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", emptyArray<String>())
-                .putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-                .putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0")
-            activity.startService(request) != null
-        } catch (_: Exception) { false }
-        // Dispatch != execution proof. Termux must also enable allow-external-apps.
+                .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+                .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending)
+            if (activity.startService(request) == null) {
+                TermuxResultSession.tracker.cancel(token)
+                false
+            } else true
+        } catch (_: Exception) {
+            TermuxResultSession.tracker.cancel(token)
+            false
+        }
+        // An absent callback or malformed exit data is FAILED/TIMED_OUT, never VERIFIED.
     }
 
     /**
