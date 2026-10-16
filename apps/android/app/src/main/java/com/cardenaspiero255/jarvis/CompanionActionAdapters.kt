@@ -19,6 +19,7 @@ import com.cardenaspiero255.jarvis.core.GamingReadinessPolicy
 import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
 import com.cardenaspiero255.jarvis.core.TermuxProbe
 import com.cardenaspiero255.jarvis.core.TermuxResultState
+import com.cardenaspiero255.jarvis.core.TermuxDispatchStatus
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import rikka.shizuku.Shizuku
@@ -31,6 +32,9 @@ internal class CompanionActionAdapters(private val activity: Activity) :
     SafeAutomationGateway {
 
     private var lastReadout: String? = null
+    private var termuxDispatchStatus = TermuxDispatchStatus.NOT_ATTEMPTED
+
+    fun lastTermuxDispatchStatus(): TermuxDispatchStatus = termuxDispatchStatus
 
     /** Only the single foreground Activity receives this ephemeral result. */
     fun takeLastReadout(): String? = lastReadout.also { lastReadout = null }
@@ -174,8 +178,18 @@ internal class CompanionActionAdapters(private val activity: Activity) :
     fun requestTermuxIdentityCheck(): Boolean = requestTermuxDiagnostic(TermuxProbe.IDENTITY)
 
     fun requestTermuxDiagnostic(probe: TermuxProbe): Boolean {
-        if (activity.checkSelfPermission("com.termux.permission.RUN_COMMAND") !=
-            PackageManager.PERMISSION_GRANTED) return false
+        termuxDispatchStatus = TermuxDispatchStatus.NOT_ATTEMPTED
+        val granted = try {
+            activity.checkSelfPermission("com.termux.permission.RUN_COMMAND") ==
+                PackageManager.PERMISSION_GRANTED
+        } catch (_: RuntimeException) {
+            termuxDispatchStatus = TermuxDispatchStatus.UNKNOWN_FAILURE
+            return false
+        }
+        if (!granted) {
+            termuxDispatchStatus = TermuxDispatchStatus.MISSING_PERMISSION
+            return false
+        }
         val now = SystemClock.elapsedRealtime()
         val token = TermuxResultSession.tracker.begin(now, probe)
         return try {
@@ -192,10 +206,24 @@ internal class CompanionActionAdapters(private val activity: Activity) :
                 .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
                 .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending)
             if (activity.startService(request) == null) {
+                termuxDispatchStatus = TermuxDispatchStatus.SERVICE_UNAVAILABLE
                 TermuxResultSession.tracker.cancel(token)
                 false
-            } else true
-        } catch (_: Exception) {
+            } else {
+                // Dispatch is not proof that the requested process ran.
+                termuxDispatchStatus = TermuxDispatchStatus.REQUEST_SENT
+                true
+            }
+        } catch (_: SecurityException) {
+            termuxDispatchStatus = TermuxDispatchStatus.SYSTEM_DENIED
+            TermuxResultSession.tracker.cancel(token)
+            false
+        } catch (_: IllegalStateException) {
+            termuxDispatchStatus = TermuxDispatchStatus.ANDROID_RESTRICTED
+            TermuxResultSession.tracker.cancel(token)
+            false
+        } catch (_: RuntimeException) {
+            termuxDispatchStatus = TermuxDispatchStatus.UNKNOWN_FAILURE
             TermuxResultSession.tracker.cancel(token)
             false
         }
