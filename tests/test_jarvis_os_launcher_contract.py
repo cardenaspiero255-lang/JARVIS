@@ -54,6 +54,18 @@ class JarvisOsLauncherContract(unittest.TestCase):
         self.assertIn("android.intent.category.LAUNCHER", manifest)
         self.assertEqual("false", root.find("application").get(ANDROID + "allowBackup"))
 
+    def test_debug_preview_installs_beside_existing_jarvis_without_replacing_it(self):
+        gradle = (ROOT / "apps/android/app/build.gradle.kts").read_text()
+        home = (JAVA / "JarvisHomeActivity.kt").read_text()
+        manifest = (SRC / "AndroidManifest.xml").read_text()
+        self.assertIn('applicationId = "com.cardenaspiero255.jarvis"', gradle)
+        self.assertIn('applicationIdSuffix = ".ospreview"', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS PREVIEW")', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OMEGA")', gradle)
+        self.assertIn('android:label="@string/jarvis_application_label"', manifest)
+        self.assertIn('packageManager.getLaunchIntentForPackage(ORIGINAL_JARVIS_PACKAGE)', home)
+        self.assertIn('const val ORIGINAL_JARVIS_PACKAGE = "com.cardenaspiero255.jarvis"', home)
+
     def test_reversible_tap_only_actions_no_root_or_flashing(self):
         home = (JAVA / "JarvisHomeActivity.kt").read_text()
         main = (JAVA / "MainActivity.kt").read_text()
