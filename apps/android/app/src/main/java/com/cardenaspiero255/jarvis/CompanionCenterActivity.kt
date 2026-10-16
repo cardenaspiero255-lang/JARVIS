@@ -32,6 +32,7 @@ import com.cardenaspiero255.jarvis.core.SafeRoutine
 import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
 import com.cardenaspiero255.jarvis.core.OwnDroidLockState
 import com.cardenaspiero255.jarvis.core.TermuxResultState
+import com.cardenaspiero255.jarvis.core.TermuxProbe
 import com.cardenaspiero255.jarvis.core.ReadOnlyDeviceInspection
 import com.cardenaspiero255.jarvis.core.DeviceInspectionFormatter
 import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
@@ -120,7 +121,29 @@ class CompanionCenterActivity : Activity() {
                 CompanionState.NEEDS_PERMISSION -> "Servicio activo; falta autorización a JARVIS"
                 CompanionState.NEEDS_SETUP -> "Detectada; integración privilegiada aún no configurada"
                 CompanionState.READY -> "API autorizada; políticas administrativas no habilitadas"
-            }, 12f, if (state == CompanionState.READY) Color.GREEN else Color.LTGRAY)
+            }.let { baseStatus ->
+                if (kind != CompanionKind.TERMUX || !installed) baseStatus
+                else {
+                    val tracker = TermuxResultSession.tracker
+                    when (tracker.status(SystemClock.elapsedRealtime())) {
+                        TermuxResultState.VERIFIED ->
+                            "Termux operativo: última prueba " +
+                                "${tracker.verifiedProbe(SystemClock.elapsedRealtime())?.label ?: "local"} " +
+                                "verificada en esta sesión. No implica privilegios de Shizuku."
+                        TermuxResultState.WAITING ->
+                            "Termux detectado; esperando respuesta de una prueba local."
+                        TermuxResultState.FAILED ->
+                            "Termux detectado; último comando falló o devolvió respuesta inválida."
+                        TermuxResultState.TIMED_OUT ->
+                            "Termux detectado; último comando agotó tiempo de espera."
+                        TermuxResultState.IDLE ->
+                            "Termux detectado; ningún comando verificado en esta sesión."
+                    }
+                }
+            }, 12f, if (state == CompanionState.READY ||
+                (kind == CompanionKind.TERMUX &&
+                    TermuxResultSession.tracker.status(SystemClock.elapsedRealtime()) ==
+                        TermuxResultState.VERIFIED)) Color.GREEN else Color.LTGRAY)
 
             if (policy.canOpenCompanion(installed, explicitTap = true)) {
                 action("ABRIR " + kind.name) { openCompanion(companionPackage) }
@@ -154,16 +177,29 @@ class CompanionCenterActivity : Activity() {
                 }
             }
             if (kind == CompanionKind.TERMUX && installed) {
-                action("TERMUX: PROBAR COMANDO LOCAL id") { confirmTermuxCheck() }
+                action("TERMUX: PROBAR COMANDO LOCAL id") {
+                    confirmTermuxDiagnostic(TermuxProbe.IDENTITY)
+                }
+                action("TERMUX: CONSULTAR VERSIÓN ANDROID") {
+                    confirmTermuxDiagnostic(TermuxProbe.ANDROID_VERSION)
+                }
                 action("TERMUX: CONSULTAR RESULTADO") {
-                    val state = TermuxResultSession.tracker.status(SystemClock.elapsedRealtime())
-                    message(when (state) {
-                        TermuxResultState.VERIFIED -> "Termux: id devolvió código 0 y respuesta válida."
+                    val tracker = TermuxResultSession.tracker
+                    val now = SystemClock.elapsedRealtime()
+                    val state = tracker.status(now)
+                    val display = when (state) {
+                        TermuxResultState.VERIFIED ->
+                            "Termux: ${tracker.verifiedProbe(now)?.label ?: "prueba local"} " +
+                                "verificada. ${tracker.verifiedAndroidVersion(now)?.let {
+                                    "Android informó la versión $it."
+                                } ?: "Código 0 y evidencia válida."}"
                         TermuxResultState.WAITING -> "Termux: pendiente de respuesta verificada."
                         TermuxResultState.FAILED -> "Termux: falló o devolvió una respuesta no válida."
                         TermuxResultState.TIMED_OUT -> "Termux: sin respuesta dentro del límite."
-                        TermuxResultState.IDLE -> "No hay ninguna prueba Termux ejecutada."
-                    })
+                        TermuxResultState.IDLE -> "No hay ninguna prueba Termux ejecutada en esta sesión."
+                    }
+                    redraw()
+                    message(display)
                 }
             }
             if (kind == CompanionKind.OWNDROID && installed) {
@@ -275,17 +311,21 @@ class CompanionCenterActivity : Activity() {
             .show()
     }
 
-    private fun confirmTermuxCheck() {
+    private fun confirmTermuxDiagnostic(probe: TermuxProbe) {
+        val command = (listOf(probe.executable) + probe.arguments).joinToString(" ")
         AlertDialog.Builder(this)
-            .setTitle("Prueba aislada de Termux")
-            .setMessage("Se solicitará ÚNICAMENTE /data/data/com.termux/files/usr/bin/id, " +
-                "sin argumentos ni scripts. Requiere permiso RUN_COMMAND y " +
-                "allow-external-apps=true en Termux. Verifica el resultado con CONSULTAR RESULTADO.")
+            .setTitle("Prueba Termux de solo lectura")
+            .setMessage("JARVIS solicitará ÚNICAMENTE el comando fijo $command. " +
+                "Sin scripts, redirecciones ni comandos recibidos por voz. " +
+                "Requiere RUN_COMMAND y allow-external-apps=true. " +
+                "El envío no confirma que el comando terminó.")
             .setNegativeButton("CANCELAR", null)
             .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
-                if (adapters.requestTermuxIdentityCheck()) {
-                    message("Termux: esperando código de salida verificable. Consulta el resultado.")
+                if (adapters.requestTermuxDiagnostic(probe)) {
+                    redraw()
+                    message("Termux: solicitud enviada; consulta el resultado verificado.")
                 } else {
+                    redraw()
                     message("Falta permiso o Termux rechazó iniciar la prueba.")
                 }
             }
