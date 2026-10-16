@@ -590,7 +590,9 @@ class MainActivity : Activity() {
         section.addView(label(
             "Privacidad: el reconocimiento de voz lo realiza la aplicación de voz de Android. " +
                 "Puede requerir conexión y usar un servicio externo. " +
-                "JARVIS no graba de forma continua ni guarda transcripciones. " +
+                "La escucha repetida solo funciona tras activarla y con JARVIS visible. " +
+                "Se detiene al salir de la app o pulsar DETENER. " +
+                "JARVIS no almacena audio ni transcripciones. " +
                 "Las respuestas TTS usan únicamente una voz local instalada en Android. " +
                 "El perfil británico es un estilo de asistente, no la voz del actor de cine. " +
                 "Si no se encuentra una voz compatible, instálala desde los ajustes de texto a voz.",
