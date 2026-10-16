@@ -50,6 +50,7 @@ class CompanionCenterActivity : Activity() {
     private val policy = CompanionConnectionPolicy()
     private lateinit var adapters: CompanionActionAdapters
     private lateinit var automation: SafeAutomationEngine
+    private lateinit var shizukuSystemReadOnly: ShizukuSystemReadOnlyClient
     private val darkSurface = Color.rgb(10, 12, 20)
     private val accent = Color.rgb(239, 59, 81)
     private lateinit var content: LinearLayout
@@ -60,6 +61,7 @@ class CompanionCenterActivity : Activity() {
         super.onCreate(savedInstanceState)
         adapters = CompanionActionAdapters(this)
         automation = SafeAutomationEngine(adapters)
+        shizukuSystemReadOnly = ShizukuSystemReadOnlyClient(this)
         window.statusBarColor = darkSurface
         window.navigationBarColor = darkSurface
         content = LinearLayout(this).apply {
@@ -89,6 +91,7 @@ class CompanionCenterActivity : Activity() {
     override fun onDestroy() {
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         if (::automation.isInitialized) automation.stop()
+        if (::shizukuSystemReadOnly.isInitialized) shizukuSystemReadOnly.close()
         super.onDestroy()
     }
 
@@ -157,6 +160,36 @@ class CompanionCenterActivity : Activity() {
                         .setTitle("Diagnóstico Shizuku de solo lectura")
                         .setMessage(adapters.shizukuReadOnlyDiagnostic())
                         .setPositiveButton("CERRAR", null)
+                        .show()
+                }
+            }
+            if (kind == CompanionKind.SHIZUKU && state == CompanionState.READY) {
+                action("SHIZUKU: DIAGNÓSTICO REAL ADB (SOLO LECTURA)") {
+                    AlertDialog.Builder(this)
+                        .setTitle("Consulta del sistema vía Shizuku")
+                        .setMessage("Se iniciará temporalmente un UserService con identidad " +
+                            "ADB/shell (UID 2000). Ejecutará exclusivamente dos consultas " +
+                            "fijas: versión Android y ruta del paquete de sistema. " +
+                            "No cambia ajustes, no usa root y no ejecuta órdenes arbitrarias.")
+                        .setNegativeButton("CANCELAR", null)
+                        .setPositiveButton("PROBAR") { _, _ ->
+                            val resultDialog = AlertDialog.Builder(this)
+                                .setTitle("Diagnóstico Shizuku remoto")
+                                .setMessage("Consultando el UserService; esperando respuesta...")
+                                .setNegativeButton("CANCELAR") { _, _ ->
+                                    shizukuSystemReadOnly.cancel()
+                                }
+                                .create()
+                            resultDialog.setOnCancelListener { shizukuSystemReadOnly.cancel() }
+                            resultDialog.show()
+                            shizukuSystemReadOnly.request { report ->
+                                if (!isFinishing && !isDestroyed && resultDialog.isShowing) {
+                                    resultDialog.setMessage(report)
+                                    resultDialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                                        ?.text = "CERRAR"
+                                }
+                            }
+                        }
                         .show()
                 }
             }
