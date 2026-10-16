@@ -12,7 +12,7 @@ Esto consumía demasiado espacio y dificultaba encontrar funciones.
 
 ## Cambio de interacción
 
-### Inicio JARVIS OS PREVIEW
+### Inicio JARVIS OS V2 PREVIEW
 
 | Módulo | Aparece al tocar | No hace automáticamente |
 |---|---|---|
@@ -48,9 +48,7 @@ oficiales cuando corresponda.
 ## Convivencia y reversión
 
 El debug APK está identificado como
-`com.cardenaspiero255.jarvis.ospreview`: se instala al lado de la app
-preexistente `com.cardenaspiero255.jarvis`, sin sobrescribirla ni
-compartir sus datos. Funtouch sigue instalado.
+`com.cardenaspiero255.jarvis.osv2preview`: se instala en paralelo tanto con **JARVIS OS V1 PREVIEW** (`com.cardenaspiero255.jarvis.ospreview`) como con la app original **JARVIS OMEGA** (`com.cardenaspiero255.jarvis`). No reemplaza ninguna de las dos ni comparte sus datos privados. En la selección HOME aparece como «JARVIS OS V2». Funtouch sigue instalado.
 
 En el módulo **JARVIS**, «ABRIR JARVIS / IA Y VOZ» abre el asistente
 **compacto V2** que está dentro de esta APK; su memoria local es separada
