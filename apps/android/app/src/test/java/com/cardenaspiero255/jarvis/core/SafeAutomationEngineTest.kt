@@ -79,6 +79,17 @@ class SafeAutomationEngineTest {
         assertEquals(listOf(SafeAutomationStep.CHECK_SHIZUKU), completed)
     }
 
+    @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
+        assertEquals(SafeRoutine.SHIZUKU_ASSIST,
+            SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))
+        assertEquals(SafeRoutine.OPEN_SETTINGS,
+            SafeAutomationVoiceRouter.parse("Jarvis, abre ajustes."))
+        assertEquals(null,
+            SafeAutomationVoiceRouter.parse("Jarvis revisa Shizuku y borra datos"))
+        assertEquals(null,
+            SafeAutomationVoiceRouter.parse("Jarvis abre Termux; rm -rf"))
+    }
+
     @Test fun voiceRouterCannotEmitUnboundedOrDestructiveActions() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("Jarvis, revisa shizuku"))
