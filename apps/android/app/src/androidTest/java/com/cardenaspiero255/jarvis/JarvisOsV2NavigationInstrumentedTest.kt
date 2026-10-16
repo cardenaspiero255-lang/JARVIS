@@ -66,6 +66,27 @@ class JarvisOsV2NavigationInstrumentedTest {
         }
     }
 
+    @Test fun gamingLinkRevealsAdvisorWithoutRunningGamingActions() {
+        val instrument = InstrumentationRegistry.getInstrumentation()
+        val activity = instrument.startActivitySync(
+            Intent(instrument.targetContext, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra("jarvis.omega.ui.panel", "JUEGOS Y RENDIMIENTO")
+        ) as MainActivity
+        try {
+            instrument.waitForIdleSync()
+            instrument.runOnMainSync {
+                val root = activity.window.decorView
+                assertTrue(findText(root, "EVALUAR ANTES DE JUGAR")?.isShown == true)
+                assertFalse(findText(root, "ENVIAR MENSAJE")?.isShown == true)
+                assertFalse(findText(root, "PERMITIR CAPTURAS 60 S — DEPURACIÓN")?.isShown == true)
+            }
+        } finally {
+            instrument.runOnMainSync { activity.finish() }
+            instrument.waitForIdleSync()
+        }
+    }
+
     @Test fun omegaAssistantStartsWithAdvancedControlsCollapsedButKeepsSafetyAction() {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val activity = instrument.startActivitySync(
