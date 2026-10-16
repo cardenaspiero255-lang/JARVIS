@@ -73,7 +73,7 @@ class JarvisHomeActivity : Activity() {
         }
         val identity = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         identity.addView(text("J A R V I S   O S", 26f, Color.WHITE, bold = true))
-        identity.addView(text("HOME SHELL  /  V2  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
+        identity.addView(text("HOME SHELL  /  V3  /  CUATRO MÓDULOS", 10f, scarlet, bold = true))
         top.addView(identity, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(text("F U N T O U C H\nI N T A C T O", 9f, muted).apply {
             gravity = Gravity.END
@@ -237,7 +237,7 @@ class JarvisHomeActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(14) })
         modules[MODULE_SISTEMA] = systemCard
-        column.addView(text("JARVIS OS V2  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
+        column.addView(text("JARVIS OS V3  ·  OFFLINE  ·  FUNTOUCH INTACTO", 10f, muted).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(18), 0, dp(4))
         })
