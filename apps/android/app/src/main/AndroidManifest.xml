@@ -41,7 +41,7 @@
         <activity
             android:name=".JarvisHomeActivity"
             android:exported="true"
-            android:label="JARVIS OS V2">
+            android:label="JARVIS OS V3">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
