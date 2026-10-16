@@ -188,11 +188,13 @@ class CompanionCenterActivity : Activity() {
                     val now = SystemClock.elapsedRealtime()
                     val state = tracker.status(now)
                     val display = when (state) {
-                        TermuxResultState.VERIFIED ->
-                            "Termux: ${tracker.verifiedProbe(now)?.label ?: "prueba local"} " +
-                                "verificada. ${tracker.verifiedAndroidVersion(now)?.let {
-                                    "Android informó la versión $it."
-                                } ?: "Código 0 y evidencia válida."}"
+                        TermuxResultState.VERIFIED -> {
+                            val label = tracker.verifiedProbe(now)?.label ?: "prueba local"
+                            val version = tracker.verifiedAndroidVersion(now)
+                            val detail = if (version != null) "Android informó la versión $version."
+                                else "Código 0 y evidencia válida."
+                            "Termux: $label verificada. $detail"
+                        }
                         TermuxResultState.WAITING -> "Termux: pendiente de respuesta verificada."
                         TermuxResultState.FAILED -> "Termux: falló o devolvió una respuesta no válida."
                         TermuxResultState.TIMED_OUT -> "Termux: sin respuesta dentro del límite."
