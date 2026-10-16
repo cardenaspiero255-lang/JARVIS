@@ -20,6 +20,7 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private var closed = false
+    private var generation = 0
     private var pending: ((String) -> Unit)? = null
     private var args: Shizuku.UserServiceArgs? = null
     private var connection: ServiceConnection? = null
@@ -28,6 +29,7 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
     fun request(callback: (String) -> Unit) {
         cancel()
         if (closed) return
+        val requestId = generation
         val preflight = try {
             when {
                 !Shizuku.pingBinder() -> "Shizuku está detenido. Inicia su servicio primero."
@@ -56,7 +58,7 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 if (closed || pending == null) return
                 if (!binder.pingBinder()) {
-                    complete("El UserService de Shizuku devolvió un Binder inactivo.")
+                    complete("El UserService de Shizuku devolvió un Binder inactivo.", requestId)
                     return
                 }
                 executor.execute {
@@ -82,36 +84,40 @@ internal class ShizukuSystemReadOnlyClient(private val activity: Activity) {
                     } catch (_: Exception) {
                         "Falló la consulta mediante Binder. No se acredita la operación."
                     }
-                    main.post { complete(report) }
+                    main.post { complete(report, requestId) }
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
-                complete("El UserService de Shizuku se desconectó; prueba no verificada.")
+                complete("El UserService de Shizuku se desconectó; prueba no verificada.", requestId)
             }
         }
         connection = conn
-        val timer = Runnable { complete("Tiempo de espera agotado al consultar Shizuku.") }
+        val timer = Runnable {
+            complete("Tiempo de espera agotado al consultar Shizuku.", requestId)
+        }
         timeout = timer
         main.postDelayed(timer, 12_000L)
         try {
             Shizuku.bindUserService(newArgs, conn)
         } catch (_: RuntimeException) {
-            complete("Shizuku rechazó iniciar el servicio remoto; revisa sus permisos.")
+            complete("Shizuku rechazó iniciar el servicio remoto; revisa sus permisos.", requestId)
         }
     }
 
-    private fun complete(message: String) {
+    private fun complete(message: String, requestId: Int) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            main.post { complete(message) }
+            main.post { complete(message, requestId) }
             return
         }
+        if (requestId != generation) return
         val cb = pending ?: return
         cancel()
         if (!closed) cb(message)
     }
 
     fun cancel() {
+        generation++
         timeout?.let { main.removeCallbacks(it) }
         timeout = null
         val currentArgs = args
