@@ -51,6 +51,7 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
@@ -1037,6 +1038,32 @@ class MainActivity : Activity() {
     }
 
     private fun processRecognizedSpeech(transcript: String) {
+        // Already passed the one-use microphone request + foreground gate.
+        // Voice may ONLY propose an exact allowlisted routine; it cannot execute it.
+        val proposed = SafeAutomationVoiceRouter.parse(transcript)
+        if (proposed != null) {
+            voiceMathSession.clear()
+            voiceConsent.cancel()
+            statusText.text = "Rutina disponible: ${proposed.summary} " +
+                "Revisa y autoriza en pantalla; aún no se ejecutó ninguna acción."
+            spokenReplyEngine.speakRecognizedAnswerAfterTap(statusText.text.toString())
+            AlertDialog.Builder(this)
+                .setTitle("JARVIS escuchó una rutina")
+                .setMessage(proposed.summary + "\\n\\nLa voz nunca concede permisos ni ejecuta " +
+                    "acciones. ¿Quieres abrir su vista previa?")
+                .setNegativeButton("CANCELAR", null)
+                .setPositiveButton("REVISAR PLAN") { _, _ ->
+                    try {
+                        startActivity(
+                            Intent(this, CompanionCenterActivity::class.java)
+                                .putExtra(CompanionCenterActivity.EXTRA_ROUTINE_PREVIEW, proposed.name)
+                        )
+                    } catch (_: RuntimeException) {
+                        statusText.text = "No pude abrir el plan de automatización."
+                    }
+                }.show()
+            return
+        }
         val action = parser.parse(transcript)
         if (action != VoiceAction.UNSUPPORTED) voiceMathSession.clear()
         // Fresh structured readings are kept only on the stack, never as audio
