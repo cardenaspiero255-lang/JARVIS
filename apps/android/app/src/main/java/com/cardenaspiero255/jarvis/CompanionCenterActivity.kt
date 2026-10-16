@@ -1,6 +1,7 @@
 package com.cardenaspiero255.jarvis
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -9,6 +10,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.view.View
 import android.view.Gravity
@@ -25,6 +29,9 @@ import com.cardenaspiero255.jarvis.core.CompanionState
 import com.cardenaspiero255.jarvis.core.SafeAutomationEngine
 import com.cardenaspiero255.jarvis.core.SafeAutomationOutcome
 import com.cardenaspiero255.jarvis.core.SafeRoutine
+import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
+import com.cardenaspiero255.jarvis.core.OwnDroidLockState
+import com.cardenaspiero255.jarvis.core.TermuxResultState
 import rikka.shizuku.Shizuku
 
 /**
@@ -55,6 +62,15 @@ class CompanionCenterActivity : Activity() {
         setContentView(ScrollView(this).apply { addView(content) })
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         redraw()
+        // Only an internal, non-exported activity can accept this handoff.
+        // Even a legitimate voice request opens a preview, never executes.
+        if (savedInstanceState == null) {
+            val request = intent?.getStringExtra(EXTRA_ROUTINE_PREVIEW)
+            val routine = SafeRoutine.values().firstOrNull { it.name == request }
+            if (routine != null) content.post {
+                if (!isFinishing && !isDestroyed) confirmRoutine(routine)
+            }
+        }
     }
 
     override fun onResume() {
@@ -126,6 +142,16 @@ class CompanionCenterActivity : Activity() {
             }
             if (kind == CompanionKind.TERMUX && installed) {
                 action("TERMUX: PROBAR COMANDO LOCAL id") { confirmTermuxCheck() }
+                action("TERMUX: CONSULTAR RESULTADO") {
+                    val state = TermuxResultSession.tracker.status(SystemClock.elapsedRealtime())
+                    message(when (state) {
+                        TermuxResultState.VERIFIED -> "Termux: id devolvió código 0 y respuesta válida."
+                        TermuxResultState.WAITING -> "Termux: pendiente de respuesta verificada."
+                        TermuxResultState.FAILED -> "Termux: falló o devolvió una respuesta no válida."
+                        TermuxResultState.TIMED_OUT -> "Termux: sin respuesta dentro del límite."
+                        TermuxResultState.IDLE -> "No hay ninguna prueba Termux ejecutada."
+                    })
+                }
             }
             if (kind == CompanionKind.OWNDROID && installed) {
                 action("OWNDROID: BLOQUEAR PANTALLA (CONFIRMAR)") { confirmOwnDroidLock() }
@@ -182,11 +208,11 @@ class CompanionCenterActivity : Activity() {
             .setTitle("Prueba aislada de Termux")
             .setMessage("Se solicitará ÚNICAMENTE /data/data/com.termux/files/usr/bin/id, " +
                 "sin argumentos ni scripts. Requiere permiso RUN_COMMAND y " +
-                "allow-external-apps=true en Termux. El envío NO demuestra la ejecución.")
+                "allow-external-apps=true en Termux. Verifica el resultado con CONSULTAR RESULTADO.")
             .setNegativeButton("CANCELAR", null)
             .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
                 if (adapters.requestTermuxIdentityCheck()) {
-                    message("Solicitud enviada a Termux; resultado NO verificado.")
+                    message("Termux: esperando código de salida verificable. Consulta el resultado.")
                 } else {
                     message("Falta permiso o Termux rechazó iniciar la prueba.")
                 }
@@ -218,10 +244,29 @@ class CompanionCenterActivity : Activity() {
                             "La pantalla puede bloquearse y necesitar tu PIN.")
                         .setNegativeButton("CANCELAR", null)
                         .setPositiveButton("CONFIRMAR BLOQUEO") { _, _ ->
-                            if (adapters.sendExplicitOwnDroidLock(ephemeralKey)) {
-                                message("Solicitud LOCK enviada; ejecución NO verificada.")
-                            } else {
+                            val beforeLocked = currentLockState()
+                            val sent = adapters.sendExplicitOwnDroidLock(ephemeralKey)
+                            if (!sent) {
                                 message("OwnDroid no aceptó el envío.")
+                            } else {
+                                // OwnDroid's broadcast API provides no authenticated ACK.
+                                // Independently observe Android lock state; never infer
+                                // causality from the broadcast dispatch alone.
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    val outcome = OwnDroidLockEvidence.evaluate(
+                                        sent = sent,
+                                        beforeLocked = beforeLocked,
+                                        afterLocked = currentLockState()
+                                    )
+                                    if (!isDestroyed) message(when (outcome) {
+                                        OwnDroidLockState.OBSERVED_LOCKED ->
+                                            "Android muestra bloqueo activo; origen no comprobable."
+                                        OwnDroidLockState.INCONCLUSIVE ->
+                                            "Ya estaba bloqueado; no se puede atribuir a OwnDroid."
+                                        OwnDroidLockState.NOT_VERIFIED ->
+                                            "Bloqueo no verificado; revisa OwnDroid y sus permisos."
+                                    })
+                                }, 1500L)
                             }
                         }
                         .show()
@@ -229,6 +274,11 @@ class CompanionCenterActivity : Activity() {
             }
             .show()
     }
+
+    private fun currentLockState(): Boolean = try {
+        val manager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        manager.isDeviceLocked
+    } catch (_: RuntimeException) { false }
 
     private fun shizukuEvidence(installed: Boolean): CompanionEvidence {
         if (!installed) return CompanionEvidence(false)
@@ -297,4 +347,8 @@ class CompanionCenterActivity : Activity() {
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     private fun message(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+    companion object {
+        const val EXTRA_ROUTINE_PREVIEW = "jarvis.automation.preview"
+    }
+
 }
