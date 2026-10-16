@@ -11,6 +11,8 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.CompanionEvidence
 import com.cardenaspiero255.jarvis.core.SafeAutomationGateway
 import com.cardenaspiero255.jarvis.core.SafeAutomationStep
+import com.cardenaspiero255.jarvis.core.ShizukuReadOnlyProbePolicy
+import com.cardenaspiero255.jarvis.core.ShizukuReadOnlyStatus
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import rikka.shizuku.Shizuku
@@ -26,6 +28,37 @@ internal class CompanionActionAdapters(private val activity: Activity) :
         Shizuku.pingBinder() &&
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
     } catch (_: Exception) { false }
+
+    /**
+     * Opt-in diagnostic: read the identity reported by Shizuku's own Binder API.
+     * No shell, system settings, privileged app action or process execution.
+     * This does NOT establish capability to manage other Android applications.
+     */
+    fun shizukuReadOnlyDiagnostic(): String = try {
+        if (!Shizuku.pingBinder()) {
+            "Servicio Shizuku detenido o desconectado. Inícialo desde Shizuku."
+        } else if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            "JARVIS no tiene permiso SDK de Shizuku. Autorízalo primero."
+        } else {
+            val uid = Shizuku.getUid()
+            val version = Shizuku.getVersion()
+            when (ShizukuReadOnlyProbePolicy.classify(uid, version)) {
+                ShizukuReadOnlyStatus.SHELL ->
+                    "Shizuku respondió mediante Binder: UID 2000 (ADB/shell), API $version. " +
+                        "Lectura de identidad correcta. No acredita aún acciones privilegiadas."
+                ShizukuReadOnlyStatus.ROOT ->
+                    "Shizuku respondió mediante Binder: UID 0 (root), API $version. " +
+                        "Lectura de identidad correcta. JARVIS no activó root ni ejecutó comandos."
+                ShizukuReadOnlyStatus.UNKNOWN_IDENTITY ->
+                    "Shizuku respondió: UID $uid, API $version. " +
+                        "Identidad no reconocida: no se acreditan privilegios."
+                ShizukuReadOnlyStatus.FAILED ->
+                    "Shizuku devolvió una identidad o versión inválida; diagnóstico no verificado."
+            }
+        }
+    } catch (_: RuntimeException) {
+        "La consulta al servicio Shizuku falló o se interrumpió. Revisa su estado y permiso."
+    }
 
     fun dhizukuEvidence(installed: Boolean): CompanionEvidence {
         if (!installed) return CompanionEvidence(false)

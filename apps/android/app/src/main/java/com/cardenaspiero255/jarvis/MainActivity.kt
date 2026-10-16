@@ -24,6 +24,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -55,6 +56,10 @@ import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
+import com.cardenaspiero255.jarvis.core.ForegroundVoiceTurnPolicy
+import com.cardenaspiero255.jarvis.core.ForegroundListeningSession
+import com.cardenaspiero255.jarvis.core.SpeechLevelPolicy
+import com.cardenaspiero255.jarvis.core.ListeningDecision
 import com.cardenaspiero255.jarvis.core.VoiceFaqRouter
 import com.cardenaspiero255.jarvis.core.SpokenMessage
 import com.cardenaspiero255.jarvis.core.VoiceStyle
@@ -74,6 +79,19 @@ class MainActivity : Activity() {
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private var foregroundSpeech: ForegroundSpeechRecognizer? = null
+    private val foregroundListening = ForegroundListeningSession()
+    private var replyAudioInProgress = false
+    private val listeningCycleHandler = Handler(Looper.getMainLooper())
+    private val listeningRestart: Runnable = object : Runnable {
+        override fun run() {
+            if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
+                if (replyAudioInProgress) {
+                    listeningCycleHandler.postDelayed(this, 1000L)
+                } else startSpeech(fromContinuous = true)
+            }
+        }
+    }
+    private lateinit var continuousListeningButton: Button
     private lateinit var visionPickerRequest: VisionPickerRequestGate
     private lateinit var screenConsentGate: ScreenConsentRequestGate
     private var screenConsentRequested = false
@@ -84,6 +102,8 @@ class MainActivity : Activity() {
     private var gamingPreference = GamingPreference.BALANCED
     private val gameHubPreflight = GameHubPreflightGate()
     private lateinit var statusText: TextView
+    private lateinit var micStatusText: TextView
+    private lateinit var micMeter: ProgressBar
     private lateinit var omegaCore: OmegaPulseCore
     private lateinit var omegaScroll: ScrollView
     private lateinit var compactPanels: OmegaCompactPanels
@@ -184,7 +204,10 @@ class MainActivity : Activity() {
         })
         spokenReplyEngine = SpokenReplyEngine(this,
             showStatus = { statusText.text = it },
-            onSpeechProgress = { omegaCore.setSpeaking(it) }
+            onSpeechProgress = {
+                replyAudioInProgress = it
+                omegaCore.setSpeaking(it)
+            }
         )
         layout.addView(primaryButton("PROBAR AUDIO JARVIS") {
             spokenReplyEngine.testVoiceByTap()
@@ -192,7 +215,53 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("CONFIGURAR VOZ EN ANDROID") {
             openTtsSettingsByTap()
         })
+        micStatusText = label(
+            "MICRÓFONO DETENIDO — pulsa HABLAR o ACTIVA ESCUCHA CONTINUA.",
+            14f, Color.rgb(211, 213, 220)
+        )
+        layout.addView(micStatusText)
+        micMeter = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            contentDescription = "Intensidad de audio comunicada por Android"
+        }
+        layout.addView(micMeter)
+        layout.addView(label(
+            "La barra depende del proveedor de Android: algunos no informan niveles " +
+                "aunque sí reconozcan la voz.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        layout.addView(primaryButton("PROBAR MICRÓFONO DE ANDROID") {
+            stopContinuousListening()
+            openAndroidSystemVoiceByTap()
+        })
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
+        continuousListeningButton = primaryButton("ACTIVAR ESCUCHA CONTINUA") {
+            if (foregroundListening.active) {
+                stopContinuousListening()
+                statusText.text = "Escucha continua desactivada. El micrófono está detenido."
+            } else {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+                    PackageManager.PERMISSION_GRANTED) {
+                    statusText.text = "Concede permiso al micrófono y vuelve a pulsar " +
+                        "ACTIVAR ESCUCHA CONTINUA."
+                    try {
+                        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),
+                            REQUEST_MICROPHONE)
+                    } catch (_: RuntimeException) {
+                        statusText.text = "Android no pudo solicitar el micrófono."
+                    }
+                } else {
+                    foregroundListening.enableByTap()
+                    updateListeningButton()
+                    statusText.text = "Escucha repetida activada SOLO mientras JARVIS " +
+                        "está visible. Cinco intentos sin voz la detienen. " +
+                        "Android puede usar su servicio de reconocimiento configurado."
+                    startSpeech(fromContinuous = true)
+                }
+            }
+        }
+        layout.addView(continuousListeningButton)
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
         RetiredCloudCredentialCleaner.purge(this)
@@ -535,6 +604,7 @@ class MainActivity : Activity() {
             spokenReplyEngine.speakByTap(SpokenMessage.LOCAL_STATUS)
         })
         section.addView(primaryButton("DETENER RESPUESTA DE VOZ") {
+            stopContinuousListening()
             stopForegroundSpeech()
             recognitionRequest.cancel()
             voiceConsent.cancel()
@@ -547,7 +617,9 @@ class MainActivity : Activity() {
         section.addView(label(
             "Privacidad: el reconocimiento de voz lo realiza la aplicación de voz de Android. " +
                 "Puede requerir conexión y usar un servicio externo. " +
-                "JARVIS no graba de forma continua ni guarda transcripciones. " +
+                "La escucha repetida solo funciona tras activarla y con JARVIS visible. " +
+                "Se detiene al salir de la app o pulsar DETENER. " +
+                "JARVIS no almacena audio ni transcripciones. " +
                 "Las respuestas TTS usan únicamente una voz local instalada en Android. " +
                 "El perfil británico es un estilo de asistente, no la voz del actor de cine. " +
                 "Si no se encuentra una voz compatible, instálala desde los ajustes de texto a voz.",
@@ -557,10 +629,7 @@ class MainActivity : Activity() {
         // Reorganize the existing 37 action handlers, never cloning or triggering
         // them automatically. Emergency privacy lock and start-talking remain visible.
         val advancedNames = setOf(
-            "PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH",
-            "PERMITIR CAPTURAS 60 S — DEPURACIÓN",
             "PROTEGER PANTALLA AHORA",
-            "PROBAR AUDIO JARVIS",
             "CONFIGURAR VOZ EN ANDROID"
         )
         val advancedControls = (0 until layout.childCount)
@@ -629,6 +698,9 @@ class MainActivity : Activity() {
         gameHubPreflight.cancel()
         revokeCaptureException()
         foregroundGate.onStop()
+        stopContinuousListening()
+        if (::micMeter.isInitialized) micMeter.progress = 0
+        if (::micStatusText.isInitialized) micStatusText.text = "MICRÓFONO DETENIDO"
         if (foregroundSpeech != null) {
             stopForegroundSpeech()
             recognitionRequest.cancel()
@@ -651,7 +723,7 @@ class MainActivity : Activity() {
         revokeCaptureException()
         voiceMathSession.clear()
         recognitionRequest.cancel()
-        stopForegroundSpeech()
+        stopContinuousListening()
         visionPickerRequest.cancel()
         screenConsentRequested = false
         screenConsentGate.cancel()
@@ -673,7 +745,7 @@ class MainActivity : Activity() {
                 voiceConsent.cancel()
                 voiceMathSession.clear()
                 recognitionRequest.cancel()
-                stopForegroundSpeech()
+                stopContinuousListening()
             },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to {
@@ -881,9 +953,81 @@ class MainActivity : Activity() {
     private fun stopForegroundSpeech() {
         foregroundSpeech?.stop()
         foregroundSpeech = null
+        if (::micMeter.isInitialized) micMeter.progress = 0
+        if (::micStatusText.isInitialized) micStatusText.text = "MICRÓFONO DETENIDO"
     }
 
-    private fun startSpeech() {
+    /** Optional OEM fallback; only after a separate tap on the error-7 dialog. */
+    private fun openAndroidSystemVoiceByTap() {
+        if (!foregroundGate.canAcceptRecognitionResult()) return
+        if (!recognitionRequest.begin(SystemClock.elapsedRealtime())) {
+            statusText.text = "Ya hay una escucha pendiente."
+            return
+        }
+        val systemIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            // Broad Spanish locale for OEM providers lacking a Chilean model.
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(systemIntent, SPEECH_REQUEST)
+        } catch (_: RuntimeException) {
+            recognitionRequest.cancel()
+            statusText.text = "La voz del sistema no está disponible. Revisa " +
+                "el reconocimiento de voz y sus idiomas en Ajustes."
+        }
+    }
+
+    private fun updateListeningButton() {
+        if (::continuousListeningButton.isInitialized) {
+            continuousListeningButton.text = if (foregroundListening.active)
+                "DETENER ESCUCHA CONTINUA" else "ACTIVAR ESCUCHA CONTINUA"
+        }
+    }
+
+    private fun stopContinuousListening() {
+        val wasActive = foregroundListening.active
+        foregroundListening.stop()
+        listeningCycleHandler.removeCallbacks(listeningRestart)
+        // Do not invalidate a separate user-triggered external speech dialog
+        // when Android temporarily stops this activity for that dialog.
+        if (wasActive) {
+            stopForegroundSpeech()
+            recognitionRequest.cancel()
+        }
+        updateListeningButton()
+    }
+
+    private fun scheduleListeningRestart(delayMs: Long) {
+        listeningCycleHandler.removeCallbacks(listeningRestart)
+        if (hasPendingVoiceConfirmation()) {
+            stopContinuousListening()
+            return
+        }
+        if (foregroundListening.active && foregroundGate.canAcceptRecognitionResult()) {
+            listeningCycleHandler.postDelayed(listeningRestart, delayMs)
+        }
+    }
+
+    private fun startSpeech() { startSpeech(fromContinuous = false) }
+
+    private fun hasPendingVoiceConfirmation(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        return voiceConsent.hasPending(VoiceRequestedAction.ACCESSIBILITY_SETTINGS, now) ||
+            voiceConsent.hasPending(VoiceRequestedAction.GAMEHUB_ULTRA_LAUNCH, now)
+    }
+
+    private fun startSpeech(fromContinuous: Boolean) {
+        if (fromContinuous && !foregroundListening.active) return
+        if (hasPendingVoiceConfirmation()) {
+            if (foregroundListening.active) stopContinuousListening()
+            statusText.text = "Confirma la acción pendiente en pantalla o espera 30 segundos."
+            return
+        }
+        if (!fromContinuous && foregroundListening.active) stopContinuousListening()
         voiceConsent.cancel()
         if (Build.VERSION.SDK_INT >= 23 &&
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
@@ -911,6 +1055,9 @@ class MainActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
         }
         stopForegroundSpeech()
+        if (::micStatusText.isInitialized) {
+            micStatusText.text = "Solicitando reconocimiento de voz a Android..."
+        }
         val recognizer = ForegroundSpeechRecognizer(
             context = this,
             onResult = { transcript ->
@@ -921,9 +1068,33 @@ class MainActivity : Activity() {
                     voiceConsent.cancel()
                 } else if (transcript.isNullOrBlank()) {
                     voiceMathSession.clear()
-                    statusText.text = "No se reconoció ningún comando."
+                    statusText.text = "No reconocí palabras. Habla claro y vuelve a probar."
+                    if (foregroundListening.active) {
+                        if (foregroundListening.onError(SpeechRecognizer.ERROR_NO_MATCH) ==
+                            ListeningDecision.RETRY) {
+                            scheduleListeningRestart(ForegroundListeningSession.RETRY_DELAY_MS)
+                        } else {
+                            updateListeningButton()
+                            statusText.text = "Escucha detenida tras cinco intentos sin reconocer voz."
+                        }
+                    }
                 } else {
+                    if (::micStatusText.isInitialized) micStatusText.text =
+                        "Palabras reconocidas. Procesando orden local."
+                    // Suspend BEFORE creating the pending on-screen confirmation.
+                    // A privileged request, STOP or automation preview cannot rearm ASR.
+                    val suspendListening = ForegroundVoiceTurnPolicy.mustSuspend(
+                        parser.parse(transcript),
+                        SafeAutomationVoiceRouter.parse(transcript) != null
+                    )
+                    if (foregroundListening.active) {
+                        if (suspendListening) stopContinuousListening()
+                        else foregroundListening.onResult()
+                    }
                     processRecognizedSpeech(transcript)
+                    if (!suspendListening) scheduleListeningRestart(
+                        ForegroundListeningSession.AFTER_REPLY_DELAY_MS
+                    )
                 }
             },
             onFailure = { error ->
@@ -931,10 +1102,50 @@ class MainActivity : Activity() {
                 recognitionRequest.cancel()
                 voiceMathSession.clear()
                 voiceConsent.cancel()
-                statusText.text = "El reconocedor Android terminó con error " + error +
-                    ". Pulsa HABLAR para intentar nuevamente."
+                if (error == ForegroundSpeechRecognizer.ERROR_NO_READY_CALLBACK) {
+                    stopContinuousListening()
+                    statusText.text = "Android no inició el servicio de micrófono " +
+                        "para JARVIS. Prueba PROBAR MICRÓFONO DE ANDROID y revisa " +
+                        "el acceso al micrófono en Ajustes."
+                    if (::micStatusText.isInitialized) micStatusText.text =
+                        "El proveedor no confirmó que comenzó a escuchar."
+                } else if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    statusText.text = "Android no reconoció una frase (código $error). " +
+                        "Prueba hablar más cerca y revisa el idioma del reconocimiento."
+                    if (foregroundListening.active) {
+                        if (foregroundListening.onError(error) == ListeningDecision.RETRY) {
+                            scheduleListeningRestart(ForegroundListeningSession.RETRY_DELAY_MS)
+                        } else {
+                            updateListeningButton()
+                            statusText.text = "Escucha continua detenida tras cinco intentos. " +
+                                "Revisa el micrófono y vuelve a activarla."
+                        }
+                    } else if (error == SpeechRecognizer.ERROR_NO_MATCH && !isFinishing) {
+                        AlertDialog.Builder(this)
+                            .setTitle("No se reconoció tu voz")
+                            .setMessage("El servicio de Android no entendió la frase. " +
+                                "Puedes probar el cuadro de voz del sistema con idioma español.")
+                            .setNegativeButton("CANCELAR", null)
+                            .setPositiveButton("PROBAR VOZ DE ANDROID") { _, _ ->
+                                openAndroidSystemVoiceByTap()
+                            }.show()
+                    }
+                } else {
+                    if (foregroundListening.active) stopContinuousListening()
+                    statusText.text = "Android rechazó el reconocimiento (código $error). " +
+                        "Comprueba micrófono, servicio de voz y permisos en Ajustes."
+                }
             },
-            onStatus = { message -> statusText.text = message }
+            onStatus = { message ->
+                statusText.text = message
+                if (::micStatusText.isInitialized) micStatusText.text = message
+            },
+            onAudioLevel = { rms ->
+                if (::micMeter.isInitialized) {
+                    micMeter.progress = SpeechLevelPolicy.progress(rms)
+                }
+            }
         )
         foregroundSpeech = recognizer
         if (recognizer.start(intent)) {
@@ -944,6 +1155,12 @@ class MainActivity : Activity() {
         }
         foregroundSpeech = null
         recognizer.stop()
+        if (fromContinuous) {
+            stopContinuousListening()
+            statusText.text = "Este Android no permite la escucha repetida dentro " +
+                "de JARVIS. Usa HABLAR CON JARVIS para el selector de voz del sistema."
+            return
+        }
         try {
             @Suppress("DEPRECATION")
             startActivityForResult(intent, SPEECH_REQUEST)
