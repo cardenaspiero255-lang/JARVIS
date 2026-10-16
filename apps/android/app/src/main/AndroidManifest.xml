@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- User must grant JARVIS access in Shizuku; package installation is not permission. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API" />
+    <!-- Granted explicitly by Android; required for the fixed, local Termux diagnostic. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="com.rosan.dhizuku" />
