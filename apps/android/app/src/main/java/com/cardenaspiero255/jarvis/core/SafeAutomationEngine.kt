@@ -9,6 +9,9 @@ enum class SafeAutomationStep {
     OPEN_OWNDROID,
     OPEN_TERMUX,
     OPEN_ANDROID_SETTINGS,
+    READ_DEVICE_DIAGNOSTIC,
+    READ_GAMING_STATUS,
+    LIST_LAUNCHABLE_APPS,
 }
 
 enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String) {
@@ -31,6 +34,18 @@ enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String)
     OPEN_SETTINGS(
         listOf(SafeAutomationStep.OPEN_ANDROID_SETTINGS),
         "Abrir Ajustes de Android; no modificar la configuración."
+    ),
+    DEVICE_DIAGNOSTIC(
+        listOf(SafeAutomationStep.READ_DEVICE_DIAGNOSTIC),
+        "Consultar batería, RAM y escala de animaciones, sin cambiar ajustes."
+    ),
+    GAMING_READINESS(
+        listOf(SafeAutomationStep.READ_GAMING_STATUS),
+        "Evaluar memoria disponible antes de jugar; sin detener procesos ni prometer FPS."
+    ),
+    LIST_APPS(
+        listOf(SafeAutomationStep.LIST_LAUNCHABLE_APPS),
+        "Mostrar un resumen de aplicaciones visibles; no instalarlas ni modificarlas."
     ),
 }
 
@@ -116,6 +131,11 @@ object SafeAutomationVoiceRouter {
             "jarvis abre ajustes" -> SafeRoutine.OPEN_SETTINGS
             "jarvis abre termux" -> SafeRoutine.OPEN_TERMUX
             "jarvis abre owndroid" -> SafeRoutine.OPEN_OWNDROID
+            "jarvis diagnostica telefono" -> SafeRoutine.DEVICE_DIAGNOSTIC
+            "jarvis revisa mi telefono" -> SafeRoutine.DEVICE_DIAGNOSTIC
+            "jarvis prepara juego" -> SafeRoutine.GAMING_READINESS
+            "jarvis evalua modo juego" -> SafeRoutine.GAMING_READINESS
+            "jarvis muestra aplicaciones" -> SafeRoutine.LIST_APPS
             else -> null
         }
     }

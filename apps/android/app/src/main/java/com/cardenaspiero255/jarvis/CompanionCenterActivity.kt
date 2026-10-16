@@ -32,6 +32,10 @@ import com.cardenaspiero255.jarvis.core.SafeRoutine
 import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
 import com.cardenaspiero255.jarvis.core.OwnDroidLockState
 import com.cardenaspiero255.jarvis.core.TermuxResultState
+import com.cardenaspiero255.jarvis.core.ReadOnlyDeviceInspection
+import com.cardenaspiero255.jarvis.core.DeviceInspectionFormatter
+import com.cardenaspiero255.jarvis.core.ReadOnlyAppInventory
+import com.cardenaspiero255.jarvis.core.GamingReadinessPolicy
 import rikka.shizuku.Shizuku
 
 /**
@@ -166,6 +170,12 @@ class CompanionCenterActivity : Activity() {
                 action("OWNDROID: BLOQUEAR PANTALLA (CONFIRMAR)") { confirmOwnDroidLock() }
             }
         }
+        addLine("DIAGNÓSTICO Y MODO JUEGO — SOLO LECTURA", 17f, Color.WHITE, true)
+        action("DIAGNÓSTICO DEL TELÉFONO Y AJUSTES") { showReadOnlyDeviceReport() }
+        action("APLICACIONES: CONSULTAR Y ABRIR") { chooseVisibleApp() }
+        action("GAMING: EVALUAR MEMORIA") { showGamingReadiness() }
+        addLine("Las consultas anteriores no activan root, no detienen aplicaciones " +
+            "ni cambian los ajustes del sistema.", 12f, Color.LTGRAY)
         addLine("MOTOR LOCAL DE AUTOMATIZACIÓN", 17f, Color.WHITE, true)
         addLine("Rutinas fijas, autorización de un solo uso, sin Tasker. " +
             "Las palabras reconocidas por voz nunca ejecutan por sí mismas.", 12f, Color.LTGRAY)
@@ -179,6 +189,50 @@ class CompanionCenterActivity : Activity() {
                 "administrativas automáticas o shell arbitraria.",
             12f, accent
         )
+    }
+
+    private fun showReadOnlyDeviceReport() {
+        val info = ReadOnlyDeviceInspection.capture(this)
+        AlertDialog.Builder(this)
+            .setTitle("Diagnóstico Android de solo lectura")
+            .setMessage(DeviceInspectionFormatter.describe(info) +
+                "\n\nNo se cambiaron ajustes ni se ejecutó una acción privilegiada.")
+            .setPositiveButton("CERRAR", null)
+            .show()
+    }
+
+    private fun showGamingReadiness() {
+        val info = ReadOnlyDeviceInspection.capture(this)
+        val result = GamingReadinessPolicy.classify(info.availableRamMb, info.lowMemory)
+        AlertDialog.Builder(this)
+            .setTitle("Evaluación gaming")
+            .setMessage(GamingReadinessPolicy.message(result))
+            .setPositiveButton("CERRAR", null)
+            .show()
+    }
+
+    private fun chooseVisibleApp() {
+        val apps = ReadOnlyAppInventory.list(this)
+        if (apps.isEmpty()) {
+            message("Android no mostró aplicaciones con launcher accesible.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Aplicaciones visibles para Android")
+            .setItems(apps.map { it.title }.toTypedArray()) { _, index ->
+                val app = apps[index]
+                AlertDialog.Builder(this)
+                    .setTitle("¿Abrir ${app.title}?")
+                    .setMessage("La aplicación se abrirá por una pulsación explícita. " +
+                        "JARVIS no modificará sus permisos ni la detendrá.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("ABRIR") { _, _ ->
+                        openCompanion(app.packageName)
+                    }
+                    .show()
+            }
+            .setNegativeButton("CANCELAR", null)
+            .show()
     }
 
     private fun selectRoutine() {
@@ -208,6 +262,15 @@ class CompanionCenterActivity : Activity() {
                     SafeAutomationOutcome.DENIED -> "Autorización no válida"
                 }
                 message("$status: ${report.completedSteps}/${report.totalSteps}.")
+                if (report.outcome == SafeAutomationOutcome.COMPLETED) {
+                    adapters.takeLastReadout()?.let { readout ->
+                        AlertDialog.Builder(this)
+                            .setTitle("Resultado de solo lectura")
+                            .setMessage(readout)
+                            .setPositiveButton("CERRAR", null)
+                            .show()
+                    }
+                }
             }
             .show()
     }
