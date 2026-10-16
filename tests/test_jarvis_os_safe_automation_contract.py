@@ -30,7 +30,7 @@ class SafeAutomationContract(unittest.TestCase):
         adapter = (SRC / "CompanionActionAdapters.kt").read_text()
         for sdk in (
             'dev.rikka.shizuku:api:13.1.5',
-            'io.github.iamr0s:Dhizuku-API:2.6.0',
+            'io.github.iamr0s:Dhizuku-API:2.5.4',
         ):
             self.assertIn(sdk, gradle)
         for gate in ('Shizuku.pingBinder()', 'Shizuku.checkSelfPermission()',
