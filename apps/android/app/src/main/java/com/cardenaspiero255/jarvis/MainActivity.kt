@@ -345,9 +345,8 @@ class MainActivity : Activity() {
                     statusText.text = "JARVIS está procesando una operación. Espera a que finalice."
                 message.equals("estado ia", ignoreCase = true) -> {
                     chatInput.text.clear()
-                    statusText.text = "JARVIS no utiliza API de pago. " +
-                        if (offlineLlm.isInstalled()) "Modelo GGUF instalado; consulta el chat para probarlo."
-                        else "Pulsa INSTALAR QWEN OFICIAL para activar la inferencia."
+                    showLlmStatus("Qwen: comprobando estado local y SHA-256...")
+                    offlineLlm.checkLocalStatus { _, report -> showLlmStatus(report) }
                 }
                 message.equals("conectar ia", ignoreCase = true) ||
                     message.trimStart().startsWith("consulta nube:", ignoreCase = true) -> {
@@ -375,10 +374,19 @@ class MainActivity : Activity() {
                                 localDialogue.recordGeneratedReply(message, generated)
                                 generated
                             }
-                            showChatReply(answer, benchmark?.summary())
+                            if (generated == null) {
+                                val note = "Respuesta básica local: Qwen no generó este texto."
+                                showLlmStatus(note + " Consulta el estado de instalación.")
+                                showChatReply(answer, note)
+                            } else {
+                                showChatReply(answer, benchmark?.summary())
+                            }
                         }
                     } else {
-                        showChatReply(localDialogue.reply(message), null)
+                        val note = if (LocalLlmPolicy.shouldUseGenerative(message)) {
+                            "Respuesta básica local: Qwen no está disponible."
+                        } else null
+                        showChatReply(localDialogue.reply(message), note)
                     }
                 }
             }
@@ -1144,7 +1152,7 @@ class MainActivity : Activity() {
             if (resultCode == RESULT_OK && uri != null) {
                 statusText.text = "Copiando y comprobando el modelo local..."
                 offlineLlm.importFrom(uri) { _, info ->
-                    statusText.text = info
+                    showLlmStatus(info)
                 }
             } else {
                 statusText.text = "Importación de modelo cancelada."
