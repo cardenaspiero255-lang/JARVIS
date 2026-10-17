@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     private lateinit var offlineLlm: OfflineLlmEngine
     private var chatBusy = false
     private var modelInstallBusy = false
+    private lateinit var llmStatusText: TextView
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
@@ -220,9 +221,18 @@ class MainActivity : Activity() {
                 "Instálalo aquí con un toque. El modelo se descarga una vez y después funciona sin internet.",
             12f, Color.rgb(164, 166, 174)
         ))
+        llmStatusText = label(
+            "Qwen: estado aún no comprobado. Pulsa CONSULTAR ESTADO LLM LOCAL.",
+            15f, Color.rgb(224, 225, 232)
+        ).apply {
+            background = OmegaUiKit.statusSurface(this@MainActivity)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            minHeight = dp(68)
+        }
+        section.addView(llmStatusText)
         section.addView(primaryButton("INSTALAR QWEN OFICIAL — 491 MB") {
             if (chatBusy || modelInstallBusy) {
-                statusText.text = "Termina la operación actual antes de instalar Qwen."
+                showLlmStatus("Termina la operación actual antes de instalar Qwen.")
             } else {
                 AlertDialog.Builder(this)
                     .setTitle("Instalar Qwen oficial")
@@ -232,18 +242,26 @@ class MainActivity : Activity() {
                         "menos 550 MB libres. Comprobará el SHA-256 antes de habilitarlo. " +
                         "La descarga utiliza Internet; las conversaciones continuarán locales."
                     )
-                    .setNegativeButton("CANCELAR", null)
+                    .setNegativeButton("CANCELAR") { _, _ ->
+                        showLlmStatus("Qwen: instalación cancelada. Ningún modelo se ha descargado en esta operación.")
+                    }
                     .setPositiveButton("INSTALAR") { _, _ ->
                         modelInstallBusy = true
-                        statusText.text = "Conectando con Qwen oficial por HTTPS..."
+                        showLlmStatus("Qwen: conectando por HTTPS. Mantén esta pantalla abierta...")
                         offlineLlm.installOfficial(
                             onProgress = { percent ->
-                                statusText.text = "Descargando Qwen oficial: $percent%. " +
-                                    "Mantén JARVIS abierto hasta terminar."
+                                showLlmStatus("Qwen: descargando $percent%. Mantén JARVIS abierto hasta terminar.")
                             },
-                            callback = { _, message ->
+                            callback = { success, message ->
                                 modelInstallBusy = false
-                                statusText.text = message
+                                showLlmStatus(message)
+                                if (!isFinishing && !isDestroyed) {
+                                    AlertDialog.Builder(this)
+                                        .setTitle(if (success) "Qwen instalado" else "Qwen no instalado")
+                                        .setMessage(message)
+                                        .setPositiveButton("ENTENDIDO", null)
+                                        .show()
+                                }
                             }
                         )
                     }.show()
@@ -275,10 +293,11 @@ class MainActivity : Activity() {
             }
         })
         section.addView(primaryButton("CONSULTAR ESTADO LLM LOCAL") {
-            statusText.text = if (offlineLlm.isInstalled()) {
-                "GGUF importado. Se comprobará su SHA-256 antes de inferencia. Motor llama.cpp CPU ARM64."
+            if (chatBusy || modelInstallBusy) {
+                showLlmStatus("Qwen: termina la operación actual para consultar el estado.")
             } else {
-                "Falta importar Qwen GGUF. El chat determinista funciona sin modelo."
+                showLlmStatus("Qwen: comprobando archivo, SHA-256, memoria y temperatura...")
+                offlineLlm.checkLocalStatus { _, report -> showLlmStatus(report) }
             }
         })
         section.addView(primaryButton("MEDIR RENDIMIENTO LLM — 5 PRUEBAS") {
@@ -673,6 +692,11 @@ class MainActivity : Activity() {
         // numeric answer while our explicitly started recognition is pending.
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
+        if (modelInstallBusy) {
+            showLlmStatus("Qwen: descarga interrumpida al salir de JARVIS. Consulta el estado al regresar.")
+        } else if (chatBusy) {
+            showLlmStatus("Qwen: inferencia o benchmark interrumpido al salir de JARVIS.")
+        }
         if (::offlineLlm.isInitialized) offlineLlm.releaseForBackground()
         chatBusy = false
         modelInstallBusy = false
@@ -683,46 +707,62 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    /** Five user-initiated, serialized physical-device inference samples. */
+    /** Five real samples, started only after asynchronous SHA and resource checks. */
     private fun runLocalLlmBenchmark() {
         if (chatBusy || modelInstallBusy) {
-            statusText.text = "Termina la operación actual antes de iniciar otra."
-            return
-        }
-        if (!offlineLlm.isInstalled()) {
-            statusText.text = "Importa primero el GGUF verificado para medir inferencia real."
+            showLlmStatus("Qwen: espera a que termine la descarga o la operación actual.")
             return
         }
         chatBusy = true
-        val measures = mutableListOf<OfflineLlmEngine.Benchmark>()
-        fun next() {
-            offlineLlm.generate("Explica la fotosíntesis en tres frases sencillas.") { generated, metric ->
-                if (metric == null || generated == null) {
-                    chatBusy = false
-                    statusText.text = "Benchmark incompleto: fallo o falta de recursos. " +
-                        "No se publicarán cifras inventadas."
-                    return@generate
+        showLlmStatus("Qwen: comprobando SHA-256, memoria y temperatura antes de las 5 pruebas...")
+        offlineLlm.checkLocalStatus { ready, report ->
+            if (!ready) {
+                chatBusy = false
+                showLlmStatus("$report Las 5 pruebas no se iniciaron.")
+            } else {
+                val measures = mutableListOf<OfflineLlmEngine.Benchmark>()
+                fun next() {
+                    offlineLlm.generate("Explica la fotosíntesis en tres frases sencillas.") { generated, metric ->
+                        if (metric == null || generated == null) {
+                            chatBusy = false
+                            showLlmStatus(
+                                "Qwen: fallo de inferencia ARM64 o recursos en la prueba " +
+                                    "${measures.size + 1}/5. No hay mediciones completas. " +
+                                    "Consulta los registros JARVIS_LLM_BENCH y Android."
+                            )
+                            return@generate
+                        }
+                        measures.add(metric)
+                        if (measures.size < 5) {
+                            showLlmStatus("Qwen: prueba ${measures.size}/5 terminada; continuando...")
+                            next()
+                        } else {
+                            chatBusy = false
+                            val cold = measures.first()
+                            val warm = LocalBenchmarkStats.medianPositive(
+                                measures.drop(1).map { it.tokensPerSecond }
+                            )
+                            val peakPss = measures.maxOf { it.pssMiB }
+                            showLlmStatus(
+                                "Qwen: benchmark 5/5 completado. Primera inferencia " +
+                                    "${cold.tokensPerSecond} tokens/s (${cold.wallMs} ms). " +
+                                    "Mediana caliente ${warm?.toString() ?: "N/D"} tokens/s. " +
+                                    "PSS máximo observado $peakPss MiB. " +
+                                    "Son cifras de este teléfono, no de otros dispositivos."
+                            )
+                        }
+                    }
                 }
-                measures.add(metric)
-                if (measures.size < 5) {
-                    statusText.text = "Prueba local ${measures.size}/5 completa; ejecutando la siguiente..."
-                    next()
-                } else {
-                    chatBusy = false
-                    val cold = measures.first()
-                    val warm = LocalBenchmarkStats.medianPositive(
-                        measures.drop(1).map { it.tokensPerSecond }
-                    )
-                    val peakPss = measures.maxOf { it.pssMiB }
-                    statusText.text = "Benchmark físico 5/5: primera respuesta ${cold.tokensPerSecond} " +
-                        "tokens/s (${cold.wallMs} ms), mediana caliente " +
-                        "${warm?.toString() ?: "N/D"} tokens/s, PSS máximo medido " +
-                        "$peakPss MiB. Revisar los 5 registros JARVIS_LLM_BENCH y la temperatura."
-                }
+                showLlmStatus("Qwen: SHA-256 y recursos correctos. Iniciando prueba 1/5...")
+                next()
             }
         }
-        statusText.text = "Iniciando 5 inferencias reales sin nube..."
-        next()
+    }
+
+    /** Keep Qwen results next to their controls, not only at the top of the screen. */
+    private fun showLlmStatus(message: String) {
+        if (::llmStatusText.isInitialized) llmStatusText.text = message
+        if (::statusText.isInitialized) statusText.text = message
     }
 
     private fun showChatReply(answer: String, benchmark: String?) {
