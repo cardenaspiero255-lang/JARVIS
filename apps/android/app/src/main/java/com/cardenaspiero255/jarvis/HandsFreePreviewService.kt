@@ -42,7 +42,10 @@ class HandsFreePreviewService : Service() {
     private var pendingSpeech: String? = null
     private var consumed = false
     private var closed = false
-    private val timeout = Runnable { stopSelf() }
+    private val timeout = Runnable {
+        lastState = "La prueba de 60 segundos terminó. Micrófono liberado."
+        stopSelf()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -56,6 +59,7 @@ class HandsFreePreviewService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            lastState = "Prueba detenida por el usuario. Micrófono liberado."
             stopSelf()
             return START_NOT_STICKY
         }
@@ -274,6 +278,7 @@ class HandsFreePreviewService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        lastState = "JARVIS se cerró. Micrófono liberado."
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
