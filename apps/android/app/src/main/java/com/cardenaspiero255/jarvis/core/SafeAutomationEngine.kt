@@ -15,6 +15,9 @@ enum class SafeAutomationStep {
     READ_TERMUX_LAST_RESULT,
     REQUEST_TERMUX_ID,
     REQUEST_TERMUX_VERSION,
+    PREVIEW_SHIZUKU_ADVANCED,
+    PREVIEW_GAMEHUB_PROFILE,
+    PREVIEW_ADB_SETTINGS,
 }
 
 enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String) {
@@ -61,6 +64,18 @@ enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String)
     TERMUX_VERSION_PROBE(
         listOf(SafeAutomationStep.REQUEST_TERMUX_VERSION),
         "Solicitar la versión Android con getprop ro.build.version.release. No modificar ajustes."
+    ),
+    SHIZUKU_ADVANCED_DIAGNOSTIC(
+        listOf(SafeAutomationStep.PREVIEW_SHIZUKU_ADVANCED),
+        "Consultar servicios, PID del sistema, paquete de Ajustes y escala de animación usando Shizuku, sin cambiar nada."
+    ),
+    GAMEHUB_PROFILE_PREVIEW(
+        listOf(SafeAutomationStep.PREVIEW_GAMEHUB_PROFILE),
+        "Preparar un perfil gaming sugerido a partir de memoria local. No activar GameHub ni cambiar el sistema."
+    ),
+    ADB_SETTINGS_PREVIEW(
+        listOf(SafeAutomationStep.PREVIEW_ADB_SETTINGS),
+        "Consultar escala de animaciones por Shizuku. Los cambios quedan BLOQUEADOS hasta tener rollback probado."
     ),
 }
 
@@ -154,6 +169,18 @@ object SafeAutomationVoiceRouter {
             "jarvis revisa conexion termux" -> SafeRoutine.TERMUX_LAST_RESULT
             "jarvis prueba termux" -> SafeRoutine.TERMUX_ID_PROBE
             "jarvis consulta version android con termux" -> SafeRoutine.TERMUX_VERSION_PROBE
+            // Foreground voice recognition often omits the wake word. Keep only
+            // exact, reviewed aliases here: they PREVIEW a routine, not execute it.
+            "revisa android", "jarvis revisa android",
+            "jarvis revisa el android", "revisa servicios android",
+            "jarvis revisa servicios android",
+            "jarvis revisa los servicios de android",
+            "jarvis revisa el sistema android",
+            "jarvis diagnostica android",
+            "jarvis diagnostica procesos android" ->
+                SafeRoutine.SHIZUKU_ADVANCED_DIAGNOSTIC
+            "jarvis prepara perfil gamehub" -> SafeRoutine.GAMEHUB_PROFILE_PREVIEW
+            "jarvis consulta ajustes adb" -> SafeRoutine.ADB_SETTINGS_PREVIEW
             else -> null
         }
     }

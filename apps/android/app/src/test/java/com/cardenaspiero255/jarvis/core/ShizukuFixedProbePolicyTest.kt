@@ -4,8 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ShizukuFixedProbePolicyTest {
-    @Test fun onlyTwoReadOnlyOperationsAreAvailable() {
-        assertEquals(2, ShizukuFixedProbe.values().size)
+    @Test fun onlyFixedReadOnlyOperationsAreAvailable() {
+        assertEquals(7, ShizukuFixedProbe.values().size)
         assertEquals(listOf("/system/bin/getprop", "ro.build.version.release"),
             ShizukuFixedProbe.ANDROID_RELEASE.command)
         assertEquals(listOf("/system/bin/pm", "path", "android"),

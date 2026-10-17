@@ -13,11 +13,11 @@ GRADLE = ROOT / "apps/android/app/build.gradle.kts"
 
 
 class ShizukuReadOnlyContract(unittest.TestCase):
-    def test_only_two_fixed_commands_and_no_shell_interpreter(self):
+    def test_seven_fixed_commands_and_no_shell_interpreter(self):
         code = POLICY.read_text()
         self.assertIn('"/system/bin/getprop", "ro.build.version.release"', code)
         self.assertIn('"/system/bin/pm", "path", "android"', code)
-        self.assertEqual(2, code.count("listOf(\"/system/bin/"))
+        self.assertEqual(7, code.count("listOf(\"/system/bin/"))
         service = SERVICE.read_text()
         self.assertIn('ShizukuFixedProbe.fromCode(fixedCode)', service)
         self.assertIn('ShizukuFixedProbePolicy.isAllowedUid(Process.myUid())', service)
@@ -31,7 +31,15 @@ class ShizukuReadOnlyContract(unittest.TestCase):
         self.assertIn('Shizuku.bindUserService', client)
         self.assertIn('Shizuku.unbindUserService', client)
         self.assertIn('.daemon(false)', client)
-        self.assertIn('12_000L', client)
+        self.assertIn('ShizukuRequestBudget.timeoutMs(advanced)', client)
+        budget = (SRC / "core/ShizukuRequestBudget.kt").read_text()
+        self.assertIn("PROCESS_WAIT_MS = 4_000L", budget)
+        self.assertIn("PER_PROBE_ALLOWANCE_MS = PROCESS_WAIT_MS + 1_000L", budget)
+        self.assertIn("STARTUP_ALLOWANCE_MS = 7_000L", budget)
+        self.assertIn("ShizukuFixedProbe.values().size", budget)
+        service = SERVICE.read_text()
+        self.assertIn('ShizukuRequestBudget.PROCESS_WAIT_MS', service)
+        self.assertNotIn('12_000L', client)
         self.assertIn('requestId != generation', client)
         self.assertIn('IJarvisShizukuReadOnly', AIDL.read_text())
         self.assertIn('aidl = true', GRADLE.read_text())
