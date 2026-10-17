@@ -169,8 +169,16 @@ object SafeAutomationVoiceRouter {
             "jarvis revisa conexion termux" -> SafeRoutine.TERMUX_LAST_RESULT
             "jarvis prueba termux" -> SafeRoutine.TERMUX_ID_PROBE
             "jarvis consulta version android con termux" -> SafeRoutine.TERMUX_VERSION_PROBE
-            "jarvis revisa servicios android" -> SafeRoutine.SHIZUKU_ADVANCED_DIAGNOSTIC
-            "jarvis diagnostica procesos android" -> SafeRoutine.SHIZUKU_ADVANCED_DIAGNOSTIC
+            // Foreground voice recognition often omits the wake word. Keep only
+            // exact, reviewed aliases here: they PREVIEW a routine, not execute it.
+            "revisa android", "jarvis revisa android",
+            "jarvis revisa el android", "revisa servicios android",
+            "jarvis revisa servicios android",
+            "jarvis revisa los servicios de android",
+            "jarvis revisa el sistema android",
+            "jarvis diagnostica android",
+            "jarvis diagnostica procesos android" ->
+                SafeRoutine.SHIZUKU_ADVANCED_DIAGNOSTIC
             "jarvis prepara perfil gamehub" -> SafeRoutine.GAMEHUB_PROFILE_PREVIEW
             "jarvis consulta ajustes adb" -> SafeRoutine.ADB_SETTINGS_PREVIEW
             else -> null
