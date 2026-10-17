@@ -12,7 +12,8 @@ class RetiredGatewayAndroidPrivacy(unittest.TestCase):
         manifest=ET.parse(ROOT/"AndroidManifest.xml").getroot()
         grants={x.get(ns+"name") for x in manifest.findall("uses-permission")}
         self.assertNotIn("android.permission.INTERNET",grants)
-        self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",grants)
+        self.assertIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",grants)
+        self.assertNotIn("android.permission.INTERNET", grants)
         self.assertEqual("false",manifest.find("application").get(ns+"usesCleartextTraffic"))
         for path in ("AiGatewayClient.kt","AiGatewaySettings.kt","core/AiGatewayPolicy.kt"):
             self.assertFalse((SRC/path).exists(),path)
