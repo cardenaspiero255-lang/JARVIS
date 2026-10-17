@@ -18,11 +18,15 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.speech.RecognitionListener
+import android.speech.RecognitionSupport
+import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.OfflineSpanishSupportPolicy
+import com.cardenaspiero255.jarvis.core.SpanishAvailability
 import com.cardenaspiero255.jarvis.core.PreviewAsrRecoveryPolicy
 import com.cardenaspiero255.jarvis.core.PreviewAsrDecision
 import com.cardenaspiero255.jarvis.core.PreviewDiagnosticSummary
@@ -41,6 +45,12 @@ class HandsFreePreviewService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private val policy = HandsFreePreviewPolicy()
     private val recoveryPolicy = PreviewAsrRecoveryPolicy()
+    private val spanishPolicy = OfflineSpanishSupportPolicy()
+    private var supportQueried = false
+    private var selectedLanguage: String? = null
+    private var installedSpanish: List<String>? = null
+    private val languageAttempts = mutableSetOf<String>()
+    private var languageProbeTask: Runnable? = null
     private val diagnostics by lazy {
         getSharedPreferences("jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
     }
@@ -192,13 +202,7 @@ class HandsFreePreviewService : Service() {
                     }
                 }
             })
-            current.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            })
+            discoverOfflineSpanishAndListen(current, ticket)
         } catch (_: RuntimeException) {
             recoverFromAsrError(SpeechRecognizer.ERROR_CLIENT)
         }
