@@ -223,10 +223,10 @@ class HandsFreePreviewService : Service() {
                 "Proveedor local finalizó antes de responder; micrófono detenido.")
             return
         }
+        showStatus("Esperando voz local · reintento ${attempts + 1} de 6")
         record("ASR_${decision.reasonCode}: intento $attempts de 6 · " +
             "pantalla $screen. Reintentando en ${decision.delayMillis} ms.", active = true)
-        showStatus("Esperando voz local · reintento ${attempts + 1} de 6")
-        pendingRetry?.let(main::removeCallbacks)
+        pendingRetry?.let { main.removeCallbacks(it) }
         val task = Runnable {
             pendingRetry = null
             if (isRunning && !closed && !consumed &&
@@ -284,9 +284,8 @@ class HandsFreePreviewService : Service() {
                     if (pending != null) {
                         pendingSpeech = null
                         if (ttsReady) play(pending) else {
-                            lastState = "Reconocido, pero sin voz española local. " +
-                                "Configura TTS sin conexión en Android."
-                            stopSelf()
+                            finish("TTS_OFFLINE_UNAVAILABLE: respuesta reconocida, " +
+                                "pero falta una voz española local instalada.")
                         }
                     }
                 }
@@ -309,7 +308,10 @@ class HandsFreePreviewService : Service() {
     }
 
     private fun play(text: String) {
-        val engine = tts ?: run { stopSelf(); return }
+        val engine = tts ?: run {
+            finish("TTS_UNAVAILABLE: motor de voz local no inicializado.")
+            return
+        }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onDone(utteranceId: String?) {
@@ -328,8 +330,7 @@ class HandsFreePreviewService : Service() {
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview")
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
-            lastState = "Android rechazó la síntesis de voz."
-            stopSelf()
+            finish("TTS_REJECTED: Android rechazó la síntesis de voz local.")
         }
     }
 
