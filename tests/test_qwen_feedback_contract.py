@@ -21,6 +21,31 @@ class QwenFeedbackContract(unittest.TestCase):
         self.assertIn("private fun showLlmStatus(message: String)", activity)
         self.assertIn("llmStatusText.text = message", activity)
 
+    def test_horizontal_progress_bar_is_beside_install_controls(self):
+        activity = (ANDROID / "MainActivity.kt").read_text()
+        self.assertIn("ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)", activity)
+        self.assertIn("section.addView(qwenDownloadBar)", activity)
+        self.assertLess(
+            activity.index("section.addView(qwenDownloadBar)"),
+            activity.index('primaryButton("INSTALAR QWEN OFICIAL — 491 MB")'),
+        )
+        self.assertIn("qwenDownloadBar.isIndeterminate = true", activity)
+        self.assertIn("qwenDownloadBar.progress = snapshot.percent", activity)
+
+    def test_progress_bytes_are_reported_from_download_stream(self):
+        activity = (ANDROID / "MainActivity.kt").read_text()
+        engine = (ANDROID / "OfflineLlmEngine.kt").read_text()
+        self.assertIn("onProgress = { percent, downloadedBytes ->", activity)
+        self.assertIn("QwenInstallProgress.fromBytes(downloadedBytes)", activity)
+        self.assertIn("onProgress(percentage, count)", engine)
+        self.assertIn("QwenInstallProgress.verified()", activity)
+
+    def test_network_failures_are_actionable_not_silently_swallowed(self):
+        engine = (ANDROID / "OfflineLlmEngine.kt").read_text()
+        self.assertIn("QWEN_DOWNLOAD", engine)
+        self.assertIn("QWEN_TLS", engine)
+        self.assertIn("QWEN_HTTP", engine)
+
     def test_download_reports_progress_and_terminal_outcome(self):
         activity = (ANDROID / "MainActivity.kt").read_text()
         self.assertIn('showLlmStatus("Qwen: descargando $percent%.', activity)
