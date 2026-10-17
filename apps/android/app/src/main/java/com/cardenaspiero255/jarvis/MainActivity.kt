@@ -51,6 +51,9 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.MorningVoiceRouter
+import com.cardenaspiero255.jarvis.core.MorningVoiceResponse
+import com.cardenaspiero255.jarvis.core.LocalDeviceClock
 import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
@@ -69,6 +72,7 @@ import com.cardenaspiero255.jarvis.core.VoiceRequestedAction
 class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
+    private val morningVoiceRouter = MorningVoiceRouter()
     private val localDialogue = LocalDialogue()
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
@@ -1038,7 +1042,18 @@ class MainActivity : Activity() {
     }
 
     private fun processRecognizedSpeech(transcript: String) {
-        // Already passed the one-use microphone request + foreground gate.
+        // Only invoked by a verified one-use foreground recognition request.
+        // Morning routines are read-only: they cannot dispatch ChatGPT/GitHub.
+        val morning = morningVoiceRouter.parse(transcript)
+        if (morning != null) {
+            voiceMathSession.clear()
+            voiceConsent.cancel()
+            statusText.text = MorningVoiceResponse.forIntent(
+                morning, LocalDeviceClock.speak()
+            )
+            spokenReplyEngine.speakRecognizedAnswerAfterTap(statusText.text.toString())
+            return
+        }
         // Voice may ONLY propose an exact allowlisted routine; it cannot execute it.
         val proposed = SafeAutomationVoiceRouter.parse(transcript)
         if (proposed != null) {
