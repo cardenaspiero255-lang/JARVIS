@@ -85,6 +85,25 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertNotIn("SpeechRecognizer.createSpeechRecognizer(", service)
         self.assertNotIn("android.permission.INTERNET", (ROOT / "AndroidManifest.xml").read_text())
 
+    def test_hardware_mic_and_offline_tts_can_be_diagnosed_without_asr(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
+        activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
+        meter = (SRC / "core/AudioInputMeter.kt").read_text(encoding="utf-8")
+        self.assertIn('const val ACTION_DIAGNOSE', service)
+        self.assertIn('diagnostic || offline', service)
+        self.assertIn('startMicrophoneDiagnostic()', service)
+        self.assertIn('AudioRecord(', service)
+        self.assertIn('input.read(', service)
+        self.assertIn('input?.release()', service)
+        self.assertIn('micDiagnosticSummary', service)
+        self.assertIn('speakThenStop("Prueba de voz.', service)
+        self.assertIn('HandsFreePreviewService.ACTION_DIAGNOSE', activity)
+        self.assertIn('DIAGNÓSTICO MICRO Y VOZ · 4 S', activity)
+        self.assertNotIn('privateMemory.save(transcript)', service)
+        self.assertNotIn('FileOutputStream', service)
+        self.assertNotIn('ByteArrayOutputStream', service)
+        self.assertIn('No se', meter)
+
     def test_owner_match_is_not_assumed_and_emergency_stop_revokes(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
         policy = (SRC / "core/HandsFreePreviewPolicy.kt").read_text(encoding="utf-8")
