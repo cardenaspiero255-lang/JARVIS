@@ -162,19 +162,23 @@ class OfflineLlmEngine(context: Context) {
      * The worker and callbacks are lifecycle-aware; no background downloader.
      */
     fun installOfficial(
-        onProgress: (Int) -> Unit,
+        onProgress: (Int, Long) -> Unit,
         callback: (Boolean, String) -> Unit
     ) {
         if (closed) return
         val epoch = session.get()
         worker.execute {
             var connection: HttpsURLConnection? = null
+            var stage = "PREPARACIÓN"
+            var downloadedBytes = 0L
+            var httpStatus: Int? = null
             try {
                 if (isInstalled() &&
                     LocalModelIntegrity.verify(modelPath, LocalLlmPolicy.SHA256)) {
                     deliver(epoch) { callback(true, "Qwen oficial ya está instalado y verificado.") }
                     return@execute
                 }
+                stage = "ALMACENAMIENTO"
                 if (!modelDir.isDirectory && !modelDir.mkdirs()) {
                     throw IOException("Cannot create private model directory")
                 }
@@ -190,6 +194,7 @@ class OfflineLlmEngine(context: Context) {
                     }
                     return@execute
                 }
+                stage = "CONEXIÓN"
                 val endpoint = URL(LocalLlmPolicy.MODEL_DOWNLOAD_URL)
                 if (endpoint.protocol != "https" || endpoint.host != "huggingface.co") {
                     throw IOException("Untrusted Qwen source")
@@ -201,16 +206,20 @@ class OfflineLlmEngine(context: Context) {
                 https.instanceFollowRedirects = true
                 https.useCaches = false
                 https.setRequestProperty("Accept", "application/octet-stream")
-                if (https.responseCode != 200 || https.url.protocol != "https") {
+                httpStatus = https.responseCode
+                if (httpStatus != 200 || https.url.protocol != "https") {
+                    stage = "HTTP"
                     throw IOException("Qwen download unavailable over HTTPS")
                 }
                 if (https.contentLengthLong > 0 &&
                     https.contentLengthLong != LocalLlmPolicy.MODEL_BYTES) {
+                    stage = "TAMAÑO"
                     throw IOException("Unexpected GGUF content size")
                 }
                 // Do not alter a mapped model while llama.cpp uses it.
                 unload()
-                var lastReported = -5
+                stage = "DESCARGA"
+                var lastReported = -1
                 val ok = OfficialQwenDownload.install(
                     https.inputStream,
                     modelPath,
@@ -218,24 +227,48 @@ class OfflineLlmEngine(context: Context) {
                     LocalLlmPolicy.SHA256,
                     isCancelled = { closed || epoch != session.get() },
                     onBytes = { count ->
+                        downloadedBytes = count
                         val percentage = ((count * 100) / LocalLlmPolicy.MODEL_BYTES).toInt()
-                        if (percentage >= lastReported + 5) {
+                        if (percentage >= lastReported + 1) {
                             lastReported = percentage
-                            deliver(epoch) { onProgress(percentage) }
+                            deliver(epoch) { onProgress(percentage, count) }
                         }
                     }
                 )
+                stage = "VERIFICACIÓN"
                 if (!ok || !LocalModelIntegrity.verify(modelPath, LocalLlmPolicy.SHA256)) {
                     throw IOException("Incomplete or unverified GGUF")
                 }
                 deliver(epoch) {
                     callback(true, "Qwen oficial (491 MB) instalado y verificado. Ya puedes conversar sin internet.")
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                val code = when {
+                    stage == "HTTP" -> "QWEN_HTTP_${httpStatus ?: 0}"
+                    stage == "TAMAÑO" -> "QWEN_SIZE"
+                    error is java.net.UnknownHostException -> "QWEN_DNS"
+                    error is java.net.SocketTimeoutException -> "QWEN_TIMEOUT"
+                    error is javax.net.ssl.SSLException -> "QWEN_TLS"
+                    stage == "ALMACENAMIENTO" -> "QWEN_STORAGE"
+                    stage == "VERIFICACIÓN" -> "QWEN_SHA256"
+                    else -> "QWEN_DOWNLOAD"
+                }
+                // Only error category and download count: never log prompts or URLs.
+                Log.w("JARVIS_QWEN_INSTALL", "$code stage=$stage bytes=$downloadedBytes")
+                val advice = when {
+                    code.startsWith("QWEN_HTTP") ->
+                        "El servidor rechazó la descarga (HTTP ${httpStatus ?: "desconocido"}). Reintenta con Wi-Fi o usa IMPORTAR MODELO."
+                    code == "QWEN_SIZE" ->
+                        "El servidor entregó un tamaño inesperado. No se instaló el modelo."
+                    code == "QWEN_DNS" -> "Sin conexión al servidor de Qwen. Comprueba Wi-Fi y DNS."
+                    code == "QWEN_TIMEOUT" -> "La conexión tardó demasiado. Comprueba Wi-Fi y reintenta."
+                    code == "QWEN_TLS" -> "Falló la conexión HTTPS segura. Comprueba fecha/hora y conexión."
+                    code == "QWEN_STORAGE" -> "No se pudo preparar el almacenamiento privado. Revisa espacio libre."
+                    code == "QWEN_SHA256" -> "Archivo incompleto o SHA-256 no válido. No se instaló Qwen."
+                    else -> "Falló la descarga tras ${downloadedBytes / 1_000_000L} MB. Reintenta con Wi-Fi."
+                }
                 deliver(epoch) {
-                    callback(false,
-                        "Falló la descarga o verificación de Qwen. Comprueba Wi-Fi, espacio libre y vuelve a intentar. " +
-                            "El chat básico sigue disponible.")
+                    callback(false, "$code: $advice")
                 }
             } finally {
                 connection?.disconnect()
