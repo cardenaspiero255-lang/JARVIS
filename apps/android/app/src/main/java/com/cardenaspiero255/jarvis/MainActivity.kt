@@ -201,7 +201,7 @@ class MainActivity : Activity() {
         handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
             toggleHandsFreePreviewByTap()
         }.also { layout.addView(it) }
-        handsFreePreviewStatus = label(HandsFreePreviewService.lastState,
+        handsFreePreviewStatus = label(HandsFreePreviewService.readDiagnostic(this),
             12f, Color.rgb(211, 213, 220))
         layout.addView(handsFreePreviewStatus)
         layout.addView(label(
@@ -691,7 +691,7 @@ class MainActivity : Activity() {
             "DETENER MANOS LIBRES · PRUEBA"
         } else "PROBAR MANOS LIBRES · 60 S"
         if (::handsFreePreviewStatus.isInitialized) {
-            handsFreePreviewStatus.text = HandsFreePreviewService.lastState
+            handsFreePreviewStatus.text = HandsFreePreviewService.readDiagnostic(this)
         }
     }
 
