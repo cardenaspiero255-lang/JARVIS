@@ -212,6 +212,104 @@ class HandsFreePreviewService : Service() {
         isRunning && !closed && !consumed && recognizer != null &&
             recognizerGeneration == ticket
 
+
+    private fun offlineIntent(language: String?): Intent =
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            if (language != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+
+    private fun beginLocalSpanish(
+        current: SpeechRecognizer, ticket: Long, language: String
+    ) {
+        if (!currentTicket(ticket) ||
+            !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return
+        selectedLanguage = language
+        languageAttempts.add(language)
+        record("ASR_LOCAL_$language: iniciando escucha de español offline.",
+            active = true)
+        try {
+            current.startListening(offlineIntent(language))
+        } catch (_: RuntimeException) {
+            recoverFromAsrError(SpeechRecognizer.ERROR_CLIENT)
+        }
+    }
+
+    /**
+     * Android 14's on-device recognizer may exist without es-CL. Query installed
+     * language variants; never use the default cloud recognizer or an online list.
+     */
+    private fun discoverOfflineSpanishAndListen(current: SpeechRecognizer, ticket: Long) {
+        if (!currentTicket(ticket)) return
+        if (selectedLanguage != null) {
+            beginLocalSpanish(current, ticket, selectedLanguage!!)
+            return
+        }
+        if (Build.VERSION.SDK_INT < 33 || supportQueried) {
+            beginLocalSpanish(current, ticket, spanishPolicy.unverifiedFallbackLanguage())
+            return
+        }
+        supportQueried = true
+        var settled = false
+        val fallback = Runnable {
+            if (settled || !currentTicket(ticket)) return@Runnable
+            settled = true
+            languageProbeTask = null
+            // Unsupported support-query is not evidence of absent Spanish.
+            beginLocalSpanish(current, ticket, spanishPolicy.unverifiedFallbackLanguage())
+        }
+        languageProbeTask = fallback
+        main.postDelayed(fallback, 2500L)
+        try {
+            current.checkRecognitionSupport(
+                offlineIntent(null), mainExecutor, object : RecognitionSupportCallback {
+                    override fun onSupportResult(support: RecognitionSupport) {
+                        if (settled || !currentTicket(ticket)) return
+                        settled = true
+                        main.removeCallbacks(fallback)
+                        languageProbeTask = null
+                        val installed = support.installedOnDeviceLanguages
+                        installedSpanish = installed
+                        val spanish = spanishPolicy.selectInstalled(installed)
+                        if (spanish != null) {
+                            beginLocalSpanish(current, ticket, spanish)
+                        } else if (spanishPolicy.availability(installed,
+                                support.supportedOnDeviceLanguages) ==
+                            SpanishAvailability.DOWNLOAD_REQUIRED) {
+                            finish("ASR_SPANISH_DOWNLOAD_REQUIRED: el motor offline " +
+                                "admite español pero falta su modelo descargado.")
+                        } else {
+                            finish("ASR_SPANISH_NOT_SUPPORTED: este proveedor " +
+                                "de reconocimiento local no anuncia español.")
+                        }
+                    }
+
+                    override fun onError(error: Int) {
+                        if (settled || !currentTicket(ticket)) return
+                        settled = true
+                        main.removeCallbacks(fallback)
+                        languageProbeTask = null
+                        record("ASR_SUPPORT_CHECK_$error: proveedor no confirmó idiomas; " +
+                            "probando español estándar sin nube.", active = true)
+                        beginLocalSpanish(current, ticket,
+                            spanishPolicy.unverifiedFallbackLanguage())
+                    }
+                }
+            )
+        } catch (_: RuntimeException) {
+            if (!settled && currentTicket(ticket)) {
+                settled = true
+                main.removeCallbacks(fallback)
+                languageProbeTask = null
+                beginLocalSpanish(current, ticket,
+                    spanishPolicy.unverifiedFallbackLanguage())
+            }
+        }
+    }
+
     private fun recoverFromAsrError(error: Int) {
         closeRecognizer()
         if (!isRunning || closed || consumed) return
