@@ -29,7 +29,7 @@ class QwenFeedbackContract(unittest.TestCase):
             activity.index("section.addView(qwenDownloadBar)"),
             activity.index('primaryButton("INSTALAR QWEN OFICIAL — 491 MB")'),
         )
-        self.assertIn("qwenDownloadBar.isIndeterminate = true", activity)
+        self.assertIn("qwenDownloadBar.isIndeterminate = snapshot.phase == QwenInstallProgress.Phase.CONNECTING", activity)
         self.assertIn("qwenDownloadBar.progress = snapshot.percent", activity)
 
     def test_progress_bytes_are_reported_from_download_stream(self):
@@ -48,9 +48,10 @@ class QwenFeedbackContract(unittest.TestCase):
 
     def test_download_reports_progress_and_terminal_outcome(self):
         activity = (ANDROID / "MainActivity.kt").read_text()
-        self.assertIn('showLlmStatus("Qwen: descargando $percent%.', activity)
+        self.assertIn("QwenInstallProgress.fromBytes(downloadedBytes)", activity)
         self.assertIn('setTitle(if (success) "Qwen instalado" else "Qwen no instalado")', activity)
         self.assertIn('showLlmStatus("Qwen: descarga interrumpida al salir', activity)
+        self.assertIn("setQwenDownloadProgress(QwenInstallProgress.verified())", activity)
 
     def test_status_requires_exact_size_and_digest(self):
         engine = (ANDROID / "OfflineLlmEngine.kt").read_text()
