@@ -40,6 +40,12 @@ class QwenFeedbackContract(unittest.TestCase):
         self.assertIn("onProgress(percentage, count)", engine)
         self.assertIn("QwenInstallProgress.verified()", activity)
 
+    def test_basic_chat_is_explicitly_distinguished_from_qwen(self):
+        activity = (ANDROID / "MainActivity.kt").read_text()
+        self.assertIn("Respuesta básica local: Qwen no generó este texto.", activity)
+        self.assertIn("Respuesta básica local: Qwen no está disponible.", activity)
+        self.assertIn("benchmark?.summary()", activity)
+
     def test_network_failures_are_actionable_not_silently_swallowed(self):
         engine = (ANDROID / "OfflineLlmEngine.kt").read_text()
         self.assertIn("QWEN_DOWNLOAD", engine)
