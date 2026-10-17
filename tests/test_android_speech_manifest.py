@@ -16,7 +16,7 @@ class SpeechManifestTests(unittest.TestCase):
         grants = [item.get(ANDROID + "name")
                   for item in root.findall("uses-permission")]
         self.assertIn("android.permission.RECORD_AUDIO", grants)
-        self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", grants)
+        self.assertIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", grants)
         self.assertIn("android.speech.RecognitionService", actions)
         self.assertEqual([], root.findall("./queries/service"))
 

@@ -61,16 +61,18 @@ class JarvisOsV2CompactContract(unittest.TestCase):
         )
         for name in required:
             self.assertIn(f'primaryButton("{name}")', main)
-        self.assertEqual(37, len(re.findall(r'primaryButton\("', main)))
+        self.assertIn('primaryButton("PROBAR MANOS LIBRES · 60 S")', main)
+        self.assertIn('primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S")', main)
+        self.assertEqual(39, len(re.findall(r'primaryButton\("', main)))
 
     def test_no_new_launcher_privilege_or_automatic_sensitive_actions(self):
         home = (JAVA / "JarvisHomeActivity.kt").read_text(encoding="utf-8")
         panels = (JAVA / "OmegaCompactPanels.kt").read_text(encoding="utf-8")
         manifest = (ANDROID / "src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         gradle = (ANDROID / "build.gradle.kts").read_text(encoding="utf-8")
-        self.assertIn('applicationIdSuffix = ".osv2preview"', gradle)
+        self.assertIn('applicationIdSuffix = ".handsfreepreview"', gradle)
         self.assertNotIn('applicationIdSuffix = ".ospreview"', gradle)
-        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS MANOS LIBRES TEST")', gradle)
         self.assertNotIn("android.permission.QUERY_ALL_PACKAGES", manifest)
         for content in (home, panels):
             for forbidden in (

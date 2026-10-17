@@ -19,12 +19,12 @@ android {
     }
 
     buildTypes {
-        // The preview/debug APK installs alongside the user's existing JARVIS,
-        // never replacing its app package, local memory or installed signature.
+        // Isolated debug install: coexists with Qwen PR #53 preview and normal
+        // JARVIS. This experimental hands-free package has separate private data.
         debug {
-            applicationIdSuffix = ".osv2preview"
+            applicationIdSuffix = ".handsfreepreview"
             versionNameSuffix = "-jarvis-os-v3-preview"
-            resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")
+            resValue("string", "jarvis_application_label", "JARVIS MANOS LIBRES TEST")
         }
         release {
             isMinifyEnabled = false

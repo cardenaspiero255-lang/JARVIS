@@ -15,13 +15,19 @@ class ChatSpeechContractTests(unittest.TestCase):
         permissions = {x.get(namespace + "name") for x in root.findall("uses-permission")}
         self.assertNotIn("android.permission.INTERNET", permissions)
         self.assertFalse((SOURCE / "AiGatewayClient.kt").exists())
-        # RECORD_AUDIO is now needed by explicit in-app speech recognition;
-        # the TTS engine remains microphone-free and no mic FGS is declared.
+        # RECORD_AUDIO is needed for foreground opt-in speech. The new mic FGS
+        # is unexported, time-limited and never auto-started or network based.
         self.assertIn("android.permission.RECORD_AUDIO", permissions)
-        self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", permissions)
+        self.assertIn("android.permission.FOREGROUND_SERVICE_MICROPHONE", permissions)
         services = root.findall("./application/service")
-        self.assertFalse(any(s.get(namespace + "foregroundServiceType") == "microphone"
-                             for s in services))
+        mic_services = [s for s in services
+                        if s.get(namespace + "foregroundServiceType") == "microphone"]
+        self.assertEqual(1, len(mic_services))
+        self.assertEqual(".HandsFreePreviewService", mic_services[0].get(namespace + "name"))
+        self.assertEqual("false", mic_services[0].get(namespace + "exported"))
+        self.assertEqual("true", mic_services[0].get(namespace + "stopWithTask"))
+        self.assertFalse(any(r.get(namespace + "name", "").endswith("BootReceiver")
+                             for r in root.findall("./application/receiver")))
         tts = (SOURCE / "SpokenReplyEngine.kt").read_text()
         self.assertNotIn("SpeechRecognizer", tts)
         self.assertNotIn("RECORD_AUDIO", tts)

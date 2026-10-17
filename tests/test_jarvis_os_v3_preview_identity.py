@@ -11,10 +11,10 @@ HOME = ROOT / "src/main/java/com/cardenaspiero255/jarvis/JarvisHomeActivity.kt"
 class JarvisV3IdentityTests(unittest.TestCase):
     def test_user_visible_debug_application_name_and_version_are_v3(self):
         data = GRADLE.read_text(encoding="utf-8")
-        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OS V3 PREVIEW")', data)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS MANOS LIBRES TEST")', data)
         self.assertIn('versionNameSuffix = "-jarvis-os-v3-preview"', data)
-        self.assertIn('applicationIdSuffix = ".osv2preview"', data,
-                      "Keep the existing preview install identity to avoid duplicating its package")
+        self.assertIn('applicationIdSuffix = ".handsfreepreview"', data,
+                      "Hands-free hardware test must coexist with existing Qwen and original JARVIS")
 
     def test_home_candidate_and_launcher_header_show_v3(self):
         manifest = MANIFEST.read_text(encoding="utf-8")
@@ -26,7 +26,7 @@ class JarvisV3IdentityTests(unittest.TestCase):
     def test_original_funtouch_and_jarvis_omega_unchanged(self):
         data = GRADLE.read_text(encoding="utf-8")
         self.assertIn('resValue("string", "jarvis_application_label", "JARVIS OMEGA")', data)
-        self.assertIn('applicationIdSuffix = ".osv2preview"', data)
+        self.assertIn('applicationIdSuffix = ".handsfreepreview"', data)
 
 
 if __name__ == "__main__":
