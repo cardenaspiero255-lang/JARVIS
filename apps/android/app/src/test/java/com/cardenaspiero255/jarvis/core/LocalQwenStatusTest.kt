@@ -30,4 +30,16 @@ class LocalQwenStatusTest {
     @Test fun interruptedDownloadDoesNotClaimInstallation() {
         assertFalse(LocalQwenStatus.describe(LocalQwenStatus.Code.INTERRUPTED).contains("listo para intentar generar"))
     }
+
+    @Test fun incompleteFileIsExplicitlyRejected() {
+        val status = LocalQwenStatus.describe(LocalQwenStatus.Code.INCOMPLETE)
+        assertTrue(status.contains("incompleto"))
+        assertFalse(status.contains("listo para intentar generar"))
+    }
+
+    @Test fun thermalBlockDoesNotClaimRuntimeSuccess() {
+        val status = LocalQwenStatus.describe(LocalQwenStatus.Code.THERMAL)
+        assertTrue(status.contains("temperatura"))
+        assertFalse(status.contains("listo para intentar generar"))
+    }
 }
