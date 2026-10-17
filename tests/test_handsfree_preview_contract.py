@@ -102,7 +102,7 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertNotIn('privateMemory.save(transcript)', service)
         self.assertNotIn('FileOutputStream', service)
         self.assertNotIn('ByteArrayOutputStream', service)
-        self.assertIn('No se', meter)
+        self.assertIn('no se recibieron muestras', meter)
 
     def test_owner_match_is_not_assumed_and_emergency_stop_revokes(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
