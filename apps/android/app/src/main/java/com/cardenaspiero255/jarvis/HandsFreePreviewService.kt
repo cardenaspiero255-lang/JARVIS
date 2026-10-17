@@ -123,60 +123,72 @@ class HandsFreePreviewService : Service() {
         return START_NOT_STICKY
     }
 
+    private var pendingRetry: Runnable? = null
+
     private fun startOfflineAsr() {
-        if (!isRunning || !timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
-            stopSelf()
+        if (!isRunning || closed || !timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+            finish("Tiempo de la prueba terminado antes de escuchar una orden.")
             return
         }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED) {
+            finish("PERMISSION_REVOKED: Android retiró acceso al micrófono.")
+            return
+        }
+        attempts++
+        val ticket = ++recognizerGeneration
         try {
             val current = SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
             recognizer = current
             current.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) =
-                    showStatus("Reconocimiento offline activo · una frase")
+                override fun onReadyForSpeech(params: Bundle?) {
+                    if (currentTicket(ticket)) showStatus("Escucha local activa. Intento $attempts de 6.")
+                }
                 override fun onBeginningOfSpeech() = Unit
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() = showStatus("Procesando localmente…")
+                override fun onEndOfSpeech() {
+                    if (currentTicket(ticket)) showStatus("Procesando una frase local…")
+                }
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
                 override fun onError(error: Int) {
-                    if (!isRunning || consumed) return
-                    consumed = true
-                    lastState = "Reconocimiento offline terminó (código $error). " +
-                        "No se ejecutó ninguna orden."
-                    stopSelf()
+                    if (!currentTicket(ticket)) return
+                    recoverFromAsrError(error)
                 }
 
                 override fun onResults(results: Bundle?) {
-                    if (!isRunning || consumed || !timeGate.isActiveAt(
-                            SystemClock.elapsedRealtime())) {
-                        stopSelf()
+                    if (!currentTicket(ticket)) return
+                    if (!timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                        finish("La ventana de 60 segundos expiró.")
                         return
                     }
-                    consumed = true
                     val transcript = results?.getStringArrayList(
                         SpeechRecognizer.RESULTS_RECOGNITION
                     )?.firstOrNull().orEmpty()
-                    closeRecognizer() // release microphone before starting TTS
+                    closeRecognizer()
                     when (policy.classify(transcript, SpeakerEvidence.UNAVAILABLE)) {
                         PreviewWake.LOCAL_TIME -> {
+                            consumed = true
                             val now = LocalTime.now()
                             val answer = if (now.minute == 0)
                                 "Son las " + now.hour + " en punto."
                             else "Son las " + now.hour + " y " + now.minute + "."
-                            lastState = "Hora local reconocida. Voice Match aún pendiente."
+                            record("Se reconoció la petición de hora. " +
+                                "Voice Match pendiente.", active = true)
                             speakThenStop(answer)
                         }
                         PreviewWake.WAKE_ONLY -> {
-                            lastState = "Jarvis reconocido. Esta prueba acepta una frase completa."
+                            consumed = true
+                            record("Se reconoció Jarvis; esta versión requiere " +
+                                "la orden en la misma frase.", active = true)
                             speakThenStop("Te escuché. Di: Jarvis dime la hora.")
                         }
-                        PreviewWake.IGNORED, PreviewWake.BLOCKED_IDENTITY -> {
-                            lastState = "Frase ignorada. No se ejecutó ninguna orden."
-                            stopSelf()
-                        }
+                        PreviewWake.IGNORED ->
+                            recoverFromAsrError(SpeechRecognizer.ERROR_NO_MATCH)
+                        PreviewWake.BLOCKED_IDENTITY ->
+                            finish("La petición fue bloqueada: voz o identidad no confiable.")
                     }
                 }
             })
@@ -188,8 +200,65 @@ class HandsFreePreviewService : Service() {
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             })
         } catch (_: RuntimeException) {
-            lastState = "No se pudo iniciar el reconocimiento local de Android."
-            stopSelf()
+            recoverFromAsrError(SpeechRecognizer.ERROR_CLIENT)
+        }
+    }
+
+    private fun currentTicket(ticket: Long): Boolean =
+        isRunning && !closed && !consumed && recognizer != null &&
+            recognizerGeneration == ticket
+
+    private fun recoverFromAsrError(error: Int) {
+        closeRecognizer()
+        if (!isRunning || closed || consumed) return
+        val decision = recoveryPolicy.afterError(
+            error, attempts, timeGate.remainingMillis(SystemClock.elapsedRealtime())
+        )
+        val screen = try {
+            if ((getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false)
+                "apagada" else "encendida"
+        } catch (_: RuntimeException) { "desconocida" }
+        if (decision.decision == PreviewAsrDecision.STOP) {
+            finish("ASR_${decision.reasonCode} · error $error · pantalla $screen. " +
+                "Proveedor local finalizó antes de responder; micrófono detenido.")
+            return
+        }
+        record("ASR_${decision.reasonCode}: intento $attempts de 6 · " +
+            "pantalla $screen. Reintentando en ${decision.delayMillis} ms.", active = true)
+        showStatus("Esperando voz local · reintento ${attempts + 1} de 6")
+        pendingRetry?.let(main::removeCallbacks)
+        val task = Runnable {
+            pendingRetry = null
+            if (isRunning && !closed && !consumed &&
+                timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                startOfflineAsr()
+            }
+        }
+        pendingRetry = task
+        main.postDelayed(task, decision.delayMillis)
+    }
+
+    private fun record(message: String, active: Boolean) {
+        lastState = message.take(460)
+        // Status-only; never persist recognized text, audio, voice features or credentials.
+        diagnostics.edit().putString("status", lastState)
+            .putBoolean("active", active).commit()
+    }
+
+    private fun finish(reason: String) {
+        if (endedNormally || closed) return
+        endedNormally = true
+        record(reason, active = false)
+        stopSelf()
+    }
+
+    private fun acquireShortWakeLock() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as? PowerManager ?: return
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                "jarvis:HandsFreePreview").also { it.acquire(60_000L) }
+        } catch (_: RuntimeException) {
+            record("Prueba activa; Android no concedió bloqueo CPU temporal.", active = true)
         }
     }
 
