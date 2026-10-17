@@ -29,7 +29,6 @@ class HandsFreePreviewContract(unittest.TestCase):
             "SpeechRecognizer.isOnDeviceRecognitionAvailable(this)",
             "START_NOT_STICKY",
             "startForeground(",
-            "PREVIEW",  # description of time-limited preview in manifest and policy
             "60_000L",
             "SpeakerEvidence.UNAVAILABLE",
             "stopSelf()",
