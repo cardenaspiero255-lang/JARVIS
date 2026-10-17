@@ -190,7 +190,7 @@ class HandsFreePreviewService : Service() {
                         } catch (_: RuntimeException) { null }
                         if (voice != null) {
                             ttsReady = try {
-                                engine.setVoice(voice) == TextToSpeech.SUCCESS
+                                engine?.setVoice(voice) == TextToSpeech.SUCCESS
                             } catch (_: RuntimeException) { false }
                         }
                     }
