@@ -313,6 +313,35 @@ class HandsFreePreviewService : Service() {
     private fun recoverFromAsrError(error: Int) {
         closeRecognizer()
         if (!isRunning || closed || consumed) return
+        if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
+            val next = if (installedSpanish == null) {
+                spanishPolicy.fallbackAfterUnsupported(
+                    selectedLanguage ?: "", languageAttempts)
+            } else spanishPolicy.selectInstalled(installedSpanish.orEmpty(), languageAttempts)
+            if (next != null && attempts < 4 &&
+                timeGate.remainingMillis(SystemClock.elapsedRealtime()) > 4000L) {
+                selectedLanguage = next
+                record("ASR_LANGUAGE_NOT_SUPPORTED error 12: " +
+                    "reintentando otra variante española offline ($next).", active = true)
+                val task = Runnable {
+                    pendingRetry = null
+                    if (isRunning && !closed &&
+                        timeGate.isActiveAt(SystemClock.elapsedRealtime())) startOfflineAsr()
+                }
+                pendingRetry = task
+                main.postDelayed(task, 750L)
+            } else {
+                finish("ASR_LANGUAGE_NOT_SUPPORTED error 12: ninguna variante " +
+                    "española instalada resultó compatible con el reconocedor " +
+                    "local de Android. Comprueba su proveedor de reconocimiento.")
+            }
+            return
+        }
+        if (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
+            finish("ASR_LANGUAGE_MODEL_NOT_INSTALLED error 13: idioma reconocido " +
+                "pero falta un modelo local listo para usarse.")
+            return
+        }
         val decision = recoveryPolicy.afterError(
             error, attempts, timeGate.remainingMillis(SystemClock.elapsedRealtime())
         )
@@ -438,6 +467,8 @@ class HandsFreePreviewService : Service() {
 
     private fun closeRecognizer() {
         // Ignore late onError caused by cancel()/destroy() of an old recognizer.
+        languageProbeTask?.let { main.removeCallbacks(it) }
+        languageProbeTask = null
         recognizerGeneration++
         val current = recognizer
         recognizer = null
