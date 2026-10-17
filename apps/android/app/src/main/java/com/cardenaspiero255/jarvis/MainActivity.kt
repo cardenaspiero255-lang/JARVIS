@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
 import com.cardenaspiero255.jarvis.core.LocalBenchmarkStats
+import com.cardenaspiero255.jarvis.core.QwenInstallProgress
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.app.Activity
@@ -22,11 +23,13 @@ import android.widget.EditText
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -76,6 +79,7 @@ class MainActivity : Activity() {
     private var chatBusy = false
     private var modelInstallBusy = false
     private lateinit var llmStatusText: TextView
+    private lateinit var qwenDownloadBar: ProgressBar
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
@@ -230,6 +234,22 @@ class MainActivity : Activity() {
             minHeight = dp(68)
         }
         section.addView(llmStatusText)
+        qwenDownloadBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            isIndeterminate = false
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(240, 53, 66))
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(70, 72, 82))
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(240, 53, 66))
+            contentDescription = "Qwen: descarga sin iniciar, 0 %"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(18)
+            )
+        }
+        section.addView(qwenDownloadBar)
+        offlineLlm.checkLocalStatus { _, report ->
+            if (!modelInstallBusy && !chatBusy) showLlmStatus(report)
+        }
         section.addView(primaryButton("INSTALAR QWEN OFICIAL — 491 MB") {
             if (chatBusy || modelInstallBusy) {
                 showLlmStatus("Termina la operación actual antes de instalar Qwen.")
@@ -243,17 +263,20 @@ class MainActivity : Activity() {
                         "La descarga utiliza Internet; las conversaciones continuarán locales."
                     )
                     .setNegativeButton("CANCELAR") { _, _ ->
-                        showLlmStatus("Qwen: instalación cancelada. Ningún modelo se ha descargado en esta operación.")
+                        showLlmStatus("Qwen: instalación cancelada antes de iniciarse.")
                     }
                     .setPositiveButton("INSTALAR") { _, _ ->
                         modelInstallBusy = true
-                        showLlmStatus("Qwen: conectando por HTTPS. Mantén esta pantalla abierta...")
+                        setQwenDownloadProgress(QwenInstallProgress.connecting())
                         offlineLlm.installOfficial(
-                            onProgress = { percent ->
-                                showLlmStatus("Qwen: descargando $percent%. Mantén JARVIS abierto hasta terminar.")
+                            onProgress = { percent, downloadedBytes ->
+                                val snapshot = QwenInstallProgress.fromBytes(downloadedBytes)
+                                if (snapshot.percent == percent) setQwenDownloadProgress(snapshot)
                             },
                             callback = { success, message ->
                                 modelInstallBusy = false
+                                qwenDownloadBar.isIndeterminate = false
+                                if (success) setQwenDownloadProgress(QwenInstallProgress.verified())
                                 showLlmStatus(message)
                                 if (!isFinishing && !isDestroyed) {
                                     AlertDialog.Builder(this)
@@ -693,6 +716,7 @@ class MainActivity : Activity() {
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
         if (modelInstallBusy) {
+            if (::qwenDownloadBar.isInitialized) qwenDownloadBar.isIndeterminate = false
             showLlmStatus("Qwen: descarga interrumpida al salir de JARVIS. Consulta el estado al regresar.")
         } else if (chatBusy) {
             showLlmStatus("Qwen: inferencia o benchmark interrumpido al salir de JARVIS.")
@@ -757,6 +781,17 @@ class MainActivity : Activity() {
                 next()
             }
         }
+    }
+
+    /** Real downloaded bytes; 100% alone never means cryptographically installed. */
+    private fun setQwenDownloadProgress(snapshot: QwenInstallProgress.Snapshot) {
+        if (::qwenDownloadBar.isInitialized) {
+            qwenDownloadBar.visibility = View.VISIBLE
+            qwenDownloadBar.isIndeterminate = snapshot.phase == QwenInstallProgress.Phase.CONNECTING
+            qwenDownloadBar.progress = snapshot.percent
+            qwenDownloadBar.contentDescription = "Descarga Qwen: ${snapshot.percent} %"
+        }
+        showLlmStatus(snapshot.message)
     }
 
     /** Keep Qwen results next to their controls, not only at the top of the screen. */
