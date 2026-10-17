@@ -743,6 +743,10 @@ class MainActivity : Activity() {
                 "No hay motor de reconocimiento 100% local en Android. " +
                     "Instala el idioma español offline; NO uso el reconocedor de la nube."
             PreviewStart.ALLOWED -> try {
+                // The foreground HABLAR session must release the same microphone
+                // before this isolated hardware diagnostic/preview starts.
+                stopForegroundSpeech()
+                if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
                 startForegroundService(Intent(this, HandsFreePreviewService::class.java).apply {
                     action = if (diagnostic) HandsFreePreviewService.ACTION_DIAGNOSE
                         else HandsFreePreviewService.ACTION_START
