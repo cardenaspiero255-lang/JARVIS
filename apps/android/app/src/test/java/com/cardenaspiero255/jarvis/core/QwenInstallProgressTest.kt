@@ -16,7 +16,8 @@ class QwenInstallProgressTest {
         val complete = QwenInstallProgress.fromBytes(LocalLlmPolicy.MODEL_BYTES)
         assertEquals(100, complete.percent)
         assertEquals(QwenInstallProgress.Phase.VERIFYING, complete.phase)
-        assertFalse(complete.message.contains("instalado"))
+        assertTrue(complete.message.contains("NO instalado"))
+        assertFalse(complete.message.startsWith("Qwen instalado:"))
     }
 
     @Test fun malformedByteCountsCannotProduceSuccess() {
