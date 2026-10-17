@@ -14,7 +14,7 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertIn('applicationIdSuffix = ".handsfreepreview"', gradle)
         self.assertIn('resValue("string", "jarvis_application_label", "JARVIS MANOS LIBRES TEST")', gradle)
         activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
-        self.assertIn("handsFreePreviewStatus.text = HandsFreePreviewService.lastState", activity)
+        self.assertIn("handsFreePreviewStatus.text = HandsFreePreviewService.readDiagnostic(this)", activity)
 
     def test_only_explicit_unexported_microphone_service(self):
         manifest = ET.parse(ROOT / "AndroidManifest.xml").getroot()
@@ -52,6 +52,23 @@ class HandsFreePreviewContract(unittest.TestCase):
             self.assertNotIn(forbidden, service)
         self.assertIn("current.startListening(", service)
         self.assertEqual(1, service.count("current.startListening("))
+
+    def test_screen_lock_does_not_kill_local_asr_at_first_silence(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
+        policy = (SRC / "core/HandsFreePreviewPolicy.kt").read_text(encoding="utf-8")
+        manifest = (ROOT / "AndroidManifest.xml").read_text(encoding="utf-8")
+        self.assertIn("recoverFromAsrError(error)", service)
+        self.assertIn("PreviewAsrDecision.RETRY", service)
+        self.assertIn("main.postDelayed(task, decision.delayMillis)", service)
+        self.assertIn("recognizerGeneration++", service)
+        self.assertIn("wakeLock?.release()", service)
+        self.assertIn("PowerManager.PARTIAL_WAKE_LOCK", service)
+        self.assertIn('android.permission.WAKE_LOCK', manifest)
+        self.assertIn("6, 7 -> PreviewAsrResult(", policy)
+        self.assertIn("remainingMillis", policy)
+        self.assertIn('putBoolean("active", active).commit()', service)
+        self.assertIn("PreviewDiagnosticSummary.visible(", service)
+        self.assertNotIn("privateMemory.save(transcript)", service)
 
     def test_owner_match_is_not_assumed_and_emergency_stop_revokes(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
