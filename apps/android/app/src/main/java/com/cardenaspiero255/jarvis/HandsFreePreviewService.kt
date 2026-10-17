@@ -64,6 +64,7 @@ class HandsFreePreviewService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var ttsInitialized = false
     private var pendingSpeech: String? = null
     private var consumed = false
     private var closed = false
@@ -506,6 +507,7 @@ class HandsFreePreviewService : Service() {
                             } catch (_: RuntimeException) { false }
                         }
                     }
+                    ttsInitialized = true
                     val pending = pendingSpeech
                     if (pending != null) {
                         pendingSpeech = null
@@ -518,6 +520,7 @@ class HandsFreePreviewService : Service() {
             }
         } catch (_: RuntimeException) {
             ttsReady = false
+            ttsInitialized = true
         }
     }
 
@@ -527,9 +530,15 @@ class HandsFreePreviewService : Service() {
             return
         }
         closeRecognizer()
-        if (ttsReady) play(text) else {
-            pendingSpeech = text
-            showStatus("Respuesta preparada · esperando TTS offline")
+        when {
+            ttsReady -> play(text)
+            ttsInitialized -> finish(
+                "TTS_OFFLINE_UNAVAILABLE: Android no proporciona una voz " +
+                    "española local. Instala datos de síntesis de voz en Android.")
+            else -> {
+                pendingSpeech = text
+                showStatus("Respuesta preparada · esperando inicialización TTS offline")
+            }
         }
     }
 
