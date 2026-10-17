@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.cardenaspiero255.jarvis.core.LocalLlmPolicy
 import com.cardenaspiero255.jarvis.core.LocalModelGate
+import com.cardenaspiero255.jarvis.core.LocalQwenStatus
 import com.cardenaspiero255.jarvis.core.LocalModelIntegrity
 import com.cardenaspiero255.jarvis.core.VerifiedModelSnapshot
 import com.cardenaspiero255.jarvis.core.OfficialQwenDownload
@@ -65,7 +66,48 @@ class OfflineLlmEngine(context: Context) {
     }
 
     fun isInstalled(): Boolean = modelPath.isFile &&
-        LocalLlmPolicy.isEligibleLength(modelPath.length())
+        modelPath.length() == LocalLlmPolicy.MODEL_BYTES
+
+    /**
+     * Asynchronous, read-only integrity and resource check. Never report Qwen
+     * as ready merely because the basic deterministic chat answered a question.
+     */
+    fun checkLocalStatus(callback: (Boolean, String) -> Unit) {
+        if (closed) return
+        val epoch = session.get()
+        worker.execute {
+            val code = try {
+                when {
+                    !modelPath.isFile -> LocalQwenStatus.Code.ABSENT
+                    modelPath.length() != LocalLlmPolicy.MODEL_BYTES ->
+                        LocalQwenStatus.Code.INCOMPLETE
+                    !LocalModelIntegrity.verify(modelPath, LocalLlmPolicy.SHA256) ->
+                        LocalQwenStatus.Code.SHA_MISMATCH
+                    else -> {
+                        val thermalEmergency = Build.VERSION.SDK_INT >= 29 &&
+                            thermalStatus() >= PowerManager.THERMAL_STATUS_SEVERE
+                        val manager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        val info = ActivityManager.MemoryInfo()
+                        manager.getMemoryInfo(info)
+                        val modelMiB = (LocalLlmPolicy.MODEL_BYTES + 1048575L) / 1048576L
+                        when {
+                            thermalEmergency -> LocalQwenStatus.Code.THERMAL
+                            !LocalModelGate.canRun(
+                                true, true, modelMiB, 1024L,
+                                info.availMem / (1024L * 1024L), false
+                            ) -> LocalQwenStatus.Code.LOW_MEMORY
+                            else -> LocalQwenStatus.Code.READY
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                LocalQwenStatus.Code.ERROR
+            }
+            deliver(epoch) {
+                callback(code == LocalQwenStatus.Code.READY, LocalQwenStatus.describe(code))
+            }
+        }
+    }
 
     fun invalidateSession() { session.incrementAndGet() }
 
