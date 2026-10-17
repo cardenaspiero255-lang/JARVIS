@@ -18,6 +18,8 @@ import android.os.Looper
 import android.os.PowerManager
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaRecorder
 import android.os.SystemClock
 import android.speech.RecognitionListener
@@ -73,6 +75,7 @@ class HandsFreePreviewService : Service() {
     private var diagnosticMode = false
     private var micDiagnosticSummary: String? = null
     private var diagnosticWorker: Thread? = null
+    private var ttsWatchdog: Runnable? = null
     private val timeout = Runnable {
         finish("La prueba de 60 segundos terminó. Micrófono liberado.")
     }
@@ -495,6 +498,10 @@ class HandsFreePreviewService : Service() {
                         } catch (_: RuntimeException) { null }
                         if (voice != null) {
                             ttsReady = try {
+                                engine?.setAudioAttributes(AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build())
                                 engine?.setVoice(voice) == TextToSpeech.SUCCESS
                             } catch (_: RuntimeException) { false }
                         }
@@ -532,9 +539,25 @@ class HandsFreePreviewService : Service() {
             return
         }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
+            override fun onStart(utteranceId: String?) {
+                main.post {
+                    if (isRunning && !closed) showStatus(
+                        "TTS_STARTED: Android inició la síntesis; " +
+                            "comprobar si el altavoz realmente se escucha.")
+                }
+            }
             override fun onDone(utteranceId: String?) {
-                main.post { finish("Respuesta de hora reproducida. Micrófono liberado.") }
+                main.post {
+                    ttsWatchdog?.let { main.removeCallbacks(it) }
+                    ttsWatchdog = null
+                    val volume = try {
+                        (getSystemService(AUDIO_SERVICE) as? AudioManager)
+                            ?.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    } catch (_: RuntimeException) { null }
+                    val hint = if (volume == 0) " Volumen multimedia a cero." else ""
+                    finish("TTS_DONE: Android terminó la síntesis; " +
+                        "comprueba si escuchaste el audio.$hint")
+                }
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
@@ -550,7 +573,17 @@ class HandsFreePreviewService : Service() {
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
             finish("TTS_REJECTED: Android rechazó la síntesis de voz local.")
+            return
         }
+        val deadline = Runnable {
+            if (isRunning && !closed && !endedNormally) {
+                finish("TTS_NO_PLAYBACK_CALLBACK: Android no confirmó " +
+                    "inicio/fin de reproducción en 10 segundos.")
+            }
+        }
+        ttsWatchdog?.let { main.removeCallbacks(it) }
+        ttsWatchdog = deadline
+        main.postDelayed(deadline, 10_000L)
     }
 
     private fun closeRecognizer() {
@@ -606,6 +639,8 @@ class HandsFreePreviewService : Service() {
         timeGate.stop()
         pendingSpeech = null
         main.removeCallbacks(timeout)
+        ttsWatchdog?.let { main.removeCallbacks(it) }
+        ttsWatchdog = null
         pendingRetry?.let(main::removeCallbacks)
         pendingRetry = null
         // The worker owns and releases AudioRecord; do not retain PCM data.
