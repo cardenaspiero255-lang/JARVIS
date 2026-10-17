@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Short CPU wake lock only during explicit 60 s local voice test. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- User must grant JARVIS access in Shizuku; package installation is not permission. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API" />
     <!-- Granted explicitly by Android; required for the fixed, local Termux diagnostic. -->
