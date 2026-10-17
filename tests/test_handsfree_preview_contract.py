@@ -71,6 +71,20 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertIn("PreviewDiagnosticSummary.visible(", service)
         self.assertNotIn("privateMemory.save(transcript)", service)
 
+    def test_offline_spanish_is_selected_from_actual_android_support(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
+        policy = (SRC / "core/OfflineSpanishSupportPolicy.kt").read_text(encoding="utf-8")
+        self.assertIn("checkRecognitionSupport(", service)
+        self.assertIn("installedOnDeviceLanguages", service)
+        self.assertIn("supportedOnDeviceLanguages", service)
+        self.assertIn("spanishPolicy.selectInstalled(", service)
+        self.assertIn("SpanishAvailability.DOWNLOAD_REQUIRED", service)
+        self.assertIn("SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED", service)
+        self.assertNotIn('putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")', service)
+        self.assertIn('fun errorReason(errorCode: Int)', policy)
+        self.assertNotIn("SpeechRecognizer.createSpeechRecognizer(", service)
+        self.assertNotIn("android.permission.INTERNET", (ROOT / "AndroidManifest.xml").read_text())
+
     def test_owner_match_is_not_assumed_and_emergency_stop_revokes(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
         policy = (SRC / "core/HandsFreePreviewPolicy.kt").read_text(encoding="utf-8")
