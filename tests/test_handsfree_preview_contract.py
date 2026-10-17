@@ -9,6 +9,13 @@ NS = "{http://schemas.android.com/apk/res/android}"
 
 
 class HandsFreePreviewContract(unittest.TestCase):
+    def test_preview_install_is_separate_from_existing_qwen_debug(self):
+        gradle = (ROOT.parents[1] / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn('applicationIdSuffix = ".handsfreepreview"', gradle)
+        self.assertIn('resValue("string", "jarvis_application_label", "JARVIS MANOS LIBRES TEST")', gradle)
+        activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("handsFreePreviewStatus.text = HandsFreePreviewService.lastState", activity)
+
     def test_only_explicit_unexported_microphone_service(self):
         manifest = ET.parse(ROOT / "AndroidManifest.xml").getroot()
         services = manifest.findall("./application/service")
