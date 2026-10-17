@@ -312,11 +312,15 @@ class HandsFreePreviewService : Service() {
         val engine = tts ?: run { stopSelf(); return }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) { main.post { stopSelf() } }
+            override fun onDone(utteranceId: String?) {
+                main.post { finish("Respuesta de hora reproducida. Micrófono liberado.") }
+            }
             @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) { main.post { stopSelf() } }
+            override fun onError(utteranceId: String?) {
+                main.post { finish("Error TTS: no se pudo reproducir la voz local.") }
+            }
             override fun onError(utteranceId: String?, errorCode: Int) {
-                main.post { stopSelf() }
+                main.post { finish("Error TTS ($errorCode): voz local no disponible.") }
             }
         })
         showStatus("JARVIS respondiendo localmente…")
@@ -330,6 +334,8 @@ class HandsFreePreviewService : Service() {
     }
 
     private fun closeRecognizer() {
+        // Ignore late onError caused by cancel()/destroy() of an old recognizer.
+        recognizerGeneration++
         val current = recognizer
         recognizer = null
         try { current?.cancel() } catch (_: RuntimeException) {}
@@ -355,27 +361,39 @@ class HandsFreePreviewService : Service() {
     }
 
     private fun showStatus(summary: String) {
-        if (isRunning && !closed) getSystemService(NotificationManager::class.java)
-            ?.notify(NOTIFICATION_ID, notification(summary))
+        if (isRunning && !closed) {
+            record(summary, active = true)
+            getSystemService(NotificationManager::class.java)
+                ?.notify(NOTIFICATION_ID, notification(summary))
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        lastState = "JARVIS se cerró. Micrófono liberado."
-        stopSelf()
+        finish("JARVIS fue retirado de aplicaciones recientes. Micrófono liberado.")
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        if (!endedNormally) record(
+            "El servicio terminó inesperadamente sin resultado de voz; " +
+                "no se puede atribuir la causa al fabricante sin registros.",
+            active = false)
         closed = true
         isRunning = false
         consumed = true
         timeGate.stop()
         pendingSpeech = null
         main.removeCallbacks(timeout)
+        pendingRetry?.let(main::removeCallbacks)
+        pendingRetry = null
         closeRecognizer()
         try { tts?.stop() } catch (_: RuntimeException) {}
         try { tts?.shutdown() } catch (_: RuntimeException) {}
         tts = null
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: RuntimeException) {}
+        wakeLock = null
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: RuntimeException) {}
         super.onDestroy()
     }
@@ -390,5 +408,15 @@ class HandsFreePreviewService : Service() {
             private set
         @Volatile var lastState: String = "Prueba manos libres apagada."
             private set
+
+        /** Restores last safe exit cause after OEM process death, without audio logs. */
+        fun readDiagnostic(context: Context): String {
+            val prefs = context.getSharedPreferences(
+                "jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
+            val previous = prefs.getString("status", "Prueba manos libres apagada.")
+                ?: "Prueba manos libres apagada."
+            return PreviewDiagnosticSummary.visible(
+                prefs.getBoolean("active", false), isRunning, previous)
+        }
     }
 }
