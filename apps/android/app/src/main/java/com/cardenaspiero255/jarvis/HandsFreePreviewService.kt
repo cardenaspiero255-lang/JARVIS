@@ -150,6 +150,77 @@ class HandsFreePreviewService : Service() {
 
     private var pendingRetry: Runnable? = null
 
+    /**
+     * A short raw-audio read proves microphone capture independently of
+     * Android SpeechRecognizer and its locale/ASR provider. Raw samples never
+     * leave RAM; only sample count and acoustic signal levels are retained.
+     */
+    private fun startMicrophoneDiagnostic() {
+        if (!isRunning || closed || !diagnosticMode) return
+        showStatus("DIAGNOSTIC_MIC: habla durante 4 segundos y comprueba el volumen.")
+        val worker = Thread({
+            var input: AudioRecord? = null
+            var message: String
+            try {
+                val minimum = AudioRecord.getMinBufferSize(
+                    16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+                )
+                if (minimum <= 0) throw IllegalStateException("buffer size: $minimum")
+                val bufferSize = maxOf(minimum * 2, 4096)
+                input = AudioRecord(
+                    MediaRecorder.AudioSource.MIC, 16_000,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+                if (input.state != AudioRecord.STATE_INITIALIZED) {
+                    throw IllegalStateException("AudioRecord no inicializado")
+                }
+                input.startRecording()
+                if (input.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    throw IllegalStateException("AudioRecord no arrancó")
+                }
+                val meter = AudioInputMeter()
+                val samples = ShortArray(1024)
+                val started = SystemClock.elapsedRealtime()
+                while (isRunning && !closed && !Thread.currentThread().isInterrupted &&
+                    SystemClock.elapsedRealtime() - started < 4_000L) {
+                    val count = input.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
+                    if (count > 0) {
+                        meter.observe(samples, count)
+                    } else if (count < 0) {
+                        throw IllegalStateException("AudioRecord.read error $count")
+                    }
+                    Thread.sleep(25L)
+                }
+                message = meter.reading().diagnostic()
+            } catch (_: SecurityException) {
+                message = "MIC_PERMISSION_DENIED: Android rechazó capturar audio."
+            } catch (e: RuntimeException) {
+                message = "MIC_CAPTURE_ERROR: ${e.javaClass.simpleName}; " +
+                    "comprueba el permiso y privacidad del micrófono."
+            } catch (_: InterruptedException) {
+                message = "MIC_INTERRUPTED: captura detenida."
+            } finally {
+                try { input?.stop() } catch (_: RuntimeException) {}
+                try { input?.release() } catch (_: RuntimeException) {}
+            }
+            val safeMessage = message
+            main.post {
+                if (!isRunning || closed || !diagnosticMode || endedNormally) return@post
+                micDiagnosticSummary = safeMessage
+                record(safeMessage + " Comprobando salida de voz offline…", active = true)
+                speakThenStop("Prueba de voz. Soy Jarvis. ¿Puedes escucharme?")
+                main.postDelayed({
+                    if (isRunning && !closed && diagnosticMode && !ttsReady) {
+                        finish("TTS_TIMEOUT: Android no preparó una voz local disponible.")
+                    }
+                }, 7_000L)
+            }
+        }, "jarvis-microphone-diagnostic")
+        diagnosticWorker = worker
+        worker.start()
+    }
+
     private fun startOfflineAsr() {
         if (!isRunning || closed || !timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
             finish("Tiempo de la prueba terminado antes de escuchar una orden.")
