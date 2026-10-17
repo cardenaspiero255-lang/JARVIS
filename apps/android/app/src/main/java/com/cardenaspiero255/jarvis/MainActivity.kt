@@ -201,6 +201,9 @@ class MainActivity : Activity() {
         handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
             toggleHandsFreePreviewByTap()
         }.also { layout.addView(it) }
+        layout.addView(primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S") {
+            toggleHandsFreePreviewByTap(diagnostic = true)
+        })
         handsFreePreviewStatus = label(HandsFreePreviewService.readDiagnostic(this),
             12f, Color.rgb(211, 213, 220))
         layout.addView(handsFreePreviewStatus)
@@ -708,7 +711,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun toggleHandsFreePreviewByTap() {
+    private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false) {
         if (HandsFreePreviewService.isRunning) {
             stopHandsFreePreview()
             statusText.text = "Prueba manos libres detenida. Micrófono liberado."
@@ -734,21 +737,30 @@ class MainActivity : Activity() {
         val offline = Build.VERSION.SDK_INT >= 31 && try {
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
-        when (HandsFreePreviewPolicy().canStart(true, mic, notifications, offline)) {
+        when (HandsFreePreviewPolicy().canStart(true, mic, notifications, diagnostic || offline)) {
             PreviewStart.DENIED -> statusText.text = "Faltan permisos para la escucha."
             PreviewStart.OFFLINE_ENGINE_MISSING -> statusText.text =
                 "No hay motor de reconocimiento 100% local en Android. " +
                     "Instala el idioma español offline; NO uso el reconocedor de la nube."
             PreviewStart.ALLOWED -> try {
                 startForegroundService(Intent(this, HandsFreePreviewService::class.java).apply {
-                    action = HandsFreePreviewService.ACTION_START
+                    action = if (diagnostic) HandsFreePreviewService.ACTION_DIAGNOSE
+                        else HandsFreePreviewService.ACTION_START
                     putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
                 })
-                statusText.text = "Prueba manos libres solicitada. Puedes apagar la pantalla " +
-                    "y decir «Jarvis, dime la hora» durante 60 segundos. " +
-                    "Notificación con DETENER. Voice Match todavía no está implementado."
+                statusText.text = if (diagnostic) {
+                    "Diagnóstico de micrófono 4 s. HABLA ahora. Después JARVIS intentará " +
+                        "reproducir una frase sin usar el reconocimiento de idiomas. " +
+                        "Lee el diagnóstico bajo el botón al volver."
+                } else {
+                    "Prueba manos libres solicitada. Puedes apagar la pantalla " +
+                        "y decir «Jarvis, dime la hora» durante 60 segundos. " +
+                        "Notificación con DETENER. Voice Match todavía no está implementado."
+                }
                 handsFreePreviewButton?.text = "DETENER MANOS LIBRES · PRUEBA"
-                handsFreePreviewStatus.text = "Iniciando escucha offline de 60 segundos…"
+                handsFreePreviewStatus.text = if (diagnostic)
+                    "Midiendo señal del micrófono; después probando altavoz y TTS…"
+                else "Iniciando escucha offline de 60 segundos…"
 
             } catch (_: RuntimeException) {
                 statusText.text = "Android impidió iniciar el micrófono. " +
