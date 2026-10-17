@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -14,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -21,6 +23,9 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.PreviewAsrRecoveryPolicy
+import com.cardenaspiero255.jarvis.core.PreviewAsrDecision
+import com.cardenaspiero255.jarvis.core.PreviewDiagnosticSummary
 import com.cardenaspiero255.jarvis.core.PreviewStart
 import com.cardenaspiero255.jarvis.core.PreviewTimeGate
 import com.cardenaspiero255.jarvis.core.PreviewWake
@@ -35,6 +40,10 @@ import java.time.LocalTime
 class HandsFreePreviewService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private val policy = HandsFreePreviewPolicy()
+    private val recoveryPolicy = PreviewAsrRecoveryPolicy()
+    private val diagnostics by lazy {
+        getSharedPreferences("jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
+    }
     private val timeGate = PreviewTimeGate(60_000L)
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
@@ -42,9 +51,13 @@ class HandsFreePreviewService : Service() {
     private var pendingSpeech: String? = null
     private var consumed = false
     private var closed = false
+    private var attempts = 0
+    // Old Android ASR callbacks must never stop a newer retry session.
+    private var recognizerGeneration = 0L
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var endedNormally = false
     private val timeout = Runnable {
-        lastState = "La prueba de 60 segundos terminó. Micrófono liberado."
-        stopSelf()
+        finish("La prueba de 60 segundos terminó. Micrófono liberado.")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -59,8 +72,7 @@ class HandsFreePreviewService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            lastState = "Prueba detenida por el usuario. Micrófono liberado."
-            stopSelf()
+            finish("Prueba detenida por el usuario. Micrófono liberado.")
             return START_NOT_STICKY
         }
         if (intent?.action != ACTION_START ||
@@ -78,11 +90,10 @@ class HandsFreePreviewService : Service() {
         } catch (_: RuntimeException) { false }
         val result = policy.canStart(true, mic, notifications, offline)
         if (result != PreviewStart.ALLOWED) {
-            lastState = if (result == PreviewStart.OFFLINE_ENGINE_MISSING) {
+            finish(if (result == PreviewStart.OFFLINE_ENGINE_MISSING) {
                 "Android no tiene reconocimiento local compatible. " +
                     "JARVIS no cambia a un proveedor en la nube."
-            } else "Permisos de micrófono o notificaciones incompletos."
-            stopSelf()
+            } else "Permisos de micrófono o notificaciones incompletos.")
             return START_NOT_STICKY
         }
         if (!timeGate.begin(SystemClock.elapsedRealtime())) {
@@ -97,13 +108,15 @@ class HandsFreePreviewService : Service() {
                 startForeground(NOTIFICATION_ID, notification("Escuchando una frase…"))
             }
         } catch (_: RuntimeException) {
-            lastState = "Android no permitió iniciar el micrófono."
-            stopSelf()
+            finish("Android no permitió iniciar el micrófono foreground. " +
+                "Revisa permisos y Funtouch OS.")
             return START_NOT_STICKY
         }
         isRunning = true
-        lastState = "Prueba 60 s activa. Di: Jarvis dime la hora. " +
-            "Aún NO se comprueba la identidad del hablante."
+        record("Micrófono de JARVIS activo hasta 60 s. " +
+            "Esta prueba NO comprueba quién habla.", active = true)
+        // Keep CPU awake ONLY for this explicitly authorized 60s hardware test.
+        acquireShortWakeLock()
         main.postDelayed(timeout, 60_000L)
         prepareTts()
         startOfflineAsr()
