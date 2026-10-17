@@ -28,7 +28,8 @@ class OfficialQwenNetworkBoundary(unittest.TestCase):
         self.assertIn("LocalLlmPolicy.MODEL_DOWNLOAD_URL", engine)
         self.assertIn("OfficialQwenDownload.install(", engine)
         self.assertIn("HttpsURLConnection", engine)
-        self.assertIn("https.responseCode != 200", engine)
+        self.assertIn("httpStatus = https.responseCode", engine)
+        self.assertIn("httpStatus != 200", engine)
         self.assertIn("LocalModelIntegrity.verify(modelPath,", engine)
         self.assertIn("isCancelled = { closed || epoch != session.get() }", engine)
         # A remote connection may be opened only by the dedicated model installer,
