@@ -22,7 +22,7 @@ object LocalQwenStatus {
         Code.THERMAL ->
             "Qwen instalado y verificado, pero Android indica temperatura elevada. Deja enfriar el teléfono."
         Code.READY ->
-            "Qwen instalado, SHA-256 verificado y recursos suficientes: listo para generar. Comprueba ahora las 5 pruebas."
+            "Qwen instalado, SHA-256 verificado y recursos suficientes: listo para intentar generar. Comprueba ahora las 5 pruebas."
         Code.INTERRUPTED ->
             "Qwen: descarga interrumpida al salir de JARVIS. Regresa y consulta el estado antes de reintentar."
         Code.ERROR ->
