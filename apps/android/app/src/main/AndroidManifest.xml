@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Only for a foreground, tap-initiated Android SpeechRecognizer request. -->
+    <!-- Foreground one-shot speech and an explicitly initiated, time-limited microphone FGS. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- User must grant JARVIS access in Shizuku; package installation is not permission. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API" />
     <!-- Granted explicitly by Android; required for the fixed, local Termux diagnostic. -->
@@ -81,6 +82,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/omega_hands_service" />
         </service>
+        <!-- 60-second hardware preview only; no boot receiver, no autostart. -->
+        <service
+            android:name=".HandsFreePreviewService"
+            android:exported="false"
+            android:stopWithTask="true"
+            android:foregroundServiceType="microphone" />
         <service
             android:name=".ScreenObservationService"
             android:enabled="false"
