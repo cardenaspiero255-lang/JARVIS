@@ -16,6 +16,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognitionSupport
@@ -25,6 +28,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.OfflineSpanishSupportPolicy
 import com.cardenaspiero255.jarvis.core.SpanishAvailability
 import com.cardenaspiero255.jarvis.core.PreviewAsrRecoveryPolicy
@@ -66,6 +70,9 @@ class HandsFreePreviewService : Service() {
     private var recognizerGeneration = 0L
     private var wakeLock: PowerManager.WakeLock? = null
     private var endedNormally = false
+    private var diagnosticMode = false
+    private var micDiagnosticSummary: String? = null
+    private var diagnosticWorker: Thread? = null
     private val timeout = Runnable {
         finish("La prueba de 60 segundos terminó. Micrófono liberado.")
     }
@@ -85,7 +92,8 @@ class HandsFreePreviewService : Service() {
             finish("Prueba detenida por el usuario. Micrófono liberado.")
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_START ||
+        val diagnostic = intent?.action == ACTION_DIAGNOSE
+        if ((intent?.action != ACTION_START && !diagnostic) ||
             !intent.getBooleanExtra(EXTRA_TAPPED, false) || isRunning || closed) {
             if (!isRunning) stopSelf()
             return START_NOT_STICKY
@@ -98,7 +106,9 @@ class HandsFreePreviewService : Service() {
         val offline = Build.VERSION.SDK_INT >= 31 && try {
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
-        val result = policy.canStart(true, mic, notifications, offline)
+        // Hardware-level microphone + TTS test works even when offline ASR
+        // is missing, which is exactly the failure we're diagnosing.
+        val result = policy.canStart(true, mic, notifications, diagnostic || offline)
         if (result != PreviewStart.ALLOWED) {
             finish(if (result == PreviewStart.OFFLINE_ENGINE_MISSING) {
                 "Android no tiene reconocimiento local compatible. " +
@@ -123,13 +133,18 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
-        record("Micrófono de JARVIS activo hasta 60 s. " +
-            "Esta prueba NO comprueba quién habla.", active = true)
-        // Keep CPU awake ONLY for this explicitly authorized 60s hardware test.
+        diagnosticMode = diagnostic
+        record(if (diagnostic) {
+            "DIAGNOSTIC_START: iniciando prueba real del micrófono y voz; " +
+                "no requiere motor ASR."
+        } else {
+            "Micrófono de JARVIS activo hasta 60 s. " +
+                "Esta prueba NO comprueba quién habla."
+        }, active = true)
         acquireShortWakeLock()
         main.postDelayed(timeout, 60_000L)
         prepareTts()
-        startOfflineAsr()
+        if (diagnosticMode) startMicrophoneDiagnostic() else startOfflineAsr()
         return START_NOT_STICKY
     }
 
@@ -379,7 +394,9 @@ class HandsFreePreviewService : Service() {
     private fun finish(reason: String) {
         if (endedNormally || closed) return
         endedNormally = true
-        record(reason, active = false)
+        val prefix = micDiagnosticSummary
+        record(if (diagnosticMode && prefix != null) "$prefix | $reason" else reason,
+            active = false)
         stopSelf()
     }
 
@@ -520,6 +537,9 @@ class HandsFreePreviewService : Service() {
         main.removeCallbacks(timeout)
         pendingRetry?.let(main::removeCallbacks)
         pendingRetry = null
+        // The worker owns and releases AudioRecord; do not retain PCM data.
+        diagnosticWorker?.interrupt()
+        diagnosticWorker = null
         closeRecognizer()
         try { tts?.stop() } catch (_: RuntimeException) {}
         try { tts?.shutdown() } catch (_: RuntimeException) {}
@@ -534,6 +554,7 @@ class HandsFreePreviewService : Service() {
 
     companion object {
         const val ACTION_START = "com.cardenaspiero255.jarvis.HANDSFREE_START"
+        const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
         const val EXTRA_TAPPED = "jarvis.handsfree.explicit"
         private const val CHANNEL = "jarvis_handsfree_preview"
