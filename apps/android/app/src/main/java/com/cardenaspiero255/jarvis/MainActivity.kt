@@ -77,6 +77,7 @@ class MainActivity : Activity() {
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private var foregroundSpeech: ForegroundSpeechRecognizer? = null
     private var handsFreePreviewButton: Button? = null
+    private lateinit var handsFreePreviewStatus: TextView
     private lateinit var visionPickerRequest: VisionPickerRequestGate
     private lateinit var screenConsentGate: ScreenConsentRequestGate
     private var screenConsentRequested = false
@@ -200,6 +201,9 @@ class MainActivity : Activity() {
         handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
             toggleHandsFreePreviewByTap()
         }.also { layout.addView(it) }
+        handsFreePreviewStatus = label(HandsFreePreviewService.lastState,
+            12f, Color.rgb(211, 213, 220))
+        layout.addView(handsFreePreviewStatus)
         layout.addView(label(
             "Prueba de una frase sin tocar la pantalla después de iniciar: " +
                 "bloquea el teléfono y di «Jarvis, dime la hora». " +
@@ -686,13 +690,22 @@ class MainActivity : Activity() {
         handsFreePreviewButton?.text = if (HandsFreePreviewService.isRunning) {
             "DETENER MANOS LIBRES · PRUEBA"
         } else "PROBAR MANOS LIBRES · 60 S"
+        if (::handsFreePreviewStatus.isInitialized) {
+            handsFreePreviewStatus.text = HandsFreePreviewService.lastState
+        }
     }
 
     private fun stopHandsFreePreview() {
         // Explicit local stop. No other app may start this unexported service.
-        try { stopService(Intent(this, HandsFreePreviewService::class.java)) }
-        catch (_: RuntimeException) { /* service may already have timed out */ }
-        refreshHandsFreePreviewUi()
+        try {
+            startService(Intent(this, HandsFreePreviewService::class.java).apply {
+                action = HandsFreePreviewService.ACTION_STOP
+            })
+        } catch (_: RuntimeException) { /* service may already have timed out */ }
+        handsFreePreviewButton?.text = "PROBAR MANOS LIBRES · 60 S"
+        if (::handsFreePreviewStatus.isInitialized) {
+            handsFreePreviewStatus.text = "Deteniendo micrófono…"
+        }
     }
 
     private fun toggleHandsFreePreviewByTap() {
@@ -735,6 +748,8 @@ class MainActivity : Activity() {
                     "y decir «Jarvis, dime la hora» durante 60 segundos. " +
                     "Notificación con DETENER. Voice Match todavía no está implementado."
                 handsFreePreviewButton?.text = "DETENER MANOS LIBRES · PRUEBA"
+                handsFreePreviewStatus.text = "Iniciando escucha offline de 60 segundos…"
+
             } catch (_: RuntimeException) {
                 statusText.text = "Android impidió iniciar el micrófono. " +
                     "Comprueba permisos y restricciones de Funtouch."
