@@ -204,6 +204,25 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S") {
             toggleHandsFreePreviewByTap(diagnostic = true)
         })
+        layout.addView(primaryButton("PROBAR RECONOCIMIENTO DEL SISTEMA · 60 S") {
+            AlertDialog.Builder(this)
+                .setTitle("Reconocimiento del sistema · prueba opcional")
+                .setMessage("Esta alternativa usa el reconocedor de voz configurado en " +
+                    "Android. Según tu proveedor puede usar Internet y enviar " +
+                    "audio para transcribirlo. Solo reconocerá «Jarvis, dime la hora» " +
+                    "en esta prueba. No se activará automáticamente, no guarda el audio " +
+                    "en JARVIS ni envía instrucciones a ChatGPT. ¿Quieres probarlo?")
+                .setNegativeButton("CANCELAR", null)
+                .setPositiveButton("ACEPTAR Y PROBAR") { _, _ ->
+                    toggleHandsFreePreviewByTap(systemMode = true)
+                }.show()
+        })
+        layout.addView(label(
+            "El modo de 60 s usa SOLO reconocimiento offline. " +
+                "La prueba alternativa del sistema puede usar Internet: " +
+                "se inicia únicamente con tu autorización explícita.",
+            12f, Color.rgb(164, 166, 174)
+        ))
         handsFreePreviewStatus = label(HandsFreePreviewService.readDiagnostic(this),
             12f, Color.rgb(211, 213, 220))
         layout.addView(handsFreePreviewStatus)
@@ -711,7 +730,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false) {
+    private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false,
+        systemMode: Boolean = false) {
         if (HandsFreePreviewService.isRunning) {
             stopHandsFreePreview()
             statusText.text = "Prueba manos libres detenida. Micrófono liberado."
@@ -737,34 +757,45 @@ class MainActivity : Activity() {
         val offline = Build.VERSION.SDK_INT >= 31 && try {
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
-        when (HandsFreePreviewPolicy().canStart(true, mic, notifications, diagnostic || offline)) {
+        val systemAvailable = systemMode && try {
+            SpeechRecognizer.isRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        when (HandsFreePreviewPolicy().canStart(
+            true, mic, notifications, diagnostic || offline || systemAvailable
+        )) {
             PreviewStart.DENIED -> statusText.text = "Faltan permisos para la escucha."
             PreviewStart.OFFLINE_ENGINE_MISSING -> statusText.text =
-                "No hay motor de reconocimiento 100% local en Android. " +
-                    "Instala el idioma español offline; NO uso el reconocedor de la nube."
+                if (systemMode) "No hay proveedor de reconocimiento de voz del sistema."
+                else "No hay motor de reconocimiento 100% local en Android. " +
+                    "Instala el idioma español offline; no cambio a nube automáticamente."
             PreviewStart.ALLOWED -> try {
                 // The foreground HABLAR session must release the same microphone
                 // before this isolated hardware diagnostic/preview starts.
                 stopForegroundSpeech()
                 if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
                 startForegroundService(Intent(this, HandsFreePreviewService::class.java).apply {
-                    action = if (diagnostic) HandsFreePreviewService.ACTION_DIAGNOSE
-                        else HandsFreePreviewService.ACTION_START
+                    action = when {
+                        diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
+                        systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
+                        else -> HandsFreePreviewService.ACTION_START
+                    }
                     putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
                 })
-                statusText.text = if (diagnostic) {
-                    "Diagnóstico de micrófono 4 s. HABLA ahora. Después JARVIS intentará " +
-                        "reproducir una frase sin usar el reconocimiento de idiomas. " +
-                        "Lee el diagnóstico bajo el botón al volver."
-                } else {
-                    "Prueba manos libres solicitada. Puedes apagar la pantalla " +
-                        "y decir «Jarvis, dime la hora» durante 60 segundos. " +
-                        "Notificación con DETENER. Voice Match todavía no está implementado."
+                statusText.text = when {
+                    diagnostic -> "Diagnóstico de micrófono 4 s. Habla ahora. " +
+                        "Después JARVIS probará el TTS sin depender del idioma ASR."
+                    systemMode -> "Prueba del proveedor normal de Android solicitada. " +
+                        "Puede usar Internet. Di «Jarvis, dime la hora»; " +
+                        "después revisa el diagnóstico. No envía órdenes externas."
+                    else -> "Prueba offline solicitada. Di «Jarvis, dime la hora» " +
+                        "durante 60 s; también puedes bloquear la pantalla."
                 }
                 handsFreePreviewButton?.text = "DETENER MANOS LIBRES · PRUEBA"
-                handsFreePreviewStatus.text = if (diagnostic)
-                    "Midiendo señal del micrófono; después probando altavoz y TTS…"
-                else "Iniciando escucha offline de 60 segundos…"
+                handsFreePreviewStatus.text = when {
+                    diagnostic -> "Midiendo micrófono y probando TTS…"
+                    systemMode -> "Intentando reconocimiento del sistema · puede usar Internet…"
+                    else -> "Iniciando escucha offline de 60 segundos…"
+                }
 
             } catch (_: RuntimeException) {
                 statusText.text = "Android impidió iniciar el micrófono. " +
