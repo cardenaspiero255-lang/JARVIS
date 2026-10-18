@@ -7,14 +7,15 @@ import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * A supply-chain gate for an OPTIONAL sherpa-onnx English KWS mobile model.
+ * A supply-chain gate for the verified full INT8 GigaSpeech KWS model.
  *
- * This never installs, downloads or runs a model. The KWS JNI adapter remains
- * unimplemented; current Vosk preview remains the working fallback.
+ * This gate only verifies pinned file contents. The JNI bridge is optional;
+ * the time-limited Vosk preview remains the fallback if initialization fails.
  *
  * Reference release: k2-fsa/sherpa-onnx, tag kws-models, English GigaSpeech
- * Zipformer 3.3M mobile. SHA-256 values from an externally published
- * byte-identical mirror must be audited against upstream before enabling.
+ * Zipformer 3.3M full archive. These bytes were verified from the official
+ * release (SHA-256 f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a)
+ * and the full INT8 encoder passed native inference when mobile crashed.
  */
 enum class KwsReadiness {
     NO_VERIFIED_MODEL,
@@ -61,10 +62,10 @@ class OfflineKwsModelGate {
         private const val MAX_FILE_BYTES = 18_000_000L
 
         // Hashes correspond to the five individual ONNX/BPE/token files of
-        // the upstream English mobile archive. No unpinned executable loaded.
+        // the upstream English full archive. No unpinned executable loaded.
         val requiredAssets: Map<String, String> = linkedMapOf(
             "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" to
-                "7d5a25fbc14b423074fe0c58e1be388ccf3f1a815c649980232a0c47f81875e4",
+                "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
             "decoder-epoch-12-avg-2-chunk-16-left-64.onnx" to
                 "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
             "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx" to
