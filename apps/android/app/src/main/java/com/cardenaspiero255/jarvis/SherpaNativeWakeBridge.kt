@@ -19,9 +19,10 @@ import java.nio.file.Files
  * already captured by the authorized foreground Vosk session, never starts
  * another microphone, never persists speech, and never authorizes commands.
  *
- * No model is shipped yet: until independently pinned model files and a
- * text2token-produced 'Jarvis' keywords.txt have been provisioned in app-private
- * no-backup storage, [tryOpen] refuses initialization and Vosk still works.
+ * The official English KWS assets are shipped in the signed APK only after
+ * build-time SHA-256 checks and reproducible BPE generation. First use copies
+ * them to private no-backup storage with another complete checksum check.
+ * False positives and Spanish-Chilean accuracy still require on-device tests.
  */
 class SherpaNativeWakeBridge private constructor(
     private val spotter: KeywordSpotter,
@@ -69,8 +70,8 @@ class SherpaNativeWakeBridge private constructor(
          * microphone consent / FGS creation. Failure means fallback to Vosk.
          */
         fun tryOpen(context: Context, onStatus: (String) -> Unit): SherpaNativeWakeBridge? {
-            val dir = File(context.noBackupFilesDir, MODEL_DIR)
-            if (OfflineKwsModelGate().verify(dir) !=
+            val dir = VerifiedKwsModelStore(context).ensureInstalled()
+            if (dir == null || OfflineKwsModelGate().verify(dir) !=
                 KwsReadiness.READY_FOR_NATIVE_ADAPTER) {
                 onStatus("KWS_NATIVE_MODEL_UNAVAILABLE: Vosk sigue activo.")
                 return null
