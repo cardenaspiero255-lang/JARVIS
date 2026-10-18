@@ -262,6 +262,76 @@ class HandsFreePreviewService : Service() {
         worker.start()
     }
 
+    /**
+     * First-run model expansion runs in a worker. Audio then passes directly
+     * through Vosk for a bounded 60s window, fully offline. No cloud or ASR
+     * language packs from Funtouch are involved.
+     */
+    private fun startNativeSpanishPreview() {
+        val runner = NativeSpanishSpeechRunner(
+            applicationContext,
+            onStatus = { message ->
+                main.post {
+                    if (isRunning && !closed && nativeModeRequested) showStatus(message)
+                }
+            },
+            onReady = {
+                main.post {
+                    if (!isRunning || closed || !nativeModeRequested || endedNormally)
+                        return@post
+                    main.removeCallbacks(nativeStartupTimeout)
+                    if (!timeGate.begin(SystemClock.elapsedRealtime())) {
+                        finish("ASR_NATIVE_CLOCK_ERROR: no se pudo iniciar ventana de 60 s.")
+                        return@post
+                    }
+                    // Restart the 60s CPU lock only after model initialization.
+                    try { if (wakeLock?.isHeld == true) wakeLock?.release() }
+                    catch (_: RuntimeException) {}
+                    wakeLock = null
+                    acquireShortWakeLock()
+                    main.postDelayed(timeout, 60_000L)
+                    showStatus("ASR_NATIVE_READY: escucha local 60 s activa. " +
+                        "Di «Jarvis, dime la hora» con pantalla encendida o apagada.")
+                }
+            },
+            onWake = { wake ->
+                main.post {
+                    if (!isRunning || closed || !nativeModeRequested || consumed ||
+                        !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    consumed = true
+                    nativeRunner?.stop()
+                    when (wake) {
+                        PreviewWake.LOCAL_TIME -> {
+                            val now = LocalTime.now()
+                            val answer = if (now.minute == 0)
+                                "Son las " + now.hour + " en punto."
+                            else "Son las " + now.hour + " y " + now.minute + "."
+                            record("ASR_NATIVE_MATCHED: frase de hora reconocida " +
+                                "localmente; Voice Match del propietario pendiente.", active = true)
+                            speakThenStop(answer)
+                        }
+                        PreviewWake.WAKE_ONLY -> {
+                            record("ASR_NATIVE_WAKE_ONLY: palabra Jarvis reconocida, " +
+                                "prueba todavía de una sola frase.", active = true)
+                            speakThenStop("Te escuché. Di: Jarvis, dime la hora.")
+                        }
+                        else -> finish("ASR_NATIVE_IGNORED: voz no autorizada por parser.")
+                    }
+                }
+            },
+            onFailure = { message ->
+                main.post {
+                    if (isRunning && !closed && nativeModeRequested && !consumed)
+                        finish(message)
+                }
+            }
+        )
+        nativeRunner = runner
+        if (!runner.start()) {
+            finish("ASR_NATIVE_ENGINE_BUSY: no se pudo crear la sesión de micrófono.")
+        }
+    }
+
     private fun startOfflineAsr() {
         if (!isRunning || closed || !timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
             finish("Tiempo de la prueba terminado antes de escuchar una orden.")
