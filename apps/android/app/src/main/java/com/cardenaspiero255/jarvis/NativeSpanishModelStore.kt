@@ -15,7 +15,7 @@ import java.util.zip.ZipFile
 class NativeSpanishModelStore(private val context: Context) {
     private val policy = NativeSpanishModelSafety(NativeSpanishModelSafety.ROOT)
 
-    fun ensureInstalled(): File {
+    fun ensureInstalled(onStage: (String) -> Unit = {}): File {
         val output = File(context.filesDir, "vosk-es-0.42-private")
         val receipt = File(output, ".asset_sha256")
         val model = File(output, "model")
@@ -23,8 +23,12 @@ class NativeSpanishModelStore(private val context: Context) {
             receipt.readText() == NativeSpanishModelSafety.SHA256 &&
             File(model, "am/final.mdl").isFile &&
             File(model, "conf/model.conf").isFile
-        ) return model
+        ) {
+            onStage("ASR_NATIVE_MODEL_CACHED")
+            return model
+        }
 
+        onStage("ASR_NATIVE_ASSET_VERIFY")
         val scratch = File(context.cacheDir, "vosk-spanish-asset-verify.zip")
         val staging = File(context.filesDir, "vosk-es-0.42-staging")
         try {
@@ -47,6 +51,7 @@ class NativeSpanishModelStore(private val context: Context) {
             require(sha == NativeSpanishModelSafety.SHA256) {
                 "Invalid offline Spanish model fingerprint"
             }
+            onStage("ASR_NATIVE_EXTRACTING")
             staging.deleteRecursively()
             require(staging.mkdirs()) { "Cannot create private model staging directory" }
             val stageModel = File(staging, "model")
@@ -103,6 +108,7 @@ class NativeSpanishModelStore(private val context: Context) {
             File(staging, ".asset_sha256").writeText(NativeSpanishModelSafety.SHA256)
             output.deleteRecursively()
             require(staging.renameTo(output)) { "Cannot activate offline Spanish model" }
+            onStage("ASR_NATIVE_MODEL_READY")
             return File(output, "model")
         } finally {
             scratch.delete()

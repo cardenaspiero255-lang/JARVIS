@@ -61,10 +61,12 @@ class NativeSpanishSpeechRunner(
         var hadUnmatchedSpeech = false
         try {
             onStatus("ASR_NATIVE_LOADING: cargando modelo español dentro de la APK…")
-            val folder = NativeSpanishModelStore(context).ensureInstalled()
+            val folder = NativeSpanishModelStore(context).ensureInstalled { stage -> onStatus(stage) }
             if (!active.get()) return
+            onStatus("ASR_NATIVE_DECODER_LOADING")
             model = Model(folder.absolutePath)
             recognizer = Recognizer(model, 16_000.0f)
+            onStatus("ASR_NATIVE_AUDIO_OPEN")
             if (!active.get()) return
 
             val minimum = AudioRecord.getMinBufferSize(
