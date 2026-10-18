@@ -121,7 +121,11 @@ class HandsFreePreviewService : Service() {
             explicitUserTap = true,
             micGranted = mic,
             notificationsGranted = notifications,
-            offlineRecognizerAvailable = diagnostic || offline || systemAvailable
+            offlineRecognizerAvailable = when {
+                diagnostic -> true
+                systemRequested -> systemAvailable
+                else -> offline
+            }
         )
         if (result != PreviewStart.ALLOWED) {
             finish(if (result == PreviewStart.OFFLINE_ENGINE_MISSING) {
