@@ -7,6 +7,8 @@ import android.media.MediaRecorder
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
+import com.cardenaspiero255.jarvis.core.WakeTurnDecision
 import com.cardenaspiero255.jarvis.core.PreviewWake
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import org.json.JSONObject
@@ -31,7 +33,9 @@ class NativeSpanishSpeechRunner(
     private val active = AtomicBoolean(false)
     @Volatile private var worker: Thread? = null
     @Volatile private var recorder: AudioRecord? = null
-    private val policy = HandsFreePreviewPolicy()
+    // Keep the voice policy unchanged; this preview authorizes ONLY public time.
+    // ownerOnly = false until independently verified biometric speaker evidence exists.
+    private val turnGate = PreviewWakeTurnGate()
 
     fun start(): Boolean {
         if (!active.compareAndSet(false, true)) return false
@@ -97,14 +101,25 @@ class NativeSpanishSpeechRunner(
                         if (recognizer.acceptWaveForm(audio, received)) {
                             val text = JSONObject(recognizer.result).optString("text", "")
                             if (text.isNotBlank()) {
-                                val action = policy.classify(
-                                    text, SpeakerEvidence.UNAVAILABLE, ownerOnly = false)
-                                if (action == PreviewWake.LOCAL_TIME ||
-                                    action == PreviewWake.WAKE_ONLY) {
-                                    result = action
-                                    break
+                                // Vosk emits completed segments at speech pauses.
+                                // Support "Jarvis" then "dime la hora" within 8 s,
+                                // but never treat wake or ASR as speaker identity.
+                                val decision = turnGate.observe(
+                                    text, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
+                                when (decision) {
+                                    WakeTurnDecision.LOCAL_TIME -> {
+                                        result = PreviewWake.LOCAL_TIME
+                                        break
+                                    }
+                                    WakeTurnDecision.WAITING -> onStatus(
+                                        "ASR_NATIVE_WAKE_WAITING: Jarvis detectado. " +
+                                            "Di «dime la hora» en 8 s.")
+                                    WakeTurnDecision.BLOCKED_IDENTITY -> {
+                                        failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
+                                        break
+                                    }
+                                    WakeTurnDecision.IGNORED -> hadUnmatchedSpeech = true
                                 }
-                                hadUnmatchedSpeech = true
                             }
                         }
                     }
@@ -112,6 +127,10 @@ class NativeSpanishSpeechRunner(
                         "AudioRecord returned code $received")
                 }
                 val now = SystemClock.elapsedRealtime()
+                if (turnGate.expiredAt(now)) {
+                    result = PreviewWake.WAKE_ONLY
+                    break
+                }
                 if (now - lastStatus >= 10_000L) {
                     val reading = levels.reading()
                     onStatus("ASR_NATIVE_LISTENING: " +
@@ -124,10 +143,17 @@ class NativeSpanishSpeechRunner(
             }
             if (result == null && active.get()) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
-                val finalAction = policy.classify(
-                    finalText, SpeakerEvidence.UNAVAILABLE, ownerOnly = false)
-                if (finalAction == PreviewWake.LOCAL_TIME ||
-                    finalAction == PreviewWake.WAKE_ONLY) result = finalAction
+                // Flush last segment without granting extra privileges.
+                // Pending standalone wake can still be acknowledged.
+                val finalDecision = if (finalText.isNotBlank()) turnGate.observe(
+                    finalText, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
+                    else WakeTurnDecision.IGNORED
+                if (finalDecision == WakeTurnDecision.LOCAL_TIME)
+                    result = PreviewWake.LOCAL_TIME
+                else if (finalDecision == WakeTurnDecision.WAITING || turnGate.waiting())
+                    result = PreviewWake.WAKE_ONLY
+                else if (finalDecision == WakeTurnDecision.BLOCKED_IDENTITY)
+                    failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
             }
             if (result == null && active.get()) {
                 val signal = levels.reading()
