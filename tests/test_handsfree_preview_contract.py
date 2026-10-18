@@ -44,7 +44,6 @@ class HandsFreePreviewContract(unittest.TestCase):
         ):
             self.assertIn(expected, service)
         for forbidden in (
-            "SpeechRecognizer.createSpeechRecognizer(this)",
             "HttpURLConnection", "HttpsURLConnection", "startListeningLoop",
             "AlarmManager", "WorkManager", "BOOT_COMPLETED",
             "requestAiReply(", "performGlobalAction(", "onPartialResults(partialResults: Bundle?) {",
@@ -82,8 +81,23 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertIn("SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED", service)
         self.assertNotIn('putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL")', service)
         self.assertIn('fun errorReason(errorCode: Int)', policy)
-        self.assertNotIn("SpeechRecognizer.createSpeechRecognizer(", service)
         self.assertNotIn("android.permission.INTERNET", (ROOT / "AndroidManifest.xml").read_text())
+
+    def test_system_recognizer_requires_separate_visible_consent_and_no_implicit_fallback(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
+        activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn('ACTION_START_SYSTEM', service)
+        self.assertIn('SpeechRecognizer.createSpeechRecognizer(this)', service)
+        self.assertIn('SpeechRecognizer.createOnDeviceSpeechRecognizer(this)', service)
+        self.assertIn('systemRecognizerRequested', service)
+        self.assertIn('SpeechRecognizer.isRecognitionAvailable(this)', service)
+        self.assertIn('PROBAR RECONOCIMIENTO DEL SISTEMA', activity)
+        self.assertIn('puede usar Internet', activity)
+        self.assertIn('HandsFreePreviewService.ACTION_START_SYSTEM', activity)
+        self.assertIn('setPositiveButton("ACEPTAR Y PROBAR"', activity)
+        self.assertIn('explicitUserTap = true', service)
+        # Offline recognizer must never silently reroute to the system provider.
+        self.assertNotIn('if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) systemRecognizerRequested = true', service)
 
     def test_hardware_mic_and_offline_tts_can_be_diagnosed_without_asr(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
