@@ -79,3 +79,45 @@ def speak_local(text: str) -> None:
         engine.runAndWait()
     finally:
         engine.stop()
+
+
+
+def stream_utterances(model_directory: str, seconds: int = 60):
+    """Explicit opt-in microphone session, maximum 60 seconds, offline Vosk."""
+    if not 1 <= seconds <= 60:
+        raise ValueError("La sesión debe durar entre 1 y 60 segundos")
+    model = Path(model_directory)
+    if not model.is_dir():
+        raise FileNotFoundError("Modelo Vosk local no encontrado")
+    from vosk import Model, KaldiRecognizer, SetLogLevel
+    import sounddevice as sd
+
+    SetLogLevel(-1)
+    recognizer = KaldiRecognizer(Model(str(model)), 16_000)
+    incoming = Queue(maxsize=8)
+
+    def callback(indata, frames, time, status):
+        try:
+            incoming.put_nowait(bytes(indata))
+        except Full:
+            try:
+                incoming.get_nowait()
+                incoming.put_nowait(bytes(indata))
+            except (Empty, Full):
+                pass
+
+    with sd.RawInputStream(samplerate=16_000, blocksize=4000, dtype="int16",
+                           channels=1, callback=callback):
+        deadline = monotonic() + seconds
+        while monotonic() < deadline:
+            try:
+                frame = incoming.get(timeout=min(0.5, max(0.01, deadline - monotonic())))
+            except Empty:
+                continue
+            if recognizer.AcceptWaveform(frame):
+                text = _recognized_text(recognizer.Result())
+                if text:
+                    yield text
+        final = _recognized_text(recognizer.FinalResult())
+        if final:
+            yield final

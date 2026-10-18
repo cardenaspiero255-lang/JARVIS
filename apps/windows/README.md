@@ -60,3 +60,16 @@ Las pruebas usan inyección de ventanas/procesos falsos para verificar política
 3. Evaluar un adaptador de Dodaios y UFO³ cuando haya un criterio reproducible de memoria/CPU, aislamiento y permisos. No mezclar sus runtimes completos sin auditoría.
 4. Incorporar REA en sandbox para análisis de software autorizado, después de tener auditoría y agentes de programación con pruebas.
 5. Emparejar Android y Windows con autorización, TLS y revocación; cada app sigue siendo útil de forma independiente.
+
+
+## Sesión de voz experimental (PR complementario)
+
+En una sesión de Windows abierta manualmente, Vosk ahora puede procesar varias frases sin abrir el micrófono para cada pregunta:
+
+```powershell
+.\.venv\Scripts\python.exe -m jarvis_windows --wake-session --model "C:\\Modelos\\vosk-model-small-es-0.42" --session-seconds 60
+```
+
+Di `Jarvis`, espera una pausa, y luego `dime la hora` antes de ocho segundos. También puedes decir `Jarvis, dime la hora` en una sola frase. `Jarvis, detente` cierra la sesión. La lista exacta de comandos permitidos no cambia. La sesión tiene **máximo 60 s** (configurable a menos tiempo), no arranca automáticamente ni acepta comandos de shell o permisos privilegiados. `--speak` permite voz del sistema si está instalada; cuidado con realimentación acústica al usar altavoces y micrófono juntos.
+
+**Limitación importante:** Vosk no detecta la voz del propietario. Esta opción es un proceso local iniciado deliberadamente, no hotword 24/7 ni un asistente de Windows de sistema. Primero hay que validar micrófono, batería/CPU y seguridad en hardware real.

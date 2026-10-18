@@ -144,3 +144,42 @@ class SafetyAndCliTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+class VoiceSessionTests(unittest.TestCase):
+    def test_wake_then_separate_safe_command(self):
+        from jarvis_windows.session import VoiceSessionRouter
+        router = VoiceSessionRouter(Agent(WindowsDesktop(lambda: [])))
+        self.assertEqual(router.handle("Jarvis", 100.0).code, "WAKE_PENDING")
+        self.assertEqual(router.handle("dime la hora", 103.0).code, "LOCAL_TIME")
+
+    def test_out_of_window_fails_closed(self):
+        from jarvis_windows.session import VoiceSessionRouter
+        router = VoiceSessionRouter(Agent(WindowsDesktop(lambda: [])))
+        router.handle("Jarvis", 100.0)
+        self.assertEqual(router.handle("dime la hora", 108.0).code, "UNKNOWN_COMMAND")
+
+    def test_negation_cancels_pending(self):
+        from jarvis_windows.session import VoiceSessionRouter
+        router = VoiceSessionRouter(Agent(WindowsDesktop(lambda: [])))
+        router.handle("Jarvis", 100.0)
+        self.assertEqual(router.handle("no abras bloc de notas", 103.0).code, "UNKNOWN_COMMAND")
+        self.assertEqual(router.handle("abre bloc de notas", 104.0).code, "UNKNOWN_COMMAND")
+
+    def test_stop_is_high_priority(self):
+        from jarvis_windows.session import VoiceSessionRouter
+        router = VoiceSessionRouter(Agent(WindowsDesktop(lambda: [])))
+        router.handle("Jarvis", 100.0)
+        self.assertEqual(router.handle("detente", 101.0).code, "STOPPED")
+
+    def test_full_phrase_still_works_and_does_not_open_unknown_tool(self):
+        from jarvis_windows.session import VoiceSessionRouter
+        router = VoiceSessionRouter(Agent(WindowsDesktop(lambda: [])))
+        self.assertEqual(router.handle("Jarvis dime la hora", 5.0).code, "LOCAL_TIME")
+        self.assertEqual(router.handle("Jarvis ejecuta PowerShell", 6.0).code, "UNKNOWN_COMMAND")
+
+    def test_invalid_session_length_without_audio(self):
+        from jarvis_windows.speech import stream_utterances
+        with self.assertRaises(ValueError):
+            next(stream_utterances("/ignored", 61))
