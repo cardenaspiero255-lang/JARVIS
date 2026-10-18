@@ -761,7 +761,11 @@ class MainActivity : Activity() {
             SpeechRecognizer.isRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
         when (HandsFreePreviewPolicy().canStart(
-            true, mic, notifications, diagnostic || offline || systemAvailable
+            true, mic, notifications, when {
+                diagnostic -> true
+                systemMode -> systemAvailable
+                else -> offline
+            }
         )) {
             PreviewStart.DENIED -> statusText.text = "Faltan permisos para la escucha."
             PreviewStart.OFFLINE_ENGINE_MISSING -> statusText.text =
