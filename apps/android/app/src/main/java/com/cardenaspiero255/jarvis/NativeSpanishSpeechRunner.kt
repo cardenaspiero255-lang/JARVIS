@@ -162,8 +162,17 @@ class NativeSpanishSpeechRunner(
                         try {
                             if (wakeBridge?.consume(audio, received,
                                     SystemClock.elapsedRealtime()) == true) {
-                                onStatus("KWS_NATIVE_WAKE_CANDIDATE: Jarvis; " +
-                                    "esperando orden Vosk completa, no autenticado.")
+                                // The real JNI candidate opens only the same bounded
+                                // 8-second PUBLIC command window as ASR "Jarvis".
+                                // Identity remains UNAVAILABLE; never run partial orders.
+                                val gateDecision = turnGate.observe(
+                                    "Jarvis", SystemClock.elapsedRealtime(),
+                                    SpeakerEvidence.UNAVAILABLE
+                                )
+                                if (gateDecision == WakeTurnDecision.WAITING) {
+                                    onStatus("KWS_NATIVE_WAKE_WAITING: Jarvis detectado; " +
+                                        "di «dime la hora» en 8 s (sin identidad verificada).")
+                                }
                             }
                         } catch (_: Exception) {
                             try { wakeBridge?.close() } catch (_: Exception) {}
