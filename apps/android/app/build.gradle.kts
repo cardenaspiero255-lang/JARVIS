@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 import java.security.MessageDigest
+import java.io.File
 import java.io.FileOutputStream
 
 plugins {
@@ -75,7 +76,7 @@ val bundleOfflineSpanish by tasks.registering {
     doLast {
         val target = offlineSpeechArchive.get().asFile
         val expected = "09b239888f633ef2f0b4e09736e3d9936acfd810bc65d53fad45261762c6511f"
-        fun sha256(file: java.io.File): String {
+        fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")
             file.inputStream().buffered().use { stream ->
                 val buffer = ByteArray(64 * 1024)
@@ -94,7 +95,7 @@ val bundleOfflineSpanish by tasks.registering {
             "https://github.com/BartekReterski/VoskModels/releases/download/v1/vosk-model-small-es-0.42.zip"
         )
         var success = false
-        val destination = java.io.File(target.parentFile, target.name + ".download")
+        val destination = File(target.parentFile, target.name + ".download")
         for (source in sources) {
             try {
                 destination.delete()
