@@ -44,7 +44,7 @@ class OfflineCommandGrammarPolicyTest {
 
     @Test fun oversizeVocabularyIsNotParsed() {
         val file = writeWords("jarvis")
-        file.setLength(8_000_001)
+        java.io.RandomAccessFile(file, "rw").use { it.setLength(8_000_001L) }
         assertNull(OfflineCommandGrammarPolicy().fromVocabulary(file))
     }
 
