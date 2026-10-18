@@ -4,7 +4,7 @@ on:
     paths:
       - "apps/android/**"
       - "tools/prepare_kws_model.py"
-      - "tools/prepare_kws_model.py"
+      - "tools/prepare_speaker_model.py"
       - ".github/workflows/android-shell.yml"
   pull_request:
     paths:
