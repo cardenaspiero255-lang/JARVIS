@@ -28,8 +28,9 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private val recordings = ArrayList<LocalVoiceEnrollmentRecording>(3)
     private val running = AtomicBoolean(false)
-    private var visible = false
-    private var stopped = false
+    @Volatile private var visible = false
+    @Volatile private var stopped = false
+    private val enrollmentAllowed = AtomicBoolean(false)
     @Volatile private var currentRecorder: AudioRecord? = null
     @Volatile private var worker: Thread? = null
     private lateinit var consent: CheckBox
@@ -63,7 +64,9 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             setTextColor(Color.WHITE)
             isChecked = false
             setOnCheckedChangeListener { _, checked ->
+                enrollmentAllowed.set(checked && visible)
                 if (!checked) cancelCapture("Consentimiento retirado; no se conserva audio.")
+                else if (visible) stopped = false
                 updateState()
             }
         }
@@ -104,11 +107,13 @@ class OwnerVoiceEnrollmentActivity : Activity() {
         super.onStart()
         stopped = false
         visible = true
+        enrollmentAllowed.set(consent.isChecked)
         updateState()
     }
 
     override fun onStop() {
         visible = false
+        enrollmentAllowed.set(false)
         cancelCapture("Sesión detenida al salir de la pantalla.")
         super.onStop()
     }
@@ -207,7 +212,12 @@ class OwnerVoiceEnrollmentActivity : Activity() {
         val thread = Thread({
             val result = try {
                 SherpaSpeakerEnrollmentEngine(applicationContext)
-                    .enroll(consentGranted = running.get() && visible && consent.isChecked, recordings = batch)
+                    .enroll(
+                        consentGranted = enrollmentAllowed.get(),
+                        recordings = batch,
+                        isActive = { running.get() && enrollmentAllowed.get() &&
+                            !stopped && visible && !Thread.currentThread().isInterrupted }
+                    )
             } catch (_: Exception) { LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE }
             main.post {
                 if (!stopped && visible) {
@@ -239,6 +249,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private fun cancelCapture(message: String) {
         stopped = true
         running.set(false)
+        enrollmentAllowed.set(false)
         try { currentRecorder?.stop() } catch (_: Exception) {}
         worker?.interrupt()
         clearRecordings()
