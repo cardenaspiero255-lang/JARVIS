@@ -78,6 +78,15 @@ class MainActivity : Activity() {
     private var foregroundSpeech: ForegroundSpeechRecognizer? = null
     private var handsFreePreviewButton: Button? = null
     private lateinit var handsFreePreviewStatus: TextView
+    // Refresh on the visible Activity only. Service state remains observable and
+    // recording keeps running under its separate, explicitly started foreground FGS.
+    private val handsFreeUiHandler = Handler(Looper.getMainLooper())
+    private val handsFreeUiRefresh = object : Runnable {
+        override fun run() {
+            if (::handsFreePreviewStatus.isInitialized) refreshHandsFreePreviewUi()
+            handsFreeUiHandler.postDelayed(this, 800L)
+        }
+    }
     private lateinit var visionPickerRequest: VisionPickerRequestGate
     private lateinit var screenConsentGate: ScreenConsentRequestGate
     private var screenConsentRequested = false
@@ -662,6 +671,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
         scrollUiHandler.removeCallbacks(scrollResumeRunnable)
         if (::omegaCore.isInitialized) {
             omegaCore.pauseMotion()
@@ -687,6 +697,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
         scrollUiHandler.removeCallbacks(scrollResumeRunnable)
         gameHubPreflight.cancel()
         revokeCaptureException()
@@ -705,7 +716,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::handsStatusText.isInitialized) refreshHandsStatus()
-        refreshHandsFreePreviewUi()
+        // The prior UI wrote ASR_NATIVE_LOADING once and never showed subsequent
+        // service statuses until the Activity was reopened. This foreground-only
+        // ticker follows ASR_NATIVE_* phases and actual terminal errors.
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
+        handsFreeUiHandler.post(handsFreeUiRefresh)
     }
 
     private fun refreshHandsFreePreviewUi() {
