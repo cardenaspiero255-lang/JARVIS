@@ -56,6 +56,9 @@ dependencies {
     implementation("io.github.iamr0s:Dhizuku-API:2.5.4")
     // Apache-2.0 offline Spanish STT; never depends on Android's speech service.
     implementation("com.alphacephei:vosk-android:0.3.47")
+    // Official sherpa-onnx AAR (Kotlin/JNI). Pinned SHA-256 below. The KWS
+    // engine is disabled if its independent model assets are not verified.
+    implementation("com.k2fsa.sherpa.release:sherpa-onnx:1.13.8@aar")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
@@ -136,3 +139,36 @@ val bundleOfflineSpanish by tasks.registering {
 
 android.sourceSets.getByName("main").assets.srcDir(offlineSpeechAssets)
 tasks.named("preBuild") { dependsOn(bundleOfflineSpanish) }
+
+/**
+ * Verify bytes of the exact Android JNI/Kotlin AAR published upstream
+ * (GitHub release v1.13.8), not merely a Maven coordinate. Fail the build
+ * on a missing/substituted binary; do not silently ship a different native lib.
+ */
+val verifySherpaAar by tasks.registering {
+    group = "verification"
+    description = "Verify official sherpa-onnx 1.13.8 Android AAR SHA-256"
+    doLast {
+        val artifacts = configurations.getByName("debugRuntimeClasspath")
+            .resolvedConfiguration.resolvedArtifacts
+        val artifact = artifacts.firstOrNull {
+            it.moduleVersion.id.group == "com.k2fsa.sherpa.release" &&
+                it.name == "sherpa-onnx" &&
+                it.moduleVersion.id.version == "1.13.8"
+        } ?: error("Official sherpa-onnx Android AAR dependency is absent")
+        val digest = MessageDigest.getInstance("SHA-256")
+        artifact.file.inputStream().buffered().use { input ->
+            val bytes = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(bytes)
+                if (n < 0) break
+                digest.update(bytes, 0, n)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        check(actual == "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96") {
+            "Sherpa native AAR SHA-256 mismatch: refusing APK"
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifySherpaAar) }
