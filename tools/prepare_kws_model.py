@@ -15,13 +15,16 @@ import tarfile
 import tempfile
 from urllib.request import Request, urlopen
 
-MODEL = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01-mobile"
+MODEL = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+# Verified upstream full archive: subprocess native KWS smoke succeeds; mobile
+# quantized export reproducibly aborts in /downsample/Reshape_1 on Android 14.
+ARCHIVE_SHA256 = "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a"
 SOURCE = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/"
           f"kws-models/{MODEL}.tar.bz2")
 # These pinned component hashes are reviewed against the actual GitHub asset
 # by this downloader. A mismatch fails the APK build, never auto-updates pins.
 REQUIRED = {
-    "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx": "7d5a25fbc14b423074fe0c58e1be388ccf3f1a815c649980232a0c47f81875e4",
+    "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx": "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
     "decoder-epoch-12-avg-2-chunk-16-left-64.onnx": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
     "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx": "eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c",
     "tokens.txt": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53",
@@ -54,17 +57,19 @@ def download() -> bytes:
 
 
 def verified_files(archive_bytes: bytes) -> dict[str, bytes]:
+    if sha(archive_bytes) != ARCHIVE_SHA256:
+        raise ValueError("Official release archive SHA-256 mismatch")
     found = {}
     with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:bz2") as tar:
         for member in tar:
             name = member.name.removeprefix("./")
-            # Official archives may start with "./" or use the non-mobile
-            # directory name. Never EXTRACT arbitrary paths or test data.
+            # Official archive may start with "./". Never extract any
+            # external path or unverified auxiliary test data.
             parts = name.split("/")
             relative = parts[-1]
             if relative not in REQUIRED:
                 continue
-            allowed_roots = ([], [MODEL], [MODEL.removesuffix("-mobile")])
+            allowed_roots = ([], [MODEL])
             if parts[:-1] not in allowed_roots:
                 raise ValueError("Unexpected archive path for pinned component: " + name)
             if not member.isfile() or relative in found or member.size not in range(1, MAX_ENTRY + 1):
