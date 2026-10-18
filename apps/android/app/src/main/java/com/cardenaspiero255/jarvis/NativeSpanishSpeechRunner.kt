@@ -8,6 +8,7 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
+import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
 import com.cardenaspiero255.jarvis.core.PartialWakeSignalPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
@@ -16,6 +17,7 @@ import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -54,6 +56,28 @@ class NativeSpanishSpeechRunner(
         try { recorder?.stop() } catch (_: RuntimeException) {}
     }
 
+    /**
+     * A fixed offline grammar is an optional optimization, never authority.
+     * Use the normal offline recognizer when the bundled model lacks needed
+     * words or the native grammar constructor fails.
+     */
+    private fun createCommandRecognizer(model: Model, folder: File): Recognizer {
+        val grammar = OfflineCommandGrammarPolicy().fromVocabulary(
+            File(folder, "graph/words.txt"))
+        if (grammar != null) {
+            try {
+                val constrained = Recognizer(model, 16_000.0f, grammar)
+                onStatus("ASR_NATIVE_COMMAND_GRAMMAR_READY")
+                return constrained
+            } catch (_: IOException) {
+                onStatus("ASR_NATIVE_COMMAND_GRAMMAR_FALLBACK")
+            }
+        } else {
+            onStatus("ASR_NATIVE_COMMAND_VOCAB_UNAVAILABLE")
+        }
+        return Recognizer(model, 16_000.0f)
+    }
+
     private fun runRecognition() {
         var microphone: AudioRecord? = null
         var model: Model? = null
@@ -77,7 +101,7 @@ class NativeSpanishSpeechRunner(
             val retry = NativeDecoderRetryPolicy()
             try {
                 model = Model(folder.absolutePath)
-                recognizer = Recognizer(model, 16_000.0f)
+                recognizer = createCommandRecognizer(model, folder)
             } catch (initial: IOException) {
                 if (!retry.shouldRebuild(initial, modelReady())) throw initial
                 // A cache receipt only certifies initial extraction. The native
@@ -94,7 +118,7 @@ class NativeSpanishSpeechRunner(
                 if (!modelReady()) return
                 onStatus("ASR_NATIVE_DECODER_RETRY")
                 model = Model(fresh.absolutePath)
-                recognizer = Recognizer(model, 16_000.0f)
+                recognizer = createCommandRecognizer(model, fresh)
             }
             if (!modelReady()) return
             onStatus("ASR_NATIVE_AUDIO_OPEN")
