@@ -74,6 +74,7 @@ class HandsFreePreviewService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var endedNormally = false
     private var diagnosticMode = false
+    private var systemRecognizerRequested = false
     private var micDiagnosticSummary: String? = null
     private var diagnosticWorker: Thread? = null
     private var ttsWatchdog: Runnable? = null
@@ -97,7 +98,8 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         val diagnostic = intent?.action == ACTION_DIAGNOSE
-        if ((intent?.action != ACTION_START && !diagnostic) ||
+        val systemRequested = intent?.action == ACTION_START_SYSTEM
+        if ((intent?.action != ACTION_START && !diagnostic && !systemRequested) ||
             !intent.getBooleanExtra(EXTRA_TAPPED, false) || isRunning || closed) {
             if (!isRunning) stopSelf()
             return START_NOT_STICKY
@@ -110,9 +112,17 @@ class HandsFreePreviewService : Service() {
         val offline = Build.VERSION.SDK_INT >= 31 && try {
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
-        // Hardware-level microphone + TTS test works even when offline ASR
-        // is missing, which is exactly the failure we're diagnosing.
-        val result = policy.canStart(true, mic, notifications, diagnostic || offline)
+        // The optional system-recognizer route is authorized only by its own
+        // separately explained Activity button. It may use a cloud provider.
+        val systemAvailable = systemRequested && try {
+            SpeechRecognizer.isRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        val result = policy.canStart(
+            explicitUserTap = true,
+            micGranted = mic,
+            notificationsGranted = notifications,
+            offlineRecognizerAvailable = diagnostic || offline || systemAvailable
+        )
         if (result != PreviewStart.ALLOWED) {
             finish(if (result == PreviewStart.OFFLINE_ENGINE_MISSING) {
                 "Android no tiene reconocimiento local compatible. " +
@@ -138,12 +148,14 @@ class HandsFreePreviewService : Service() {
         }
         isRunning = true
         diagnosticMode = diagnostic
-        record(if (diagnostic) {
-            "DIAGNOSTIC_START: iniciando prueba real del micrófono y voz; " +
-                "no requiere motor ASR."
-        } else {
-            "Micrófono de JARVIS activo hasta 60 s. " +
-                "Esta prueba NO comprueba quién habla."
+        systemRecognizerRequested = systemRequested
+        record(when {
+            diagnostic -> "DIAGNOSTIC_START: micrófono y TTS sin usar reconocedor."
+            systemRecognizerRequested -> "ASR_SYSTEM_SELECTED: el usuario autorizó " +
+                "el proveedor normal de Android, que puede usar Internet. " +
+                "Esta prueba no envía órdenes a ChatGPT."
+            else -> "ASR_ON_DEVICE_SELECTED: solo proveedor offline Android. " +
+                "La prueba no comprueba quién está hablando."
         }, active = true)
         acquireShortWakeLock()
         main.postDelayed(timeout, 60_000L)
@@ -238,7 +250,13 @@ class HandsFreePreviewService : Service() {
         attempts++
         val ticket = ++recognizerGeneration
         try {
-            val current = SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            // Device-only mode remains private; never switch providers after an
+            // offline failure without the user's separate explicit consent.
+            val current = if (systemRecognizerRequested) {
+                SpeechRecognizer.createSpeechRecognizer(this)
+            } else {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            }
             recognizer = current
             current.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
@@ -292,7 +310,16 @@ class HandsFreePreviewService : Service() {
                     }
                 }
             })
-            discoverOfflineSpanishAndListen(current, ticket)
+            if (systemRecognizerRequested) {
+                // System recognizer chooses its configured language. Unlike the
+                // on-device engine, it may contact a remote speech provider.
+                selectedLanguage = null
+                current.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                })
+            } else discoverOfflineSpanishAndListen(current, ticket)
         } catch (_: RuntimeException) {
             recoverFromAsrError(SpeechRecognizer.ERROR_CLIENT)
         }
@@ -403,6 +430,14 @@ class HandsFreePreviewService : Service() {
     private fun recoverFromAsrError(error: Int) {
         closeRecognizer()
         if (!isRunning || closed || consumed) return
+        if (systemRecognizerRequested &&
+            (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
+                error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
+            finish("ASR_SYSTEM_LANGUAGE_ERROR_$error: el proveedor normal de Android " +
+                "rechazó su idioma configurado. Comprueba el idioma del " +
+                "reconocimiento de voz del sistema.")
+            return
+        }
         if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
             val next = if (installedSpanish == null) {
                 spanishPolicy.fallbackAfterUnsupported(
@@ -670,6 +705,7 @@ class HandsFreePreviewService : Service() {
     companion object {
         const val ACTION_START = "com.cardenaspiero255.jarvis.HANDSFREE_START"
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
+        const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
         const val EXTRA_TAPPED = "jarvis.handsfree.explicit"
         private const val CHANNEL = "jarvis_handsfree_preview"
