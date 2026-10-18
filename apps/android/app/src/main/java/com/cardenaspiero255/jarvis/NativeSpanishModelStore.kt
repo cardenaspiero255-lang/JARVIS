@@ -15,16 +15,32 @@ import java.util.zip.ZipFile
 class NativeSpanishModelStore(private val context: Context) {
     private val policy = NativeSpanishModelSafety(NativeSpanishModelSafety.ROOT)
 
-    fun ensureInstalled(): File {
+    fun ensureInstalled(
+        onStage: (String) -> Unit = {},
+        forceRefresh: Boolean = false,
+        isActive: () -> Boolean = { true }
+    ): File {
+        // Cooperative cancellation during the slow first-run copy/unpack stages.
+        // A native Vosk Model() constructor cannot safely be forcibly interrupted.
+        fun requireActive() {
+            if (!isActive() || Thread.currentThread().isInterrupted)
+                throw InterruptedException("ASR_NATIVE_LOAD_CANCELLED")
+        }
+        requireActive()
         val output = File(context.filesDir, "vosk-es-0.42-private")
         val receipt = File(output, ".asset_sha256")
         val model = File(output, "model")
-        if (receipt.isFile &&
+        if (!forceRefresh && receipt.isFile &&
             receipt.readText() == NativeSpanishModelSafety.SHA256 &&
             File(model, "am/final.mdl").isFile &&
             File(model, "conf/model.conf").isFile
-        ) return model
+        ) {
+            onStage("ASR_NATIVE_MODEL_CACHED")
+            return model
+        }
 
+        requireActive()
+        onStage("ASR_NATIVE_ASSET_VERIFY")
         val scratch = File(context.cacheDir, "vosk-spanish-asset-verify.zip")
         val staging = File(context.filesDir, "vosk-es-0.42-staging")
         try {
@@ -36,6 +52,7 @@ class NativeSpanishModelStore(private val context: Context) {
                     while (true) {
                         val bytes = input.read(buffer)
                         if (bytes < 0) break
+                        requireActive()
                         copied += bytes
                         require(copied <= 55_000_000L) { "Spanish model exceeds archive limit" }
                         digest.update(buffer, 0, bytes)
@@ -43,10 +60,12 @@ class NativeSpanishModelStore(private val context: Context) {
                     }
                 }
             }
+            requireActive()
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
             require(sha == NativeSpanishModelSafety.SHA256) {
                 "Invalid offline Spanish model fingerprint"
             }
+            onStage("ASR_NATIVE_EXTRACTING")
             staging.deleteRecursively()
             require(staging.mkdirs()) { "Cannot create private model staging directory" }
             val stageModel = File(staging, "model")
@@ -56,6 +75,7 @@ class NativeSpanishModelStore(private val context: Context) {
             ZipFile(scratch).use { archive ->
                 val entries = archive.entries()
                 while (entries.hasMoreElements()) {
+                    requireActive()
                     val entry = entries.nextElement()
                     count++
                     require(count <= NativeSpanishModelSafety.MAX_ENTRIES) {
@@ -85,6 +105,7 @@ class NativeSpanishModelStore(private val context: Context) {
                             while (true) {
                                 val read = input.read(buffer)
                                 if (read < 0) break
+                                requireActive()
                                 fileBytes += read
                                 expanded += read
                                 require(policy.acceptEntrySize(fileBytes, 0L) &&
@@ -100,9 +121,11 @@ class NativeSpanishModelStore(private val context: Context) {
                 "Offline Spanish model missing required recognizer files"
             }
             // Only mark the model ready after all files and hash checks pass.
+            requireActive()
             File(staging, ".asset_sha256").writeText(NativeSpanishModelSafety.SHA256)
             output.deleteRecursively()
             require(staging.renameTo(output)) { "Cannot activate offline Spanish model" }
+            onStage("ASR_NATIVE_MODEL_READY")
             return File(output, "model")
         } finally {
             scratch.delete()

@@ -7,11 +7,15 @@ import android.media.MediaRecorder
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
+import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
+import com.cardenaspiero255.jarvis.core.WakeTurnDecision
 import com.cardenaspiero255.jarvis.core.PreviewWake
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -31,7 +35,9 @@ class NativeSpanishSpeechRunner(
     private val active = AtomicBoolean(false)
     @Volatile private var worker: Thread? = null
     @Volatile private var recorder: AudioRecord? = null
-    private val policy = HandsFreePreviewPolicy()
+    // Keep the voice policy unchanged; this preview authorizes ONLY public time.
+    // ownerOnly = false until independently verified biometric speaker evidence exists.
+    private val turnGate = PreviewWakeTurnGate()
 
     fun start(): Boolean {
         if (!active.compareAndSet(false, true)) return false
@@ -57,11 +63,38 @@ class NativeSpanishSpeechRunner(
         var hadUnmatchedSpeech = false
         try {
             onStatus("ASR_NATIVE_LOADING: cargando modelo español dentro de la APK…")
-            val folder = NativeSpanishModelStore(context).ensureInstalled()
-            if (!active.get()) return
-            model = Model(folder.absolutePath)
-            recognizer = Recognizer(model, 16_000.0f)
-            if (!active.get()) return
+            val installer = NativeSpanishModelStore(context)
+            val modelReady: () -> Boolean = {
+                active.get() && !Thread.currentThread().isInterrupted
+            }
+            val folder = installer.ensureInstalled(
+                onStage = { stage -> onStatus(stage) }, isActive = modelReady)
+            if (!modelReady()) return
+            onStatus("ASR_NATIVE_DECODER_LOADING")
+            val retry = NativeDecoderRetryPolicy()
+            try {
+                model = Model(folder.absolutePath)
+                recognizer = Recognizer(model, 16_000.0f)
+            } catch (initial: IOException) {
+                if (!retry.shouldRebuild(initial, modelReady())) throw initial
+                // A cache receipt only certifies initial extraction. The native
+                // decoder can still fail due to damaged private files or I/O.
+                // Repair exactly once using the bundled, pinned archive.
+                onStatus("ASR_NATIVE_DECODER_REBUILD")
+                try { recognizer?.close() } catch (_: RuntimeException) {}
+                recognizer = null
+                try { model?.close() } catch (_: RuntimeException) {}
+                model = null
+                val fresh = installer.ensureInstalled(
+                    onStage = { stage -> onStatus(stage) },
+                    forceRefresh = true, isActive = modelReady)
+                if (!modelReady()) return
+                onStatus("ASR_NATIVE_DECODER_RETRY")
+                model = Model(fresh.absolutePath)
+                recognizer = Recognizer(model, 16_000.0f)
+            }
+            if (!modelReady()) return
+            onStatus("ASR_NATIVE_AUDIO_OPEN")
 
             val minimum = AudioRecord.getMinBufferSize(
                 16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
@@ -89,7 +122,7 @@ class NativeSpanishSpeechRunner(
             while (active.get() && !Thread.currentThread().isInterrupted &&
                 SystemClock.elapsedRealtime() - start < 60_000L) {
                 val received = microphone.read(
-                    audio, 0, audio.size, AudioRecord.READ_NON_BLOCKING
+                    audio, 0, audio.size, AudioRecord.READ_BLOCKING
                 )
                 when {
                     received > 0 -> {
@@ -97,14 +130,25 @@ class NativeSpanishSpeechRunner(
                         if (recognizer.acceptWaveForm(audio, received)) {
                             val text = JSONObject(recognizer.result).optString("text", "")
                             if (text.isNotBlank()) {
-                                val action = policy.classify(
-                                    text, SpeakerEvidence.UNAVAILABLE, ownerOnly = false)
-                                if (action == PreviewWake.LOCAL_TIME ||
-                                    action == PreviewWake.WAKE_ONLY) {
-                                    result = action
-                                    break
+                                // Vosk emits completed segments at speech pauses.
+                                // Support "Jarvis" then "dime la hora" within 8 s,
+                                // but never treat wake or ASR as speaker identity.
+                                val decision = turnGate.observe(
+                                    text, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
+                                when (decision) {
+                                    WakeTurnDecision.LOCAL_TIME -> {
+                                        result = PreviewWake.LOCAL_TIME
+                                        break
+                                    }
+                                    WakeTurnDecision.WAITING -> onStatus(
+                                        "ASR_NATIVE_WAKE_WAITING: Jarvis detectado. " +
+                                            "Di «dime la hora» en 8 s.")
+                                    WakeTurnDecision.BLOCKED_IDENTITY -> {
+                                        failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
+                                        break
+                                    }
+                                    WakeTurnDecision.IGNORED -> hadUnmatchedSpeech = true
                                 }
-                                hadUnmatchedSpeech = true
                             }
                         }
                     }
@@ -112,6 +156,10 @@ class NativeSpanishSpeechRunner(
                         "AudioRecord returned code $received")
                 }
                 val now = SystemClock.elapsedRealtime()
+                if (turnGate.expiredAt(now)) {
+                    result = PreviewWake.WAKE_ONLY
+                    break
+                }
                 if (now - lastStatus >= 10_000L) {
                     val reading = levels.reading()
                     onStatus("ASR_NATIVE_LISTENING: " +
@@ -119,15 +167,20 @@ class NativeSpanishSpeechRunner(
                         "Escuchando «Jarvis, dime la hora».")
                     lastStatus = now
                 }
-                try { Thread.sleep(25L) }
-                catch (_: InterruptedException) { break }
             }
             if (result == null && active.get()) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
-                val finalAction = policy.classify(
-                    finalText, SpeakerEvidence.UNAVAILABLE, ownerOnly = false)
-                if (finalAction == PreviewWake.LOCAL_TIME ||
-                    finalAction == PreviewWake.WAKE_ONLY) result = finalAction
+                // Flush last segment without granting extra privileges.
+                // Pending standalone wake can still be acknowledged.
+                val finalDecision = if (finalText.isNotBlank()) turnGate.observe(
+                    finalText, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
+                    else WakeTurnDecision.IGNORED
+                if (finalDecision == WakeTurnDecision.LOCAL_TIME)
+                    result = PreviewWake.LOCAL_TIME
+                else if (finalDecision == WakeTurnDecision.WAITING || turnGate.waiting())
+                    result = PreviewWake.WAKE_ONLY
+                else if (finalDecision == WakeTurnDecision.BLOCKED_IDENTITY)
+                    failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
             }
             if (result == null && active.get()) {
                 val signal = levels.reading()
