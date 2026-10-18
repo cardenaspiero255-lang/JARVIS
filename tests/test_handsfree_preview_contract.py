@@ -29,7 +29,7 @@ class HandsFreePreviewContract(unittest.TestCase):
             for f in manifest.findall("./application/receiver/intent-filter/action")
         ))
 
-    def test_never_uses_cloud_recognition_or_automatically_rearms(self):
+    def test_device_only_path_never_automatically_rearms_or_contacts_network(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
         for expected in (
             "SpeechRecognizer.createOnDeviceSpeechRecognizer(this)",
@@ -50,7 +50,7 @@ class HandsFreePreviewContract(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, service)
         self.assertIn("current.startListening(", service)
-        self.assertEqual(1, service.count("current.startListening("))
+        self.assertEqual(2, service.count("current.startListening("))
 
     def test_screen_lock_does_not_kill_local_asr_at_first_silence(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
@@ -111,7 +111,7 @@ class HandsFreePreviewContract(unittest.TestCase):
         activity = (SRC / "MainActivity.kt").read_text(encoding="utf-8")
         meter = (SRC / "core/AudioInputMeter.kt").read_text(encoding="utf-8")
         self.assertIn('const val ACTION_DIAGNOSE', service)
-        self.assertIn('diagnostic || offline', service)
+        self.assertIn('diagnostic -> true', service)
         self.assertIn('startMicrophoneDiagnostic()', service)
         self.assertIn('AudioRecord(', service)
         self.assertIn('input.read(', service)
