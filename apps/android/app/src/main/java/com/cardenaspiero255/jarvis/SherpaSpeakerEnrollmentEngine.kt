@@ -26,9 +26,10 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
 
     fun enroll(
         consentGranted: Boolean,
-        recordings: List<LocalVoiceEnrollmentRecording>
+        recordings: List<LocalVoiceEnrollmentRecording>,
+        isActive: () -> Boolean = { true }
     ): LocalVoiceEnrollmentOutcome {
-        if (!consentGranted) return LocalVoiceEnrollmentOutcome.DENIED
+        if (!consentGranted || !isActive()) return LocalVoiceEnrollmentOutcome.DENIED
         // Native ONNX and first-install SHA verification must never block UI.
         if (Looper.myLooper() == Looper.getMainLooper())
             return LocalVoiceEnrollmentOutcome.DENIED
@@ -53,7 +54,7 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
             val native = extractor
             val embeddings = mutableListOf<SpeakerEnrollmentSample>()
             for (recording in recordings) {
-                if (Thread.currentThread().isInterrupted)
+                if (Thread.currentThread().isInterrupted || !isActive())
                     return LocalVoiceEnrollmentOutcome.DENIED
                 val stream = native.createStream()
                 try {
@@ -82,6 +83,10 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
             }
             val template = SpeakerEnrollmentPolicy().create(embeddings)
                 ?: return LocalVoiceEnrollmentOutcome.BAD_SAMPLES
+            if (Thread.currentThread().isInterrupted || !isActive()) {
+                template.fill(0f)
+                return LocalVoiceEnrollmentOutcome.DENIED
+            }
             AndroidSpeakerTemplateVault(context).save(
                 VerifiedSpeakerModelStore.MODEL_SHA256, template
             )
