@@ -63,7 +63,8 @@ class JarvisOsV2CompactContract(unittest.TestCase):
             self.assertIn(f'primaryButton("{name}")', main)
         self.assertIn('primaryButton("PROBAR MANOS LIBRES · 60 S")', main)
         self.assertIn('primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S")', main)
-        self.assertEqual(39, len(re.findall(r'primaryButton\("', main)))
+        self.assertIn('primaryButton("PROBAR RECONOCIMIENTO DEL SISTEMA · 60 S")', main)
+        self.assertEqual(40, len(re.findall(r'primaryButton\("', main)))
 
     def test_no_new_launcher_privilege_or_automatic_sensitive_actions(self):
         home = (JAVA / "JarvisHomeActivity.kt").read_text(encoding="utf-8")
