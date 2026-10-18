@@ -8,6 +8,7 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
+import com.cardenaspiero255.jarvis.core.PartialWakeSignalPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
 import com.cardenaspiero255.jarvis.core.PreviewWake
@@ -60,6 +61,8 @@ class NativeSpanishSpeechRunner(
         var result: PreviewWake? = null
         var failure: String? = null
         val levels = AudioInputMeter()
+        val earlyWake = PartialWakeSignalPolicy()
+        var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
         try {
             onStatus("ASR_NATIVE_LOADING: cargando modelo español dentro de la APK…")
@@ -128,6 +131,9 @@ class NativeSpanishSpeechRunner(
                     received > 0 -> {
                         levels.observe(audio, received)
                         if (recognizer.acceptWaveForm(audio, received)) {
+                            // A partial wake is advisory only. Only completed speech
+                            // enters PreviewWakeTurnGate for command authorization.
+                            earlyWake.onUtteranceCompleted()
                             val text = JSONObject(recognizer.result).optString("text", "")
                             if (text.isNotBlank()) {
                                 // Vosk emits completed segments at speech pauses.
@@ -153,6 +159,18 @@ class NativeSpanishSpeechRunner(
                                     }
                                     WakeTurnDecision.IGNORED -> hadUnmatchedSpeech = true
                                 }
+                            }
+                        } else {
+                            val probeTime = SystemClock.elapsedRealtime()
+                            // Bound partial JSON reads and notifications to avoid
+                            // doing extra recognition work on every PCM buffer.
+                            if (probeTime - lastPartialProbe >= 400L) {
+                                lastPartialProbe = probeTime
+                                val partial = JSONObject(recognizer.partialResult)
+                                    .optString("partial", "")
+                                if (earlyWake.shouldReport(partial)) onStatus(
+                                    "ASR_NATIVE_WAKE_CANDIDATE: «Jarvis» detectado " +
+                                        "parcialmente; esperando frase completa.")
                             }
                         }
                     }
