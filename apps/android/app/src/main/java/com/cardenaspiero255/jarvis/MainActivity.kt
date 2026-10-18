@@ -210,6 +210,10 @@ class MainActivity : Activity() {
         handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
             toggleHandsFreePreviewByTap()
         }.also { layout.addView(it) }
+        layout.addView(primaryButton("REGISTRAR MI VOZ · 3 MUESTRAS") {
+            // Biometric enrollment is optional and requires a separate consent.
+            startActivity(Intent(this, OwnerVoiceEnrollmentActivity::class.java))
+        })
         layout.addView(primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S") {
             toggleHandsFreePreviewByTap(diagnostic = true)
         })
