@@ -51,6 +51,8 @@ import com.cardenaspiero255.jarvis.core.HandsStatus
 import com.cardenaspiero255.jarvis.core.DeviceOperation
 import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
+import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.PreviewStart
 import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
@@ -74,6 +76,17 @@ class MainActivity : Activity() {
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
     private var foregroundSpeech: ForegroundSpeechRecognizer? = null
+    private var handsFreePreviewButton: Button? = null
+    private lateinit var handsFreePreviewStatus: TextView
+    // Refresh on the visible Activity only. Service state remains observable and
+    // recording keeps running under its separate, explicitly started foreground FGS.
+    private val handsFreeUiHandler = Handler(Looper.getMainLooper())
+    private val handsFreeUiRefresh = object : Runnable {
+        override fun run() {
+            if (::handsFreePreviewStatus.isInitialized) refreshHandsFreePreviewUi()
+            handsFreeUiHandler.postDelayed(this, 800L)
+        }
+    }
     private lateinit var visionPickerRequest: VisionPickerRequestGate
     private lateinit var screenConsentGate: ScreenConsentRequestGate
     private var screenConsentRequested = false
@@ -193,6 +206,43 @@ class MainActivity : Activity() {
             openTtsSettingsByTap()
         })
         layout.addView(primaryButton("HABLAR CON JARVIS") { startSpeech() })
+        // Single explicit opt-in button, NOT hidden background activation.
+        handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
+            toggleHandsFreePreviewByTap()
+        }.also { layout.addView(it) }
+        layout.addView(primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S") {
+            toggleHandsFreePreviewByTap(diagnostic = true)
+        })
+        layout.addView(primaryButton("PROBAR RECONOCIMIENTO DEL SISTEMA · 60 S") {
+            AlertDialog.Builder(this)
+                .setTitle("Reconocimiento del sistema · prueba opcional")
+                .setMessage("Esta alternativa usa el reconocedor de voz configurado en " +
+                    "Android. Según tu proveedor puede usar Internet y enviar " +
+                    "audio para transcribirlo. Solo reconocerá «Jarvis, dime la hora» " +
+                    "en esta prueba. No se activará automáticamente, no guarda el audio " +
+                    "en JARVIS ni envía instrucciones a ChatGPT. ¿Quieres probarlo?")
+                .setNegativeButton("CANCELAR", null)
+                .setPositiveButton("ACEPTAR Y PROBAR") { _, _ ->
+                    toggleHandsFreePreviewByTap(systemMode = true)
+                }.show()
+        })
+        layout.addView(label(
+            "El modo de 60 s usa SOLO reconocimiento offline. " +
+                "La prueba alternativa del sistema puede usar Internet: " +
+                "se inicia únicamente con tu autorización explícita.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        handsFreePreviewStatus = label(HandsFreePreviewService.readDiagnostic(this),
+            12f, Color.rgb(211, 213, 220))
+        layout.addView(handsFreePreviewStatus)
+        layout.addView(label(
+            "MANOS LIBRES 60 S usa ahora Vosk español local integrado en esta APK, " +
+                "sin depender de SpeechRecognizer, Funtouch ni Internet. " +
+                "Al primer uso puede tardar en preparar el modelo. Di " +
+                "«Jarvis, dime la hora». Esta prueba no identifica al propietario " +
+                "ni ejecuta órdenes sensibles; termina sola o con DETENER.",
+            12f, Color.rgb(164, 166, 174)
+        ))
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
         privateMemory = PrivateConversationStore(this)
         RetiredCloudCredentialCleaner.purge(this)
@@ -621,6 +671,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
         scrollUiHandler.removeCallbacks(scrollResumeRunnable)
         if (::omegaCore.isInitialized) {
             omegaCore.pauseMotion()
@@ -646,6 +697,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
         scrollUiHandler.removeCallbacks(scrollResumeRunnable)
         gameHubPreflight.cancel()
         revokeCaptureException()
@@ -664,6 +716,114 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::handsStatusText.isInitialized) refreshHandsStatus()
+        // The prior UI wrote ASR_NATIVE_LOADING once and never showed subsequent
+        // service statuses until the Activity was reopened. This foreground-only
+        // ticker follows ASR_NATIVE_* phases and actual terminal errors.
+        handsFreeUiHandler.removeCallbacks(handsFreeUiRefresh)
+        handsFreeUiHandler.post(handsFreeUiRefresh)
+    }
+
+    private fun refreshHandsFreePreviewUi() {
+        handsFreePreviewButton?.text = if (HandsFreePreviewService.isRunning) {
+            "DETENER MANOS LIBRES · PRUEBA"
+        } else "PROBAR MANOS LIBRES · 60 S"
+        if (::handsFreePreviewStatus.isInitialized) {
+            handsFreePreviewStatus.text = HandsFreePreviewService.readDiagnostic(this)
+        }
+    }
+
+    private fun stopHandsFreePreview() {
+        // Explicit local stop. No other app may start this unexported service.
+        try {
+            startService(Intent(this, HandsFreePreviewService::class.java).apply {
+                action = HandsFreePreviewService.ACTION_STOP
+            })
+        } catch (_: RuntimeException) { /* service may already have timed out */ }
+        handsFreePreviewButton?.text = "PROBAR MANOS LIBRES · 60 S"
+        if (::handsFreePreviewStatus.isInitialized) {
+            handsFreePreviewStatus.text = "Deteniendo micrófono…"
+        }
+    }
+
+    private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false,
+        systemMode: Boolean = false) {
+        if (HandsFreePreviewService.isRunning) {
+            stopHandsFreePreview()
+            statusText.text = "Prueba manos libres detenida. Micrófono liberado."
+            return
+        }
+        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!mic) {
+            statusText.text = "Autoriza el micrófono y vuelve a pulsar PROBAR MANOS LIBRES."
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+            return
+        }
+        val notifications = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!notifications) {
+            statusText.text = "Autoriza las notificaciones para tener un control visible " +
+                "de DETENER MICRÓFONO. Luego vuelve a pulsar."
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_PREVIEW_NOTIFICATIONS)
+            return
+        }
+        val offline = Build.VERSION.SDK_INT >= 31 && try {
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        val systemAvailable = systemMode && try {
+            SpeechRecognizer.isRecognitionAvailable(this)
+        } catch (_: RuntimeException) { false }
+        // Bundled Vosk uses its own audio pipeline; it does not need the
+        // phone vendor's on-device SpeechRecognizer language packs.
+        when (HandsFreePreviewPolicy().canStart(
+            true, mic, notifications, when {
+                diagnostic -> true
+                systemMode -> systemAvailable
+                else -> true // native Vosk model bundled with the APK
+            }
+        )) {
+            PreviewStart.DENIED -> statusText.text = "Faltan permisos para la escucha."
+            PreviewStart.OFFLINE_ENGINE_MISSING -> statusText.text =
+                if (systemMode) "No hay proveedor de reconocimiento de voz del sistema."
+                else "No hay motor de reconocimiento 100% local en Android. " +
+                    "Instala el idioma español offline; no cambio a nube automáticamente."
+            PreviewStart.ALLOWED -> try {
+                // The foreground HABLAR session must release the same microphone
+                // before this isolated hardware diagnostic/preview starts.
+                stopForegroundSpeech()
+                if (::spokenReplyEngine.isInitialized) spokenReplyEngine.stop()
+                startForegroundService(Intent(this, HandsFreePreviewService::class.java).apply {
+                    action = when {
+                        diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
+                        systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
+                        else -> HandsFreePreviewService.ACTION_START_NATIVE
+                    }
+                    putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
+                })
+                statusText.text = when {
+                    diagnostic -> "Diagnóstico de micrófono 4 s. Habla ahora. " +
+                        "Después JARVIS probará el TTS sin depender del idioma ASR."
+                    systemMode -> "Prueba del proveedor normal de Android solicitada. " +
+                        "Puede usar Internet. Di «Jarvis, dime la hora»; " +
+                        "después revisa el diagnóstico. No envía órdenes externas."
+                    else -> "Preparando reconocimiento Vosk español dentro de la APK. " +
+                        "Cuando esté listo, di «Jarvis, dime la hora» durante 60 s. " +
+                        "No requiere Internet ni reconocedor de Android."
+                }
+                handsFreePreviewButton?.text = "DETENER MANOS LIBRES · PRUEBA"
+                handsFreePreviewStatus.text = when {
+                    diagnostic -> "Midiendo micrófono y probando TTS…"
+                    systemMode -> "Intentando reconocimiento del sistema · puede usar Internet…"
+                    else -> "ASR_NATIVE_LOADING: preparando motor de voz español local…"
+                }
+
+            } catch (_: RuntimeException) {
+                statusText.text = "Android impidió iniciar el micrófono. " +
+                    "Comprueba permisos y restricciones de Funtouch."
+            }
+        }
     }
 
     /** Revoke local modules on a visible tap or a one-shot foreground speech request. */
@@ -674,6 +834,7 @@ class MainActivity : Activity() {
                 voiceMathSession.clear()
                 recognitionRequest.cancel()
                 stopForegroundSpeech()
+                stopHandsFreePreview()
             },
             SessionLockChannel.SPOKEN_REPLY to { spokenReplyEngine.stop() },
             SessionLockChannel.IMAGE_OCR to {
@@ -820,6 +981,12 @@ class MainActivity : Activity() {
             statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
                 "Micrófono autorizado. Pulsa HABLAR CON JARVIS para empezar una escucha puntual."
             else "Sin permiso de micrófono. Podrás volver a pedirlo al pulsar HABLAR CON JARVIS."
+            return
+        }
+        if (requestCode == REQUEST_PREVIEW_NOTIFICATIONS) {
+            statusText.text = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+                "Notificaciones permitidas; vuelve a pulsar PROBAR MANOS LIBRES."
+            else "Prueba detenida: no hay permiso para mostrar el control de micrófono."
             return
         }
         if (requestCode == REQUEST_SCREEN_NOTIFICATIONS) {
@@ -1227,5 +1394,6 @@ class MainActivity : Activity() {
         private const val SCREEN_CONSENT_COUNTER_KEY = "jarvis.screen.consent.issued"
         private const val REQUEST_SCREEN_NOTIFICATIONS = 9004
         private const val REQUEST_MICROPHONE = 9005
+        private const val REQUEST_PREVIEW_NOTIFICATIONS = 9010
     }
 }

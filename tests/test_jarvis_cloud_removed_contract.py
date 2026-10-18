@@ -14,7 +14,7 @@ class NoPaidCloudInAndroid(unittest.TestCase):
         permissions={x.get(ns+"name") for x in manifest.findall("uses-permission")}
         self.assertNotIn("android.permission.INTERNET",permissions)
         self.assertIn("android.permission.RECORD_AUDIO",permissions)
-        self.assertNotIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",permissions)
+        self.assertIn("android.permission.FOREGROUND_SERVICE_MICROPHONE",permissions)
         self.assertEqual("false",manifest.find("application").get(ns+"usesCleartextTraffic"))
 
     def test_no_old_paid_api_client_or_model_strings(self):
