@@ -136,6 +136,10 @@ class NativeSpanishSpeechRunner(
                                 val decision = turnGate.observe(
                                     text, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
                                 when (decision) {
+                                    WakeTurnDecision.STOP -> {
+                                        result = PreviewWake.STOP
+                                        break
+                                    }
                                     WakeTurnDecision.LOCAL_TIME -> {
                                         result = PreviewWake.LOCAL_TIME
                                         break
@@ -175,7 +179,9 @@ class NativeSpanishSpeechRunner(
                 val finalDecision = if (finalText.isNotBlank()) turnGate.observe(
                     finalText, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
                     else WakeTurnDecision.IGNORED
-                if (finalDecision == WakeTurnDecision.LOCAL_TIME)
+                if (finalDecision == WakeTurnDecision.STOP)
+                    result = PreviewWake.STOP
+                else if (finalDecision == WakeTurnDecision.LOCAL_TIME)
                     result = PreviewWake.LOCAL_TIME
                 else if (finalDecision == WakeTurnDecision.WAITING || turnGate.waiting())
                     result = PreviewWake.WAKE_ONLY

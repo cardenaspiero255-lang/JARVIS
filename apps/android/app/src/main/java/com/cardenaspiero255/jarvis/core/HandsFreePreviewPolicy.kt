@@ -8,7 +8,7 @@ import java.util.Locale
  * plugs in here, independently of hotword detection and ASR.
  */
 enum class SpeakerEvidence { UNAVAILABLE, MATCHED, MISMATCH, UNCERTAIN, REPLAY_SUSPECTED }
-enum class PreviewWake { IGNORED, WAKE_ONLY, LOCAL_TIME, BLOCKED_IDENTITY }
+enum class PreviewWake { IGNORED, WAKE_ONLY, LOCAL_TIME, STOP, BLOCKED_IDENTITY }
 enum class PreviewStart { ALLOWED, DENIED, OFFLINE_ENGINE_MISSING }
 
 /**
@@ -41,9 +41,13 @@ class HandsFreePreviewPolicy {
         val action = when (phrase) {
             "jarvis" -> PreviewWake.WAKE_ONLY
             "jarvis dime la hora", "jarvis que hora es" -> PreviewWake.LOCAL_TIME
+            "jarvis para", "jarvis detente" -> PreviewWake.STOP
             else -> PreviewWake.IGNORED
         }
         if (action == PreviewWake.IGNORED) return action
+        // Emergency STOP revokes the local microphone session; never use voice
+        // identity as a prerequisite for cancelling microphone access.
+        if (action == PreviewWake.STOP) return PreviewWake.STOP
         // A wake word is NOT biometric proof. Fail closed for owner-only mode
         // until a separately reviewed native speaker verifier supplies evidence.
         if (speaker == SpeakerEvidence.MISMATCH || speaker == SpeakerEvidence.UNCERTAIN ||

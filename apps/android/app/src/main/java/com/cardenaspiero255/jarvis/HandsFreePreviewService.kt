@@ -301,6 +301,7 @@ class HandsFreePreviewService : Service() {
                     consumed = true
                     nativeRunner?.stop()
                     when (wake) {
+                        PreviewWake.STOP -> finish("ASR_NATIVE_STOP_BY_VOICE: micrófono detenido por orden de voz.")
                         PreviewWake.LOCAL_TIME -> {
                             val now = LocalTime.now()
                             val answer = if (now.minute == 0)
@@ -382,6 +383,10 @@ class HandsFreePreviewService : Service() {
                     )?.firstOrNull().orEmpty()
                     closeRecognizer()
                     when (policy.classify(transcript, SpeakerEvidence.UNAVAILABLE)) {
+                        PreviewWake.STOP -> {
+                            consumed = true
+                            finish("ASR_STOP_BY_VOICE: micrófono detenido por orden de voz.")
+                        }
                         PreviewWake.LOCAL_TIME -> {
                             consumed = true
                             val now = LocalTime.now()
