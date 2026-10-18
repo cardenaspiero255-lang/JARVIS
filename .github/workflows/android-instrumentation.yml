@@ -53,4 +53,16 @@ jobs:
           cores: 2
           ram-size: 2048M
           working-directory: apps/android
-          script: gradle --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            set +e
+            gradle --no-daemon :app:connectedDebugAndroidTest
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              echo '===== Instrumented test failure details ====='
+              find app/build/outputs/androidTest-results -type f -name '*.xml' -exec grep -n -A 36 -B 2 '<failure' {} \; || true
+              echo '===== Android runtime crash report ====='
+              adb logcat -d -b crash -v time | tail -n 250 || true
+              echo '===== FATAL JNI / process log ====='
+              adb logcat -d -v brief | grep -E 'FATAL EXCEPTION|Fatal signal|SIGSEGV|tombstone|sherpa|onnxruntime|Abort message' | tail -n 130 || true
+            fi
+            exit "$result"
