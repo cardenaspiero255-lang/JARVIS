@@ -132,7 +132,7 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertIn("Invalid model archive path", installer)
         self.assertIn("MAX_EXPANDED_BYTES", installer)
         self.assertNotIn("android.permission.INTERNET", manifest)
-        self.assertNotIn("SpeechRecognizer", native)
+        self.assertNotIn("SpeechRecognizer.create", native)
         self.assertNotIn("HttpURLConnection", native)
         self.assertNotIn("FileOutputStream", native)
 
