@@ -7,6 +7,7 @@ import android.media.MediaRecorder
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
+import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
 import com.cardenaspiero255.jarvis.core.PreviewWake
@@ -14,6 +15,7 @@ import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -61,13 +63,38 @@ class NativeSpanishSpeechRunner(
         var hadUnmatchedSpeech = false
         try {
             onStatus("ASR_NATIVE_LOADING: cargando modelo español dentro de la APK…")
-            val folder = NativeSpanishModelStore(context).ensureInstalled { stage -> onStatus(stage) }
-            if (!active.get()) return
+            val installer = NativeSpanishModelStore(context)
+            val modelReady: () -> Boolean = {
+                active.get() && !Thread.currentThread().isInterrupted
+            }
+            val folder = installer.ensureInstalled(
+                onStage = { stage -> onStatus(stage) }, isActive = modelReady)
+            if (!modelReady()) return
             onStatus("ASR_NATIVE_DECODER_LOADING")
-            model = Model(folder.absolutePath)
-            recognizer = Recognizer(model, 16_000.0f)
+            val retry = NativeDecoderRetryPolicy()
+            try {
+                model = Model(folder.absolutePath)
+                recognizer = Recognizer(model, 16_000.0f)
+            } catch (initial: IOException) {
+                if (!retry.shouldRebuild(initial, modelReady())) throw initial
+                // A cache receipt only certifies initial extraction. The native
+                // decoder can still fail due to damaged private files or I/O.
+                // Repair exactly once using the bundled, pinned archive.
+                onStatus("ASR_NATIVE_DECODER_REBUILD")
+                try { recognizer?.close() } catch (_: RuntimeException) {}
+                recognizer = null
+                try { model?.close() } catch (_: RuntimeException) {}
+                model = null
+                val fresh = installer.ensureInstalled(
+                    onStage = { stage -> onStatus(stage) },
+                    forceRefresh = true, isActive = modelReady)
+                if (!modelReady()) return
+                onStatus("ASR_NATIVE_DECODER_RETRY")
+                model = Model(fresh.absolutePath)
+                recognizer = Recognizer(model, 16_000.0f)
+            }
+            if (!modelReady()) return
             onStatus("ASR_NATIVE_AUDIO_OPEN")
-            if (!active.get()) return
 
             val minimum = AudioRecord.getMinBufferSize(
                 16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
@@ -95,7 +122,7 @@ class NativeSpanishSpeechRunner(
             while (active.get() && !Thread.currentThread().isInterrupted &&
                 SystemClock.elapsedRealtime() - start < 60_000L) {
                 val received = microphone.read(
-                    audio, 0, audio.size, AudioRecord.READ_NON_BLOCKING
+                    audio, 0, audio.size, AudioRecord.READ_BLOCKING
                 )
                 when {
                     received > 0 -> {
@@ -140,8 +167,6 @@ class NativeSpanishSpeechRunner(
                         "Escuchando «Jarvis, dime la hora».")
                     lastStatus = now
                 }
-                try { Thread.sleep(25L) }
-                catch (_: InterruptedException) { break }
             }
             if (result == null && active.get()) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
