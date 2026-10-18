@@ -20,7 +20,7 @@ class SpeakerExtractorContracts(unittest.TestCase):
         self.assertIn("SpeakerEnrollmentPolicy().create(", engine)
         self.assertIn("AndroidSpeakerTemplateVault(context).save(", engine)
         self.assertIn("consentGranted", engine)
-        self.assertIn("extractor.release()", engine)
+        self.assertIn("extractor?.release()", engine)
         self.assertIn("stream.release()", engine)
         self.assertIn("SpeakerEvidence.UNAVAILABLE", engine)
 
