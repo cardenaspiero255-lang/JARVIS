@@ -49,7 +49,15 @@ class VerifiedKwsModelStore(private val context: Context) {
                 require(computed == digest) { "Bundled KWS SHA mismatch: $name" }
             }
             context.assets.open("verified_sherpa_kws/keywords.txt").use { input ->
-                val bytes = input.readNBytes(4097)
+                val buffer = ByteArray(4097)
+                val output = java.io.ByteArrayOutputStream()
+                while (output.size() <= 4096) {
+                    val n = input.read(buffer, 0, minOf(buffer.size,
+                        4097 - output.size()))
+                    if (n < 0) break
+                    output.write(buffer, 0, n)
+                }
+                val bytes = output.toByteArray()
                 require(bytes.size in 1..4096) { "Oversized JARVIS keyword list" }
                 File(staging, "keywords.txt").writeBytes(bytes)
             }
