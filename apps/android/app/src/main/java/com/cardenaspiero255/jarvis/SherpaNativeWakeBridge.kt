@@ -34,20 +34,32 @@ class SherpaNativeWakeBridge private constructor(
     /** Wake is advisory only. Sensitive commands require separate authorization. */
     fun consume(samples: ShortArray, count: Int, elapsedRealtimeMs: Long): Boolean {
         if (closed || count <= 0 || count > samples.size) return false
-        val pcm = FloatArray(count) { samples[it] / 32768.0f }
-        stream.acceptWaveform(pcm, sampleRate = SAMPLE_RATE)
-        var loops = 0
+        // Mirror the official Android demo's 100 ms feeding cadence instead
+        // of passing an arbitrary multi-second Vosk buffer in a single call.
+        // Avoid accumulating a new decoder burst across the entire buffer.
+        var offset = 0
         var candidate = false
-        while (loops++ < MAX_DECODE_LOOPS && spotter.isReady(stream)) {
-            spotter.decode(stream)
-            val keyword = spotter.getResult(stream).keyword
-            if (keyword.isNotBlank()) {
-                // Reset native stream per upstream recommendation after a result.
-                spotter.reset(stream)
-                if (gate.evaluate(
-                    elapsedRealtimeMs, keyword, nativeDetected = true,
-                    modelVerified = true, sessionGranted = true
-                ) == KwsDecision.CANDIDATE) candidate = true
+        while (offset < count) {
+            val n = minOf(PCM_FEED_SAMPLES, count - offset)
+            val pcm = FloatArray(n) { samples[offset + it] / 32768.0f }
+            try {
+                stream.acceptWaveform(pcm, sampleRate = SAMPLE_RATE)
+            } finally {
+                pcm.fill(0f)
+            }
+            offset += n
+            var loops = 0
+            while (loops++ < MAX_DECODE_LOOPS && spotter.isReady(stream)) {
+                spotter.decode(stream)
+                val keyword = spotter.getResult(stream).keyword
+                if (keyword.isNotBlank()) {
+                    // Reset native stream immediately after a decoded result.
+                    spotter.reset(stream)
+                    if (gate.evaluate(
+                        elapsedRealtimeMs, keyword, nativeDetected = true,
+                        modelVerified = true, sessionGranted = true
+                    ) == KwsDecision.CANDIDATE) candidate = true
+                }
             }
         }
         return candidate
@@ -62,6 +74,7 @@ class SherpaNativeWakeBridge private constructor(
 
     companion object {
         private const val SAMPLE_RATE = 16_000
+        private const val PCM_FEED_SAMPLES = 1_600
         private const val MAX_DECODE_LOOPS = 12
         private const val MODEL_DIR = "verified_sherpa_kws"
 
