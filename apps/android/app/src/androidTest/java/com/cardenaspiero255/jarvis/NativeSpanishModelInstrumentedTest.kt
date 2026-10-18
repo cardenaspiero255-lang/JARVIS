@@ -3,6 +3,7 @@ package com.cardenaspiero255.jarvis
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cardenaspiero255.jarvis.core.NativeSpanishModelSafety
+import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,6 +29,15 @@ class NativeSpanishModelInstrumentedTest {
         Model(folder.absolutePath).use { model ->
             Recognizer(model, 16_000.0f).use { recognizer ->
                 assertTrue(recognizer.toString().isNotEmpty())
+            }
+            // Validate the actual verified Spanish model's native grammar path,
+            // but only when its vocabulary has every word used by the policy.
+            val grammar = OfflineCommandGrammarPolicy().fromVocabulary(
+                File(folder, "graph/words.txt"))
+            if (grammar != null) {
+                Recognizer(model, 16_000.0f, grammar).use { constrained ->
+                    assertTrue(constrained.toString().isNotEmpty())
+                }
             }
         }
     }
