@@ -10,8 +10,12 @@ class NativeSpanishModelSafety(private val root: String) {
         if (archiveName == "$root/") return ""
         if (!archiveName.startsWith("$root/")) return null
         val relative = archiveName.removePrefix("$root/")
-        if (relative.isEmpty() || relative.split('/').any { it.isEmpty() || it == "." || it == ".." })
-            return null
+        // ZIP directory entries legitimately end in one slash, but repeated
+        // internal separators and traversal segments are never acceptable.
+        val checked = relative.removeSuffix("/")
+        if (checked.isEmpty() || checked.split('/').any {
+                it.isEmpty() || it == "." || it == ".."
+            }) return null
         return relative
     }
 
