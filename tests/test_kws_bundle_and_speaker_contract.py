@@ -40,7 +40,7 @@ class KwsBundleContract(unittest.TestCase):
         store = (SRC / "VerifiedKwsModelStore.kt").read_text()
         bridge = (SRC / "SherpaNativeWakeBridge.kt").read_text()
         self.assertIn("context.noBackupFilesDir", store)
-        self.assertIn("OfflineKwsModelGate().verify(", store)
+        self.assertIn("gate.verify(", store)
         self.assertIn("verified_sherpa_kws/", store)
         self.assertIn("VerifiedKwsModelStore(context).ensureInstalled()", bridge)
         self.assertIn("KWS_NATIVE_MODEL_UNAVAILABLE", bridge)
