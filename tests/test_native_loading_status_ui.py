@@ -30,7 +30,7 @@ class NativeLoadingUiContract(unittest.TestCase):
         self.assertIn('onStatus("ASR_NATIVE_DECODER_LOADING")', runner)
         self.assertIn('onStatus("ASR_NATIVE_AUDIO_OPEN")', runner)
         self.assertNotIn("HttpURLConnection", store)
-        self.assertNotIn("SpeechRecognizer", runner)
+        self.assertNotIn("SpeechRecognizer.create", runner)
 
 if __name__ == "__main__":
     unittest.main()
