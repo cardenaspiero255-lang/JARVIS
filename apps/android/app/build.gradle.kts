@@ -91,7 +91,7 @@ val bundleOfflineSpanish by tasks.registering {
         target.parentFile.mkdirs()
         val sources = listOf(
             "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip",
-            "https://github.com/BartekReterski/VoskModels/releases/download/2026-02-09/vosk-model-small-es-0.42.zip"
+            "https://github.com/BartekReterski/VoskModels/releases/download/v1/vosk-model-small-es-0.42.zip"
         )
         var success = false
         val destination = java.io.File(target.parentFile, target.name + ".download")
