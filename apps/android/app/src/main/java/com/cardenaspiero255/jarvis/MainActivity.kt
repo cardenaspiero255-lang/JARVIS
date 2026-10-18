@@ -227,11 +227,11 @@ class MainActivity : Activity() {
             12f, Color.rgb(211, 213, 220))
         layout.addView(handsFreePreviewStatus)
         layout.addView(label(
-            "Prueba de una frase sin tocar la pantalla después de iniciar: " +
-                "bloquea el teléfono y di «Jarvis, dime la hora». " +
-                "Requiere reconocimiento español LOCAL de Android y voz TTS offline. " +
-                "No identifica al propietario; no activa apps ni ChatGPT. " +
-                "Se detiene en 60 s o con DETENER en la notificación.",
+            "MANOS LIBRES 60 S usa ahora Vosk español local integrado en esta APK, " +
+                "sin depender de SpeechRecognizer, Funtouch ni Internet. " +
+                "Al primer uso puede tardar en preparar el modelo. Di " +
+                "«Jarvis, dime la hora». Esta prueba no identifica al propietario " +
+                "ni ejecuta órdenes sensibles; termina sola o con DETENER.",
             12f, Color.rgb(164, 166, 174)
         ))
         visionRecognizer = VisionRecognizer(this) { statusText.text = it }
@@ -760,11 +760,13 @@ class MainActivity : Activity() {
         val systemAvailable = systemMode && try {
             SpeechRecognizer.isRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
+        // Bundled Vosk uses its own audio pipeline; it does not need the
+        // phone vendor's on-device SpeechRecognizer language packs.
         when (HandsFreePreviewPolicy().canStart(
             true, mic, notifications, when {
                 diagnostic -> true
                 systemMode -> systemAvailable
-                else -> offline
+                else -> true // native Vosk model bundled with the APK
             }
         )) {
             PreviewStart.DENIED -> statusText.text = "Faltan permisos para la escucha."
@@ -781,7 +783,7 @@ class MainActivity : Activity() {
                     action = when {
                         diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
                         systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
-                        else -> HandsFreePreviewService.ACTION_START
+                        else -> HandsFreePreviewService.ACTION_START_NATIVE
                     }
                     putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
                 })
@@ -791,14 +793,15 @@ class MainActivity : Activity() {
                     systemMode -> "Prueba del proveedor normal de Android solicitada. " +
                         "Puede usar Internet. Di «Jarvis, dime la hora»; " +
                         "después revisa el diagnóstico. No envía órdenes externas."
-                    else -> "Prueba offline solicitada. Di «Jarvis, dime la hora» " +
-                        "durante 60 s; también puedes bloquear la pantalla."
+                    else -> "Preparando reconocimiento Vosk español dentro de la APK. " +
+                        "Cuando esté listo, di «Jarvis, dime la hora» durante 60 s. " +
+                        "No requiere Internet ni reconocedor de Android."
                 }
                 handsFreePreviewButton?.text = "DETENER MANOS LIBRES · PRUEBA"
                 handsFreePreviewStatus.text = when {
                     diagnostic -> "Midiendo micrófono y probando TTS…"
                     systemMode -> "Intentando reconocimiento del sistema · puede usar Internet…"
-                    else -> "Iniciando escucha offline de 60 segundos…"
+                    else -> "ASR_NATIVE_LOADING: preparando motor de voz español local…"
                 }
 
             } catch (_: RuntimeException) {
