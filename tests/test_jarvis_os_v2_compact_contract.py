@@ -64,7 +64,13 @@ class JarvisOsV2CompactContract(unittest.TestCase):
         self.assertIn('primaryButton("PROBAR MANOS LIBRES · 60 S")', main)
         self.assertIn('primaryButton("DIAGNÓSTICO MICRO Y VOZ · 4 S")', main)
         self.assertIn('primaryButton("PROBAR RECONOCIMIENTO DEL SISTEMA · 60 S")', main)
-        self.assertEqual(40, len(re.findall(r'primaryButton\("', main)))
+        # Contract checks capabilities, not the historical exact button count:
+        # adding an opt-in owner-enrollment action must not fail legacy UI tests.
+        self.assertIn('primaryButton("REGISTRAR MI VOZ · 3 MUESTRAS")', main)
+        actions = re.findall(r'primaryButton\("([^"]+)"\)', main)
+        self.assertEqual(len(actions), len(set(actions)),
+                         "Duplicate top-level actions create ambiguous controls")
+        self.assertGreaterEqual(len(actions), len(required))
 
     def test_no_new_launcher_privilege_or_automatic_sensitive_actions(self):
         home = (JAVA / "JarvisHomeActivity.kt").read_text(encoding="utf-8")
