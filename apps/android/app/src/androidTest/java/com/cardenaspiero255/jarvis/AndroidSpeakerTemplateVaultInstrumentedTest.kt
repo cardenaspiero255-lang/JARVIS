@@ -22,7 +22,10 @@ class AndroidSpeakerTemplateVaultInstrumentedTest {
         assertNull(vault.load(model2))
         val persisted = File(context.noBackupFilesDir, "jarvis-owner-embedding-v1.bin")
         assertTrue(persisted.isFile)
-        assertFalse(persisted.readBytes().contains(vector[0].toBits().toByte()))
+        // The 4-byte IEEE-754 float encoding must not be present as plaintext.
+        val clearFloat = byteArrayOf(0x3f, 0x80.toByte(), 0x00, 0x00)
+        val encrypted = persisted.readBytes()
+        assertFalse(encrypted.asList().windowed(4).any { it == clearFloat.asList() })
         vault.revoke()
         assertNull(vault.load(model1))
         assertFalse(persisted.exists())
