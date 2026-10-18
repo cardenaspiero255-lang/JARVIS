@@ -190,3 +190,15 @@ val bundleVerifiedKws by tasks.registering(Exec::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(kwsAssets)
 tasks.named("preBuild") { dependsOn(bundleVerifiedKws) }
+
+/** Optional local speaker model; model bytes are SHA256 pinned at build. */
+val speakerAssets = layout.buildDirectory.dir("generated/verifiedSherpaSpeakerAssets")
+val bundleVerifiedSpeaker by tasks.registering(Exec::class) {
+    group = "build"
+    val script = rootProject.file("../../tools/prepare_speaker_model.py")
+    inputs.file(script)
+    outputs.dir(speakerAssets)
+    commandLine("python3", script.absolutePath, "--dest", speakerAssets.get().asFile.absolutePath)
+}
+android.sourceSets.getByName("main").assets.srcDir(speakerAssets)
+tasks.named("preBuild") { dependsOn(bundleVerifiedSpeaker) }
