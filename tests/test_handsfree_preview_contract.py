@@ -96,6 +96,13 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertIn('HandsFreePreviewService.ACTION_START_SYSTEM', activity)
         self.assertIn('setPositiveButton("ACEPTAR Y PROBAR"', activity)
         self.assertIn('explicitUserTap = true', service)
+        self.assertIn('systemRequested -> systemAvailable', service)
+        self.assertIn('systemMode -> systemAvailable', activity)
+        self.assertIn('else -> offline', service)
+        self.assertIn('else -> offline', activity)
+        self.assertIn('if (systemRecognizerRequested)', service)
+        self.assertIn('if (systemRecognizerRequested &&', service)
+        self.assertIn('DIAGNÓSTICO MICRO Y VOZ · 4 S', activity)
         # Offline recognizer must never silently reroute to the system provider.
         self.assertNotIn('if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) systemRecognizerRequested = true', service)
 
