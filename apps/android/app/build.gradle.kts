@@ -172,3 +172,21 @@ val verifySherpaAar by tasks.registering {
     }
 }
 tasks.named("preBuild") { dependsOn(verifySherpaAar) }
+
+/**
+ * Reproducibly bundle the official upstream English mobile KWS model.
+ * The script verifies EACH ONNX/BPE asset against independent pinned hashes,
+ * derives the precise 'JARVIS @Jarvis' BPE mapping and fails closed.
+ * Build machines require Python 3.10+ and sentencepiece==0.2.1.
+ */
+val kwsAssets = layout.buildDirectory.dir("generated/verifiedSherpaKwsAssets")
+val bundleVerifiedKws by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Acquire SHA-pinned official sherpa KWS model and encode Jarvis"
+    val script = rootProject.file("../../tools/prepare_kws_model.py")
+    inputs.file(script)
+    outputs.dir(kwsAssets)
+    commandLine("python3", script.absolutePath, "--dest", kwsAssets.get().asFile.absolutePath)
+}
+android.sourceSets.getByName("main").assets.srcDir(kwsAssets)
+tasks.named("preBuild") { dependsOn(bundleVerifiedKws) }
