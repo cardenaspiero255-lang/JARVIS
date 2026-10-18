@@ -18,7 +18,8 @@ class NativeLoadingUiContract(unittest.TestCase):
     def test_native_loading_phases_expose_progress_without_saving_audio(self):
         store = (ROOT / "NativeSpanishModelStore.kt").read_text(encoding="utf-8")
         runner = (ROOT / "NativeSpanishSpeechRunner.kt").read_text(encoding="utf-8")
-        self.assertIn("fun ensureInstalled(onStage: (String) -> Unit = {})", store)
+        self.assertIn("fun ensureInstalled(", store)
+        self.assertIn("onStage: (String) -> Unit = {}", store)
         for code in (
             "ASR_NATIVE_MODEL_CACHED",
             "ASR_NATIVE_ASSET_VERIFY",
@@ -26,7 +27,8 @@ class NativeLoadingUiContract(unittest.TestCase):
             "ASR_NATIVE_MODEL_READY",
         ):
             self.assertIn('onStage("' + code + '")', store)
-        self.assertIn("ensureInstalled { stage -> onStatus(stage) }", runner)
+        self.assertIn("installer.ensureInstalled(", runner)
+        self.assertIn("onStage = { stage -> onStatus(stage) }", runner)
         self.assertIn('onStatus("ASR_NATIVE_DECODER_LOADING")', runner)
         self.assertIn('onStatus("ASR_NATIVE_AUDIO_OPEN")', runner)
         self.assertNotIn("HttpURLConnection", store)
