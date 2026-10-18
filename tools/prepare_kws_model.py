@@ -57,13 +57,16 @@ def verified_files(archive_bytes: bytes) -> dict[str, bytes]:
     found = {}
     with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:bz2") as tar:
         for member in tar:
-            name = member.name
-            # Only the one official root and regular files. Ignore test data.
-            if not name.startswith(MODEL + "/"):
-                raise ValueError("Unexpected archive root")
-            relative = name[len(MODEL) + 1:]
+            name = member.name.removeprefix("./")
+            # Official archives may start with "./" or use the non-mobile
+            # directory name. Never EXTRACT arbitrary paths or test data.
+            parts = name.split("/")
+            relative = parts[-1]
             if relative not in REQUIRED:
                 continue
+            allowed_roots = ([], [MODEL], [MODEL.removesuffix("-mobile")])
+            if parts[:-1] not in allowed_roots:
+                raise ValueError("Unexpected archive path for pinned component: " + name)
             if not member.isfile() or relative in found or member.size not in range(1, MAX_ENTRY + 1):
                 raise ValueError("Non-regular/duplicate/oversized KWS asset")
             payload = tar.extractfile(member).read(MAX_ENTRY + 1)
