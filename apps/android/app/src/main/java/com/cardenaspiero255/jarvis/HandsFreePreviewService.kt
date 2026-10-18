@@ -75,6 +75,12 @@ class HandsFreePreviewService : Service() {
     private var endedNormally = false
     private var diagnosticMode = false
     private var systemRecognizerRequested = false
+    private var nativeModeRequested = false
+    private var nativeRunner: NativeSpanishSpeechRunner? = null
+    private val nativeStartupTimeout = Runnable {
+        finish("ASR_NATIVE_INIT_TIMEOUT: el modelo tardó demasiado en inicializarse. " +
+            "Prueba otra vez con la pantalla encendida.")
+    }
     private var micDiagnosticSummary: String? = null
     private var diagnosticWorker: Thread? = null
     private var ttsWatchdog: Runnable? = null
@@ -99,7 +105,9 @@ class HandsFreePreviewService : Service() {
         }
         val diagnostic = intent?.action == ACTION_DIAGNOSE
         val systemRequested = intent?.action == ACTION_START_SYSTEM
-        if ((intent?.action != ACTION_START && !diagnostic && !systemRequested) ||
+        val nativeRequested = intent?.action == ACTION_START_NATIVE
+        if ((intent?.action != ACTION_START && !diagnostic && !systemRequested &&
+                !nativeRequested) ||
             !intent.getBooleanExtra(EXTRA_TAPPED, false) || isRunning || closed) {
             if (!isRunning) stopSelf()
             return START_NOT_STICKY
@@ -123,6 +131,7 @@ class HandsFreePreviewService : Service() {
             notificationsGranted = notifications,
             offlineRecognizerAvailable = when {
                 diagnostic -> true
+                nativeRequested -> true // model is hash-verified inside the APK
                 systemRequested -> systemAvailable
                 else -> offline
             }
@@ -134,7 +143,8 @@ class HandsFreePreviewService : Service() {
             } else "Permisos de micrófono o notificaciones incompletos.")
             return START_NOT_STICKY
         }
-        if (!timeGate.begin(SystemClock.elapsedRealtime())) {
+        // For native ASR, start its 60s window AFTER first-run model expansion.
+        if (!nativeRequested && !timeGate.begin(SystemClock.elapsedRealtime())) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -153,7 +163,10 @@ class HandsFreePreviewService : Service() {
         isRunning = true
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
+        nativeModeRequested = nativeRequested
         record(when {
+            nativeModeRequested -> "ASR_NATIVE_PREPARING: preparando motor español " +
+                "Vosk incluido en la APK; no usa servicios de voz de Android."
             diagnostic -> "DIAGNOSTIC_START: micrófono y TTS sin usar reconocedor."
             systemRecognizerRequested -> "ASR_SYSTEM_SELECTED: el usuario autorizó " +
                 "el proveedor normal de Android, que puede usar Internet. " +
@@ -162,9 +175,17 @@ class HandsFreePreviewService : Service() {
                 "La prueba no comprueba quién está hablando."
         }, active = true)
         acquireShortWakeLock()
-        main.postDelayed(timeout, 60_000L)
+        if (nativeModeRequested) {
+            main.postDelayed(nativeStartupTimeout, 90_000L)
+        } else {
+            main.postDelayed(timeout, 60_000L)
+        }
         prepareTts()
-        if (diagnosticMode) startMicrophoneDiagnostic() else startOfflineAsr()
+        when {
+            nativeModeRequested -> startNativeSpanishPreview()
+            diagnosticMode -> startMicrophoneDiagnostic()
+            else -> startOfflineAsr()
+        }
         return START_NOT_STICKY
     }
 
@@ -687,6 +708,9 @@ class HandsFreePreviewService : Service() {
         timeGate.stop()
         pendingSpeech = null
         main.removeCallbacks(timeout)
+        main.removeCallbacks(nativeStartupTimeout)
+        nativeRunner?.stop()
+        nativeRunner = null
         ttsWatchdog?.let { main.removeCallbacks(it) }
         ttsWatchdog = null
         pendingRetry?.let(main::removeCallbacks)
@@ -708,6 +732,7 @@ class HandsFreePreviewService : Service() {
 
     companion object {
         const val ACTION_START = "com.cardenaspiero255.jarvis.HANDSFREE_START"
+        const val ACTION_START_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_VOSK_NATIVE"
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
