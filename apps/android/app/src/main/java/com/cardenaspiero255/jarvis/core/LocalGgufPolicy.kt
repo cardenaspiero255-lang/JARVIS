@@ -26,6 +26,11 @@ object LocalGgufPolicy {
         if (prompt.isBlank() || prompt.length > MAX_PROMPT_LENGTH ||
             prompt.any { Character.isISOControl(it) || Character.getType(it) ==
                 Character.FORMAT.toInt() }) return false
+        // Reserved role tokens could forge a system/assistant turn in models
+        // such as SmolLM2-Instruct. Reject, do not strip and reinterpret.
+        val raw = prompt.lowercase(java.util.Locale.ROOT)
+        if ("<|im_start|>" in raw || "<|im_end|>" in raw ||
+            "<|endoftext|>" in raw) return false
         // No language-model response is executable; reject obvious operational
         // instructions at the separate read-only LLM entrypoint.
         val normalized = java.text.Normalizer.normalize(
