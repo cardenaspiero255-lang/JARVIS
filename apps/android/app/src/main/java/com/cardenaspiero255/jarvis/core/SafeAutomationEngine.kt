@@ -52,6 +52,15 @@ interface SafeAutomationGateway {
 }
 
 enum class SafeAutomationOutcome { DENIED, COMPLETED, FAILED, STOPPED }
+
+/** Recovery guidance only; never a silent retry or rollback of external effects. */
+enum class SafeRecoveryAdvice {
+    REAUTHORIZE,
+    RETRY_REQUIRES_FRESH_CONSENT,
+    MANUAL_RECONCILIATION_REQUIRED,
+    CHECK_EXTERNAL_RESULT
+}
+
 data class SafeAutomationReport(
     val outcome: SafeAutomationOutcome,
     val completedSteps: Int,
@@ -62,7 +71,14 @@ data class SafeAutomationReport(
     val rollbackVerified: Boolean = false,
     /** If a step fails, identify it without storing private parameters. */
     val failedStep: SafeAutomationStep? = null,
-)
+) {
+    val recoveryAdvice: SafeRecoveryAdvice get() = when {
+        outcome == SafeAutomationOutcome.DENIED -> SafeRecoveryAdvice.REAUTHORIZE
+        outcome == SafeAutomationOutcome.COMPLETED -> SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT
+        completedSteps > 0 -> SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED
+        else -> SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT
+    }
+}
 
 /**
  * Explicit preview and ONE user confirmation required per run.
