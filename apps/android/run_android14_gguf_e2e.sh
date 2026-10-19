@@ -6,6 +6,16 @@ out="app/build/diagnostics/gguf-e2e"
 mkdir -p "$out"
 echo "=== Genuine GGUF JNI generation; SHA=${GITHUB_SHA:-unknown} ==="
 test -s "app/build/generated/ggufE2eAssets/e2e-smollm.gguf"
+# Production JARVIS has no INTERNET permission. Model weights were fetched
+# and SHA-checked on the CI host, NOT the Android device.
+# We disable device connectivity for the test, but Gradle on the build host
+# MUST still resolve its UTP test runner plugins if not cached.
+# A previous --offline here failed BEFORE running any instrumentation because
+# com.android.tools.utp:android-test-plugin-host-additional-test-output
+# was not cached. Host network is not an app/mobile network.
+gradle --no-daemon -PggufE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
+adb shell svc wifi disable
+adb shell svc data disable
 gradle --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
 python3 - <<'PY'
 from pathlib import Path
@@ -28,4 +38,21 @@ if any(tc.find(x) is not None for x in ("failure", "error", "skipped")):
     raise SystemExit("GGUF_E2E_INVALID_RESULT: test failed or was skipped")
 print("GGUF_E2E_PASS: one genuine model instrumentation test completed without skips")
 PY
-echo "GGUF_E2E_PASS: native path verified on Android emulator" > "$out/summary.txt"
+# The instrumentation writes only synthetic-case IDs and aggregate metrics.
+# Fail closed if the app failed to persist the measurements.
+# connectedDebugAndroidTest uninstalls the target package at teardown.
+# Fetch metrics from the case-specific Gradle logcat captured BEFORE removal;
+# run-as after the test returns "unknown package" as fake JSON.
+python3 ../../tools/extract_gguf_qa_log.py \
+  --test-results app/build/outputs/androidTest-results/connected/debug \
+  --dest "$out/gguf-qa-raw.json"
+test -s "$out/gguf-qa-raw.json"
+python3 ../../tools/gguf_qa_report.py \
+  --input "$out/gguf-qa-raw.json" \
+  --json "$out/gguf-qa-results.json" \
+  --markdown "$out/gguf-qa-results.md"
+cat "$out/gguf-qa-results.md"
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  cat "$out/gguf-qa-results.md" >> "$GITHUB_STEP_SUMMARY"
+fi
+echo "GGUF_E2E_PASS: native path and measured QA verified on Android emulator" > "$out/summary.txt"

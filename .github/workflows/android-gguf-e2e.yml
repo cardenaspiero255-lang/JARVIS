@@ -11,6 +11,11 @@ on:
       - "apps/android/app/build.gradle.kts"
       - "tools/prepare_llama_cpp.py"
       - "tools/prepare_gguf_e2e_fixture.py"
+      - "tools/gguf_qa_report.py"
+      - "tools/extract_gguf_qa_log.py"
+      - "tests/test_gguf_qa_log_extractor.py"
+      - "tests/test_gguf_qa_report.py"
+      - "tests/test_gguf_voice_benchmark_contract.py"
       - "apps/android/run_android14_gguf_e2e.sh"
       - ".github/workflows/android-gguf-e2e.yml"
   workflow_dispatch:
