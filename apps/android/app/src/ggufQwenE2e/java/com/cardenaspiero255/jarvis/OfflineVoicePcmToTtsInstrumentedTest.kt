@@ -111,7 +111,8 @@ class OfflineVoicePcmToTtsInstrumentedTest {
                 synth.defaultEngine)
             val voice = synth.voices?.firstOrNull {
                 it.locale.language == "es" &&
-                    !it.isNetworkConnectionRequired && !it.isNotInstalled
+                    !it.isNetworkConnectionRequired &&
+                    it.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) != true
             }
             assertNotNull("Spanish TTS voice assets not installed locally", voice)
             assertEquals("Offline Spanish voice selection failed", TextToSpeech.SUCCESS,
