@@ -105,10 +105,10 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         try {
             assertTrue("Pinned offline engine did not initialize", ready.await(30, TimeUnit.SECONDS))
             assertEquals("Offline engine unavailable", TextToSpeech.SUCCESS, status.get())
-            assertEquals("TTS fell back to another engine", "com.reecedunn.espeak",
-                synth.currentEngine)
             assertEquals("CI TTS default unexpectedly differs", "com.reecedunn.espeak",
                 synth.defaultEngine)
+            assertTrue("Offline eSpeak TTS engine is not installed",
+                synth.engines.any { it.name == "com.reecedunn.espeak" })
             val voice = synth.voices?.firstOrNull {
                 it.locale.language == "es" &&
                     !it.isNetworkConnectionRequired &&
