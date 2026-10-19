@@ -187,7 +187,8 @@ class CompanionCenterActivity : Activity() {
         val preview = automation.prepare(routine)
         AlertDialog.Builder(this)
             .setTitle("Autorizar UNA ejecución")
-            .setMessage(preview + "\\n\\nEsta autorización caduca al ejecutar o cancelar.")
+            .setMessage(preview + "\\n\\nVálido 30 segundos. Esta autorización " +
+                "caduca al ejecutar o cancelar; no acredita el resultado externo.")
             .setNegativeButton("CANCELAR") { _, _ -> automation.stop() }
             .setOnCancelListener { automation.stop() }
             .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
@@ -198,7 +199,12 @@ class CompanionCenterActivity : Activity() {
                     SafeAutomationOutcome.STOPPED -> "Detenida por el usuario"
                     SafeAutomationOutcome.DENIED -> "Autorización no válida"
                 }
-                message("$status: ${report.completedSteps}/${report.totalSteps}.")
+                val failed = report.failedStep?.name?.let { " Paso fallido: $it." }.orEmpty()
+                val evidence = if (!report.externalOutcomeVerified)
+                    " Resultado externo sin verificar; rollback no acreditado."
+                else ""
+                message("$status: ${report.completedSteps}/${report.totalSteps}." +
+                    failed + evidence)
             }
             .show()
     }
