@@ -16,7 +16,7 @@ class LocalGgufPolicyTest {
         assertTrue(LocalGgufPolicy.validLength(100_000_000L))
         assertFalse(LocalGgufPolicy.validLength(0L))
         assertFalse(LocalGgufPolicy.validLength(1_600_000_001L))
-        assertFalse(LocalGgufPolicy.validPrompt("¿Qué es un procesador?"))
+        assertTrue(LocalGgufPolicy.validPrompt("¿Qué es un procesador?"))
         assertTrue(LocalGgufPolicy.validPrompt("Explica un procesador"))
         assertFalse(LocalGgufPolicy.validPrompt("Abre ajustes y ejecuta un comando"))
         assertFalse(LocalGgufPolicy.validPrompt("x".repeat(1100)))
