@@ -64,6 +64,16 @@ android {
     }
 }
 
+// A REAL GGUF integration suite runs only with -PggufE2e=true, using a
+// SHA-pinned Apache-2.0 fixture downloaded on the CI build host. Neither the
+// production APK nor normal AndroidTest builds bundle model weights.
+if (providers.gradleProperty("ggufE2e").orNull == "true") {
+    android.sourceSets.getByName("androidTest").java.srcDir("src/ggufE2e/java")
+    android.sourceSets.getByName("androidTest").assets.srcDir(
+        layout.buildDirectory.dir("generated/ggufE2eAssets")
+    )
+}
+
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     // Permission inspection only; privileged execution requires separate reviewed adapters.
