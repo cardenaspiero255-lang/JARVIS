@@ -202,6 +202,23 @@ class SafeAutomationEngineTest {
             engine.confirmAndRun(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC, true).outcome)
     }
 
+    @Test fun recoveryDistinguishesSafeRetryFromUnknownExternalSideEffects() {
+        val neverStarted = SafeAutomationReport(
+            SafeAutomationOutcome.FAILED, completedSteps = 0, totalSteps = 2,
+            failedStep = SafeAutomationStep.CHECK_SHIZUKU)
+        assertEquals(SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT, neverStarted.recoveryAdvice)
+        val partlySent = SafeAutomationReport(
+            SafeAutomationOutcome.FAILED, completedSteps = 1, totalSteps = 2,
+            failedStep = SafeAutomationStep.OPEN_ANDROID_SETTINGS)
+        assertEquals(SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED,
+            partlySent.recoveryAdvice)
+        val sent = SafeAutomationReport(SafeAutomationOutcome.COMPLETED, 1, 1)
+        assertEquals(SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT, sent.recoveryAdvice)
+        val denied = SafeAutomationReport(SafeAutomationOutcome.DENIED, 0, 1)
+        assertEquals(SafeRecoveryAdvice.REAUTHORIZE, denied.recoveryAdvice)
+        assertFalse(partlySent.rollbackVerified)
+    }
+
     @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))
