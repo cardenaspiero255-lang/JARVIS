@@ -51,8 +51,13 @@ class OfflineVoicePcmToTtsInstrumentedTest {
                 }
             }
         }
-        val question = OfflineVoiceQuestionPolicy.extract(transcript.toString(), false)
-        assertNotNull("Vosk did not recognize the scripted Spanish wake+question", question)
+        // This PCM is generated from a known PUBLIC CI-only phrase, never a
+        // user's microphone. Output the ASR hypothesis for root-cause analysis.
+        val recognized = transcript.toString().trim()
+        println("VOICE_CI_SYNTHETIC_VOSK_HYPOTHESIS=${recognized.take(160)}")
+        val question = OfflineVoiceQuestionPolicy.extract(recognized, false)
+        assertNotNull("Vosk did not recognize the public synthetic wake+question " +
+            "(recognized length=${recognized.length})", question)
         // Copy only test-verified weights into app-private storage for JNI.
         val store = LocalGgufModelStore(context)
         store.deleteModel()
