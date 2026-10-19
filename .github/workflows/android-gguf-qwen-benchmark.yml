@@ -49,6 +49,15 @@ jobs:
         run: |
           python3 tools/prepare_gguf_qwen_benchmark.py \
             --dest apps/android/app/build/generated/ggufQwenE2eAssets/instruct-qwen.gguf
+      - name: Generate a reproducible offline Spanish PCM stimulus (CI only)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg
+          espeak-ng -v es -s 130 -w /tmp/jarvis-voice-ci.wav "jarvis cual es la capital de chile"
+          ffmpeg -nostdin -v error -y -i /tmp/jarvis-voice-ci.wav \
+            -ar 16000 -ac 1 -f s16le \
+            apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k.pcm
+          test "$(stat -c %s apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k.pcm)" -gt 16000
       - name: Enable KVM emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
