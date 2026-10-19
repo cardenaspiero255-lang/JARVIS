@@ -50,8 +50,11 @@ python3 "$root/tools/prepare_gguf_e2e_fixture.py" --dest "$dest"
 # Neither this script nor JARVIS changes the phone's Wi-Fi or Funtouch settings.
 gradle -p apps/android --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
 
-adb -s "$serial" exec-out run-as com.cardenaspiero255.jarvis.handsfreepreview \
-  cat files/gguf-qa-raw.json > "$out/gguf-qa-raw.json"
+# Gradle uninstall happens before this script resumes; the testcase logcat
+# is the durable on-host evidence. No need for run-as or privileged device files.
+python3 "$root/tools/extract_gguf_qa_log.py" \
+  --test-results "$root/apps/android/app/build/outputs/androidTest-results/connected/debug" \
+  --dest "$out/gguf-qa-raw.json"
 test -s "$out/gguf-qa-raw.json"
 python3 - "$out/gguf-qa-raw.json" "$session" "$serial_hash" <<'PY'
 import json
