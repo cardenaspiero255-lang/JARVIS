@@ -10,7 +10,11 @@ class CompanionVoiceHandoffContract(unittest.TestCase):
     def test_voice_never_executes_unapproved_routines(self):
         main = (MAIN / "MainActivity.kt").read_text()
         center = (MAIN / "CompanionCenterActivity.kt").read_text()
-        assert "SafeAutomationVoiceRouter.parse(transcript)" in main
+        planner = (MAIN / "core/OfflineRoutinePlanner.kt").read_text()
+        assert "offlineRoutinePlanner.plan(transcript)" in main
+        assert "SafeAutomationVoiceRouter.parse(raw)" in planner
+        assert "authorizedToExecute: Boolean get() = false" in planner
+        assert "EXTRA_ROUTINE_PREVIEW" in main
         assert 'setPositiveButton("REVISAR PLAN")' in main
         assert "Intent(this, CompanionCenterActivity::class.java)" in main
         assert "EXTRA_ROUTINE_PREVIEW" in main

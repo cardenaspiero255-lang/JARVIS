@@ -146,6 +146,94 @@ class SafeAutomationEngineTest {
         assertFalse(report.rollbackVerified)
     }
 
+
+    @Test fun previewExpiresAtThirtySecondsEvenIfDialogStaysVisible() {
+        var now = 10_000L
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway, clockMillis = { now })
+        engine.prepare(SafeRoutine.OPEN_SETTINGS)
+        now += 30_000L
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.OPEN_SETTINGS, explicitTap = true).outcome)
+        assertTrue(gateway.completed.isEmpty())
+        engine.prepare(SafeRoutine.OPEN_SETTINGS)
+        now += 29_999L
+        assertEquals(SafeAutomationOutcome.COMPLETED,
+            engine.confirmAndRun(SafeRoutine.OPEN_SETTINGS, explicitTap = true).outcome)
+        assertEquals(1, gateway.completed.size)
+    }
+
+    @Test fun rolledBackMonotonicClockNeverReplaysStaleApproval() {
+        var now = 50_000L
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway, clockMillis = { now })
+        engine.prepare(SafeRoutine.OPEN_TERMUX)
+        now = 49_000L
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.OPEN_TERMUX, explicitTap = true).outcome)
+        assertTrue(gateway.completed.isEmpty())
+    }
+
+    @Test fun twoStepDiagnosticDoesNotLaunchSettingsWhenShizukuUnavailable() {
+        val gateway = FakeGateway()
+        gateway.failOn = SafeAutomationStep.CHECK_SHIZUKU
+        val engine = SafeAutomationEngine(gateway)
+        engine.prepare(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC)
+        val report = engine.confirmAndRun(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC, true)
+        assertEquals(SafeAutomationOutcome.FAILED, report.outcome)
+        assertEquals(listOf(SafeAutomationStep.CHECK_SHIZUKU), gateway.completed)
+        assertEquals(SafeAutomationStep.CHECK_SHIZUKU, report.failedStep)
+        assertFalse(report.rollbackVerified)
+        assertFalse(report.externalOutcomeVerified)
+    }
+
+    @Test fun previouslyAcceptedExternalDispatchCannotBeClaimedRolledBackOnFailure() {
+        val gateway = FakeGateway()
+        gateway.failOn = SafeAutomationStep.OPEN_ANDROID_SETTINGS
+        val engine = SafeAutomationEngine(gateway)
+        engine.prepare(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC)
+        val report = engine.confirmAndRun(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC, true)
+        assertEquals(SafeAutomationOutcome.FAILED, report.outcome)
+        assertEquals(1, report.completedSteps)
+        assertEquals(SafeAutomationStep.OPEN_ANDROID_SETTINGS, report.failedStep)
+        assertFalse(report.rollbackVerified)
+        assertFalse(report.externalOutcomeVerified)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC, true).outcome)
+    }
+
+    @Test fun recoveryDistinguishesSafeRetryFromUnknownExternalSideEffects() {
+        val neverStarted = SafeAutomationReport(
+            SafeAutomationOutcome.FAILED, completedSteps = 0, totalSteps = 2,
+            failedStep = SafeAutomationStep.CHECK_SHIZUKU)
+        assertEquals(SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT, neverStarted.recoveryAdvice)
+        val partlySent = SafeAutomationReport(
+            SafeAutomationOutcome.FAILED, completedSteps = 1, totalSteps = 2,
+            failedStep = SafeAutomationStep.OPEN_ANDROID_SETTINGS)
+        assertEquals(SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED,
+            partlySent.recoveryAdvice)
+        val sent = SafeAutomationReport(SafeAutomationOutcome.COMPLETED, 1, 1)
+        assertEquals(SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT, sent.recoveryAdvice)
+        val denied = SafeAutomationReport(SafeAutomationOutcome.DENIED, 0, 1)
+        assertEquals(SafeRecoveryAdvice.REAUTHORIZE, denied.recoveryAdvice)
+        assertFalse(partlySent.rollbackVerified)
+    }
+
+    @Test fun termuxIdentityProbeNeedsFreshVisibleConsentAndExternalCallback() {
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true).outcome)
+        engine.prepare(SafeRoutine.TERMUX_ID_DIAGNOSTIC)
+        val result = engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true)
+        assertEquals(SafeAutomationOutcome.COMPLETED, result.outcome)
+        assertEquals(listOf(SafeAutomationStep.REQUEST_TERMUX_ID), gateway.completed)
+        assertFalse(result.externalOutcomeVerified)
+        assertEquals(SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT, result.recoveryAdvice)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true).outcome)
+    }
+
     @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))

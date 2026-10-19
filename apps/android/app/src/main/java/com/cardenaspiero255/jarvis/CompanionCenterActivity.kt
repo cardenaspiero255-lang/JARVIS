@@ -28,6 +28,7 @@ import com.cardenaspiero255.jarvis.core.CompanionKind
 import com.cardenaspiero255.jarvis.core.CompanionState
 import com.cardenaspiero255.jarvis.core.SafeAutomationEngine
 import com.cardenaspiero255.jarvis.core.SafeAutomationOutcome
+import com.cardenaspiero255.jarvis.core.SafeRecoveryAdvice
 import com.cardenaspiero255.jarvis.core.SafeRoutine
 import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
 import com.cardenaspiero255.jarvis.core.OwnDroidLockState
@@ -187,7 +188,8 @@ class CompanionCenterActivity : Activity() {
         val preview = automation.prepare(routine)
         AlertDialog.Builder(this)
             .setTitle("Autorizar UNA ejecución")
-            .setMessage(preview + "\\n\\nEsta autorización caduca al ejecutar o cancelar.")
+            .setMessage(preview + "\\n\\nVálido 30 segundos. Esta autorización " +
+                "caduca al ejecutar o cancelar; no acredita el resultado externo.")
             .setNegativeButton("CANCELAR") { _, _ -> automation.stop() }
             .setOnCancelListener { automation.stop() }
             .setPositiveButton("AUTORIZAR UNA VEZ") { _, _ ->
@@ -198,7 +200,22 @@ class CompanionCenterActivity : Activity() {
                     SafeAutomationOutcome.STOPPED -> "Detenida por el usuario"
                     SafeAutomationOutcome.DENIED -> "Autorización no válida"
                 }
-                message("$status: ${report.completedSteps}/${report.totalSteps}.")
+                val failed = report.failedStep?.name?.let { " Paso fallido: $it." }.orEmpty()
+                val evidence = if (!report.externalOutcomeVerified)
+                    " Resultado externo sin verificar; rollback no acreditado."
+                else ""
+                val recovery = when (report.recoveryAdvice) {
+                    SafeRecoveryAdvice.REAUTHORIZE ->
+                        "Necesitas una confirmación nueva."
+                    SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT ->
+                        "Puede repetirse tras revisar el permiso y confirmar otra vez."
+                    SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED ->
+                        "Verifica los efectos externos antes de intentar otra acción."
+                    SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT ->
+                        "Confirma el resultado en la aplicación externa."
+                }
+                message("$status: ${report.completedSteps}/${report.totalSteps}." +
+                    failed + evidence + " " + recovery)
             }
             .show()
     }

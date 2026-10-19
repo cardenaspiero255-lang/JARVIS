@@ -9,6 +9,7 @@ enum class SafeAutomationStep {
     OPEN_OWNDROID,
     OPEN_TERMUX,
     OPEN_ANDROID_SETTINGS,
+    REQUEST_TERMUX_ID,
 }
 
 enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String) {
@@ -32,6 +33,23 @@ enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String)
         listOf(SafeAutomationStep.OPEN_ANDROID_SETTINGS),
         "Abrir Ajustes de Android; no modificar la configuración."
     ),
+    TERMUX_ID_DIAGNOSTIC(
+        listOf(SafeAutomationStep.REQUEST_TERMUX_ID),
+        "Solicitar únicamente el comando id sin argumentos mediante Termux; " +
+            "el resultado se consulta por callback. No ejecutar scripts."
+    ),
+    SHIZUKU_SETTINGS_DIAGNOSTIC(
+        listOf(SafeAutomationStep.CHECK_SHIZUKU,
+            SafeAutomationStep.OPEN_ANDROID_SETTINGS),
+        "Comprobar que Shizuku está autorizado antes de abrir Ajustes; " +
+            "no ejecutar órdenes con privilegios."
+    ),
+    DHIZUKU_SETTINGS_DIAGNOSTIC(
+        listOf(SafeAutomationStep.CHECK_DHIZUKU,
+            SafeAutomationStep.OPEN_ANDROID_SETTINGS),
+        "Comprobar que Dhizuku está autorizado antes de abrir Ajustes; " +
+            "sin activar Device Owner."
+    ),
 }
 
 interface SafeAutomationGateway {
@@ -40,6 +58,15 @@ interface SafeAutomationGateway {
 }
 
 enum class SafeAutomationOutcome { DENIED, COMPLETED, FAILED, STOPPED }
+
+/** Recovery guidance only; never a silent retry or rollback of external effects. */
+enum class SafeRecoveryAdvice {
+    REAUTHORIZE,
+    RETRY_REQUIRES_FRESH_CONSENT,
+    MANUAL_RECONCILIATION_REQUIRED,
+    CHECK_EXTERNAL_RESULT
+}
+
 data class SafeAutomationReport(
     val outcome: SafeAutomationOutcome,
     val completedSteps: Int,
@@ -48,17 +75,30 @@ data class SafeAutomationReport(
     val externalOutcomeVerified: Boolean = false,
     // Emergency STOP halts *future* steps, not already executed side effects.
     val rollbackVerified: Boolean = false,
-)
+    /** If a step fails, identify it without storing private parameters. */
+    val failedStep: SafeAutomationStep? = null,
+) {
+    val recoveryAdvice: SafeRecoveryAdvice get() = when {
+        outcome == SafeAutomationOutcome.DENIED -> SafeRecoveryAdvice.REAUTHORIZE
+        outcome == SafeAutomationOutcome.COMPLETED -> SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT
+        completedSteps > 0 -> SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED
+        else -> SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT
+    }
+}
 
 /**
  * Explicit preview and ONE user confirmation required per run.
  * No periodic worker, background scheduler or automatic voice execution.
  */
-class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
+class SafeAutomationEngine(
+    private val gateway: SafeAutomationGateway,
+    private val clockMillis: () -> Long = { System.nanoTime() / 1_000_000L }
+) {
     @Volatile private var emergencyStopped = true
     @Volatile private var pending: SafeRoutine? = null
     // Guards the full execution lifetime, not just the approval transaction.
     private var activeRun = false
+    private var approvedPreviewAtMs: Long? = null
 
     fun prepare(routine: SafeRoutine): String = synchronized(this) {
         if (activeRun) {
@@ -67,6 +107,7 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
         } else {
             emergencyStopped = true
             pending = routine
+            approvedPreviewAtMs = clockMillis()
             routine.summary
         }
     }
@@ -74,15 +115,25 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
     fun stop() = synchronized(this) {
         emergencyStopped = true
         pending = null
+        approvedPreviewAtMs = null
     }
 
     fun confirmAndRun(routine: SafeRoutine, explicitTap: Boolean): SafeAutomationReport {
         val approved = synchronized(this) {
-            if (activeRun || !explicitTap || pending != routine ||
+            val now = clockMillis()
+            val issued = approvedPreviewAtMs
+            val fresh = issued != null && now >= issued &&
+                now - issued < PREVIEW_VALIDITY_MS
+            if (!fresh) {
+                pending = null // A stale or clock-reversed consent is revoked.
+                approvedPreviewAtMs = null
+            }
+            if (activeRun || !fresh || !explicitTap || pending != routine ||
                 !emergencyStopped) {
                 false
             } else {
                 pending = null
+                approvedPreviewAtMs = null
                 emergencyStopped = false
                 activeRun = true
                 true
@@ -100,7 +151,8 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
                 val accepted = try { gateway.perform(step) }
                                catch (_: RuntimeException) { false }
                 if (!accepted) return SafeAutomationReport(
-                    SafeAutomationOutcome.FAILED, done, routine.steps.size
+                    SafeAutomationOutcome.FAILED, done, routine.steps.size,
+                    failedStep = step
                 )
                 done += 1
             }
@@ -116,6 +168,10 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
                 activeRun = false
             }
         }
+    }
+
+    private companion object {
+        const val PREVIEW_VALIDITY_MS = 30_000L
     }
 }
 

@@ -53,7 +53,7 @@ import com.cardenaspiero255.jarvis.core.VoiceAction
 import com.cardenaspiero255.jarvis.core.VoiceCommandParser
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.PreviewStart
-import com.cardenaspiero255.jarvis.core.SafeAutomationVoiceRouter
+import com.cardenaspiero255.jarvis.core.OfflineRoutinePlanner
 import com.cardenaspiero255.jarvis.core.VisionPickerRequestGate
 import com.cardenaspiero255.jarvis.core.VoiceMathSession
 import com.cardenaspiero255.jarvis.core.VoiceRecognitionRequestGate
@@ -72,6 +72,7 @@ class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
+    private val offlineRoutinePlanner = OfflineRoutinePlanner()
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
     private val recognitionRequest = VoiceRecognitionRequestGate()
@@ -1234,11 +1235,12 @@ class MainActivity : Activity() {
     private fun processRecognizedSpeech(transcript: String) {
         // Already passed the one-use microphone request + foreground gate.
         // Voice may ONLY propose an exact allowlisted routine; it cannot execute it.
-        val proposed = SafeAutomationVoiceRouter.parse(transcript)
+        val proposedPlan = offlineRoutinePlanner.plan(transcript)
+        val proposed = proposedPlan?.routine
         if (proposed != null) {
             voiceMathSession.clear()
             voiceConsent.cancel()
-            statusText.text = "Rutina disponible: ${proposed.summary} " +
+            statusText.text = "${proposedPlan.summary} " +
                 "Revisa y autoriza en pantalla; aún no se ejecutó ninguna acción."
             spokenReplyEngine.speakRecognizedAnswerAfterTap(statusText.text.toString())
             AlertDialog.Builder(this)
