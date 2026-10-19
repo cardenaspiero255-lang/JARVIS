@@ -18,6 +18,10 @@ class VoicePcmE2eContract(unittest.TestCase):
         self.assertIn("synthesizeToFile", kt)
         self.assertIn("isNetworkConnectionRequired", kt)
         self.assertIn("espeak-ng", workflow)
+        self.assertIn('"cual es la capital de chile"', workflow)
+        self.assertIn("OfflineVoiceQuestionPolicy.extract(recognized, true)", kt)
+        self.assertIn("ASR missed target question content", kt)
+        self.assertIn("wake_pre_authorized=simulated", kt)
         self.assertIn("test-voice-16k.pcm", workflow)
 
 if __name__ == "__main__":
