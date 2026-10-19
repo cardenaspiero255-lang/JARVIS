@@ -61,7 +61,7 @@ jobs:
             for speed in 115 140 165; do
               for pitch in 40 65; do
                 wav="/tmp/jarvis-spanish-${i}.wav"
-                pcm="apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k-${i}.pcm"
+                pcm="apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k-$i.pcm"
                 espeak-ng -v "$voice" -s "$speed" -p "$pitch" \
                   -w "$wav" "¿Cuál es la capital de Chile?"
                 ffmpeg -nostdin -v error -y -i "$wav" \
