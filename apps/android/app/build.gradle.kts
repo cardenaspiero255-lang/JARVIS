@@ -20,6 +20,14 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake {
+                arguments("-DGGML_NATIVE=OFF", "-DGGML_OPENMP=OFF",
+                    "-DGGML_CPU_KLEIDIAI=OFF", "-DLLAMA_BUILD_TESTS=OFF",
+                    "-DLLAMA_BUILD_EXAMPLES=OFF")
+            }
+        }
     }
 
     buildTypes {
@@ -35,6 +43,14 @@ android {
             resValue("string", "jarvis_application_label", "JARVIS OMEGA")
         }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    ndkVersion = "27.2.12479018"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -202,3 +218,25 @@ val bundleVerifiedSpeaker by tasks.registering(Exec::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(speakerAssets)
 tasks.named("preBuild") { dependsOn(bundleVerifiedSpeaker) }
+
+
+/**
+ * The source is always SHA-pinned; CMake must never use moving 'master'.
+ * Only BUILD machines fetch source, no weights/network permission in APK.
+ */
+val pinnedLlamaSource = layout.projectDirectory.dir("src/main/cpp/third_party/llama.cpp")
+val preparePinnedLlama by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Fetch/verify reproducibly pinned llama.cpp Android source"
+    val script = rootProject.file("../../tools/prepare_llama_cpp.py")
+    inputs.file(script)
+    outputs.dir(pinnedLlamaSource)
+    commandLine("python3", script.absolutePath, "--dest",
+        pinnedLlamaSource.asFile.absolutePath)
+}
+// AGP configures CMake before preBuild; attach directly to its configure tasks.
+tasks.configureEach {
+    if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) {
+        dependsOn(preparePinnedLlama)
+    }
+}
