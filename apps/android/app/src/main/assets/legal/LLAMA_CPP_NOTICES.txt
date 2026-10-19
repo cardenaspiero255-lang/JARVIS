@@ -1,0 +1,12 @@
+llama.cpp (ggml-org) — MIT License
+Upstream: https://github.com/ggml-org/llama.cpp
+Pinned source revision: 31288c9c66e59377f7788d920678a565bb89dd37
+
+The integrated runtime is sourced from llama.cpp and GGML. Build scripts
+retrieve the license file with the pinned source. Source license and
+third-party attribution must be reviewed and retained before distribution.
+No GGUF model weights are bundled in JARVIS; users supply a separately
+licensed model file through Android's system file picker.
+
+Copyright (c) llama.cpp contributors.
+MIT licensing terms: https://github.com/ggml-org/llama.cpp/blob/master/LICENSE
