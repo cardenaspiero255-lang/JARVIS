@@ -39,6 +39,8 @@ import com.cardenaspiero255.jarvis.core.PreviewDiagnosticSummary
 import com.cardenaspiero255.jarvis.core.PreviewStart
 import com.cardenaspiero255.jarvis.core.PreviewTimeGate
 import com.cardenaspiero255.jarvis.core.PreviewWake
+import com.cardenaspiero255.jarvis.core.LockScreenAudioEvidence
+import com.cardenaspiero255.jarvis.core.LockScreenAudioState
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import java.time.LocalTime
 
@@ -77,6 +79,8 @@ class HandsFreePreviewService : Service() {
     private var systemRecognizerRequested = false
     private var nativeModeRequested = false
     private var extendedListening = false
+    // Persistent evidence contains sample counts only, never voices or transcript.
+    private val screenOffEvidence = LockScreenAudioEvidence()
     private val wakeLockRefresh = object : Runnable {
         override fun run() {
             if (isRunning && !closed && extendedListening) acquireShortWakeLock()
@@ -170,6 +174,9 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
+        screenOffEvidence.reset()
+        diagnostics.edit().remove("lockscreen_off_samples")
+            .remove("lockscreen_off_reports").remove("lockscreen_result").apply()
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
@@ -282,6 +289,26 @@ class HandsFreePreviewService : Service() {
             onStatus = { message ->
                 main.post {
                     if (isRunning && !closed && nativeModeRequested) showStatus(message)
+                }
+            },
+            onAudioProgress = { sampleCount, elapsed ->
+                main.post {
+                    if (!isRunning || closed || !extendedListening || endedNormally) return@post
+                    val awake = try {
+                        (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive ?: true
+                    } catch (_: RuntimeException) { true }
+                    val previousState = screenOffEvidence.snapshot().state
+                    screenOffEvidence.observe(elapsed, sampleCount, awake)
+                    val snapshot = screenOffEvidence.snapshot()
+                    diagnostics.edit()
+                        .putLong("lockscreen_off_samples", snapshot.screenOffSamples)
+                        .putInt("lockscreen_off_reports", snapshot.screenOffObservations)
+                        .putString("lockscreen_result", snapshot.state.name).apply()
+                    if (previousState != LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED &&
+                        snapshot.state == LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED) {
+                        showStatus("LOCKSCREEN_PCM_OBSERVED: micrófono entregó muestras " +
+                            "durante pantalla apagada; solo mide continuidad, no identidad.")
+                    }
                 }
             },
             onReady = {
@@ -880,8 +907,13 @@ class HandsFreePreviewService : Service() {
                 "jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
             val previous = prefs.getString("status", "Prueba manos libres apagada.")
                 ?: "Prueba manos libres apagada."
+            val safeState = prefs.getString("lockscreen_result", null)
+            val independent = if (safeState == LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED.name)
+                " | LOCKSCREEN_PCM_OBSERVED: " +
+                    prefs.getLong("lockscreen_off_samples", 0L) +
+                    " muestras (sin audio almacenado)" else ""
             return PreviewDiagnosticSummary.visible(
-                prefs.getBoolean("active", false), isRunning, previous)
+                prefs.getBoolean("active", false), isRunning, previous) + independent
         }
     }
 }

@@ -35,6 +35,7 @@ class NativeSpanishSpeechRunner(
     private val onReady: () -> Unit,
     private val onWake: (PreviewWake) -> Unit,
     private val onFailure: (String) -> Unit,
+    private val onAudioProgress: (Long, Long) -> Unit = { _, _ -> },
     private val continuous: Boolean = false,
     private val sessionDurationMillis: Long = 60_000L
 ) {
@@ -159,6 +160,8 @@ class NativeSpanishSpeechRunner(
             val audio = ShortArray(2048)
             val start = SystemClock.elapsedRealtime()
             var lastStatus = start
+            var lastAudioReport = start
+            var audioSinceReport = 0L
             while (active.get() && !Thread.currentThread().isInterrupted &&
                 SystemClock.elapsedRealtime() - start < sessionDurationMillis) {
                 val received = microphone.read(
@@ -166,6 +169,15 @@ class NativeSpanishSpeechRunner(
                 )
                 when {
                     received > 0 -> {
+                        // AudioRecord bytes genuinely received, not a timer heartbeat.
+                        // Emit only counts + elapsedRealtime; never PCM or transcripts.
+                        audioSinceReport += received.toLong()
+                        val progressNow = SystemClock.elapsedRealtime()
+                        if (progressNow - lastAudioReport >= 2_500L) {
+                            onAudioProgress(audioSinceReport, progressNow)
+                            audioSinceReport = 0L
+                            lastAudioReport = progressNow
+                        }
                         // Never analyze the assistant's own audio output as a command.
                         if (responsePlayback.get()) {
                             audio.fill(0, 0, received)
