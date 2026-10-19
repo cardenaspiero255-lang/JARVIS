@@ -1,0 +1,46 @@
+name: JARVIS QA 50 coverage
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Nightly UTC; emulator Android14 job also runs independently.
+    - cron: '35 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage-inventory:
+    name: No false completion claims
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Run all Python contract and security regression suites
+        run: python -m unittest discover -s tests -v
+      - name: Generate honest 50-feature evidence inventory
+        run: |
+          mkdir -p build/qa-coverage
+          python tools/qa_coverage_matrix.py \
+            --json-out build/qa-coverage/features.json \
+            --markdown-out build/qa-coverage/summary.md
+          cat build/qa-coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage report (never recordings)
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: jarvis-50-feature-qa-evidence
+          path: build/qa-coverage/
+          retention-days: 14
+          if-no-files-found: warn
