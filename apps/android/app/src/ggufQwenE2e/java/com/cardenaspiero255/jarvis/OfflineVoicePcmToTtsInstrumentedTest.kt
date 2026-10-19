@@ -62,8 +62,9 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         val question = OfflineVoiceQuestionPolicy.extract(recognized, true)
         assertNotNull("Vosk did not recognize the public synthetic question " +
             "(CI-only public hypothesis='${recognized.take(160)}')", question)
+        val verifiedQuestion = requireNotNull(question)
         val normalized = java.text.Normalizer.normalize(
-            question!!.lowercase(java.util.Locale.ROOT),
+            verifiedQuestion.lowercase(java.util.Locale.ROOT),
             java.text.Normalizer.Form.NFD
         ).replace(Regex("""\p{M}+"""), "")
         assertTrue("ASR missed target question content", normalized.contains("capital") &&
@@ -98,7 +99,7 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         val result = AtomicReference<String>()
         val completed = CountDownLatch(1)
         try {
-            assertTrue(inference.ask(question) {
+            assertTrue(inference.ask(verifiedQuestion) {
                 result.set(it)
                 completed.countDown()
             })
