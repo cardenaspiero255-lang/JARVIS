@@ -53,13 +53,28 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq espeak-ng ffmpeg
-          # KWS Sherpa is evaluated separately. For the real PCM->Vosk
-          # question leg, speak only the post-wake Spanish question.
-          espeak-ng -v es -s 130 -w /tmp/jarvis-voice-ci.wav "cual es la capital de chile"
-          ffmpeg -nostdin -v error -y -i /tmp/jarvis-voice-ci.wav \
-            -ar 16000 -ac 1 -f s16le \
-            apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k.pcm
-          test "$(stat -c %s apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k.pcm)" -gt 16000
+          # A fixed bank of 12 rendition variants, all speaking the IDENTICAL
+          # phrase, tests actual Spanish ASR instead of accepting a substituted
+          # transcript. eSpeak accent, pace, pitch vary; no network on device.
+          i=0
+          for voice in es es-la; do
+            for speed in 115 140 165; do
+              for pitch in 40 65; do
+                wav="/tmp/jarvis-spanish-${i}.wav"
+                pcm="apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k-${i}.pcm"
+                espeak-ng -v "$voice" -s "$speed" -p "$pitch" \
+                  -w "$wav" "¿Cuál es la capital de Chile?"
+                ffmpeg -nostdin -v error -y -i "$wav" \
+                  -af "adelay=300,apad=pad_dur=0.65" \
+                  -ar 16000 -ac 1 -f s16le "$pcm"
+                test "$(stat -c %s "$pcm")" -gt 16000
+                test "$(stat -c %s "$pcm")" -lt 1500000
+                i=$((i + 1))
+              done
+            done
+          done
+          test "$i" -eq 12
+          test -s apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k-0.pcm
       - name: Enable KVM emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
