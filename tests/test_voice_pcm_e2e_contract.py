@@ -1,0 +1,24 @@
+"""A real PCM/Vosk/native GGUF/Android offline TTS experiment is distinct from static contracts."""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+class VoicePcmE2eContract(unittest.TestCase):
+    def test_pcm_source_and_real_android_tts_are_exercised(self):
+        src = ROOT / "apps/android/app/src/ggufQwenE2e/java/com/cardenaspiero255/jarvis"
+        kt = (src / "OfflineVoicePcmToTtsInstrumentedTest.kt").read_text()
+        workflow = (ROOT / ".github/workflows/android-gguf-qwen-benchmark.yml").read_text()
+        self.assertIn('assets.open("test-voice-16k.pcm")', kt)
+        self.assertIn("Recognizer(model, 16_000.0f)", kt)
+        self.assertIn("recognizer.acceptWaveForm", kt)
+        self.assertIn("OfflineVoiceQuestionPolicy.extract", kt)
+        self.assertIn("LocalGgufInference", kt)
+        self.assertIn("TextToSpeech(", kt)
+        self.assertIn("synthesizeToFile", kt)
+        self.assertIn("isNetworkConnectionRequired", kt)
+        self.assertIn("espeak-ng", workflow)
+        self.assertIn("test-voice-16k.pcm", workflow)
+
+if __name__ == "__main__":
+    unittest.main()
