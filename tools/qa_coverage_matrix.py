@@ -69,6 +69,30 @@ TESTS = {
          "tests/test_lockscreen_biometric_contract.py"),
 }
 
+# Negative guards are *not* functional feature tests. They confirm the existing
+# app still denies a feature which the roadmap explicitly lists as pending.
+# Every guard must have its own named test, not a zero-assert placeholder.
+NEGATIVE_GUARDS = {
+    3: "test_03_model_auto_selection_is_not_silently_claimed",
+    4: "test_04_independent_verifier_must_not_execute_plan",
+    6: "test_06_learning_routines_not_autorun",
+    7: "test_07_confidence_calibration_does_not_grant_match",
+    9: "test_09_persistent_goals_not_executable_without_approval",
+    10: "test_10_research_cannot_claim_cloud_access_from_apk",
+    11: "test_11_contextual_automation_is_previews_only",
+    13: "test_13_adaptive_gestures_cannot_use_privileged_injection",
+    14: "test_14_change_monitor_cannot_enable_background_capture",
+    16: "test_16_notifications_without_listener_or_exfiltration",
+    19: "test_19_offline_routines_are_fixed_and_never_script_execution",
+    29: "test_29_build_performance_not_fabricated_as_benchmark",
+    36: "test_36_rollback_not_implied_by_emergency_stop",
+    43: "test_43_multiagent_cannot_gain_github_merge_privilege",
+    44: "test_44_scheduler_does_not_start_unconsented_microphone",
+    45: "test_45_sync_must_not_be_construed_from_encrypted_local_memory",
+    46: "test_46_pc_integration_cannot_run_untrusted_shell",
+}
+GUARD_TEST = "tests/test_sss50_pending_feature_guards.py"
+
 # These CI-facing checks have separate observational limits.
 VOICE_SCENARIOS = {
     "screen_off_emulator_pcm": (
@@ -117,21 +141,36 @@ def _tracker_rows(root):
     return rows
 
 
+def row_status_pending(status):
+    return status.strip().startswith("Pendiente")
+
+
 def build_report(root):
     root = Path(root)
     rows = _tracker_rows(root)
     if sorted(TESTS) != list(range(1, 51)):
         raise ValueError("Evidence registry must include exactly IDs 1..50")
+    if {i for i in range(1, 51) if not TESTS[i]} != set(NEGATIVE_GUARDS):
+        raise ValueError("Unmapped features must have exactly one audited negative guard")
+    guard_file = root / GUARD_TEST
+    guard_source = guard_file.read_text(encoding="utf8")
+    for number, method in NEGATIVE_GUARDS.items():
+        if not row_status_pending(rows[number]["tracker_status"]):
+            raise ValueError(f"Feature {number} now claims implementation; negative-only test insufficient")
+        if f"def {method}(" not in guard_source:
+            raise ValueError(f"Feature {number}: missing dedicated fail-closed test {method}")
     features = []
     for number, row in sorted(rows.items()):
-        mapped = TESTS[number]
+        mapped = TESTS[number] or (GUARD_TEST,)
         for relative in mapped:
             if not (root / relative).is_file():
                 raise ValueError(f"Missing mapped test for feature {number}: {relative}")
         features.append({
             "id": number, **row, "defined_tests": list(mapped),
-            "automated_coverage":
-                "TEST_DEFINED_NOT_EXECUTION_EVIDENCE" if mapped else "NO_MAPPED_TESTS",
+            "automated_coverage": (
+                "NEGATIVE_GUARD_ONLY" if number in NEGATIVE_GUARDS else
+                "TEST_DEFINED_NOT_EXECUTION_EVIDENCE"
+            ),
             "verified_on_physical_android": False,
             "fully_certified": False
         })
@@ -147,6 +186,9 @@ def build_report(root):
         "total_features": 50,
         "features_with_defined_tests": covered,
         "features_without_mapped_tests": 50 - covered,
+        "features_with_negative_guard_only": len(NEGATIVE_GUARDS),
+        "features_without_positive_functional_tests": len(NEGATIVE_GUARDS),
+        "features_with_functional_test_candidates": covered - len(NEGATIVE_GUARDS),
         "features_certified": 0,
         "product_status": "NOT_CERTIFIED",
         "device_test_executed_here": False,
@@ -159,8 +201,9 @@ def build_report(root):
         "voice_scenarios": scenarios,
         "features": features,
         "caveat": (
-            "Registry means TEST DEFINED, not PASSED. The host GitHub workflow "
-            "reports execution separately. Real Vivo/Funtouch, owner FAR/FRR, "
+            "Registry means TEST DEFINED, not PASSED; 17 pending features have "
+            "NEGATIVE GUARD ONLY, NOT positive coverage. GitHub workflow reports "
+            "execution separately. Real Vivo/Funtouch, owner FAR/FRR, "
             "replay resistance and third-party adapters remain unverified."
         )
     }
@@ -173,6 +216,8 @@ def markdown_report(report):
         f"**Mapped tests:** {report['features_with_defined_tests']}/50 "
         "(presence only; **not** 50 successful features).",
         f"**Missing mapped tests:** {report['features_without_mapped_tests']}. "
+        f"**Negative safety guards only:** {report['features_with_negative_guard_only']}. "
+        f"**Missing positive functional tests:** {report['features_without_positive_functional_tests']}. "
         "**Fully certified by this report:** 0.",
         "",
         "**This inventory does not run the tests.** Check the other CI jobs "
@@ -211,8 +256,10 @@ def main():
     if args.markdown_out:
         args.markdown_out.parent.mkdir(parents=True, exist_ok=True)
         args.markdown_out.write_text(markdown)
-    print(f"QA inventory: {report['features_with_defined_tests']}/50 tests mapped; "
-          f"{report['features_without_mapped_tests']} gaps. Verdict: NOT_CERTIFIED")
+    print(f"QA inventory: {report['features_with_defined_tests']}/50 have test files; "
+          f"{report['features_with_negative_guard_only']} safety guards only, "
+          f"{report['features_without_positive_functional_tests']} pending positive tests. "
+          "Verdict: NOT_CERTIFIED")
 
 
 if __name__ == "__main__":
