@@ -12,6 +12,11 @@ Consultas reconocidas (solo ejemplos de texto):
 - `Jarvis, revisa Dhizuku y abre ajustes`.
 - `Jarvis abre Termux`, `Jarvis abre Ajustes`, etc., preservan su comportamiento
   original.
+- `Jarvis comprueba Termux`: solicita mediante UI visible el único comando
+  permitido `/data/data/com.termux/files/usr/bin/id`, sin argumentos.
+  Un envío aceptado NO prueba que Termux lo haya ejecutado; el resultado
+  se determina únicamente por el PendingIntent de un uso y código de salida
+  validado con `CONSULTAR RESULTADO`.
 
 Las nuevas rutinas son **previews acotados**:
 1. comprobar que la API local correspondiente tiene permiso activo;
