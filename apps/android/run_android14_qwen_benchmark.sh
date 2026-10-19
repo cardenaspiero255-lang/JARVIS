@@ -7,7 +7,7 @@ test -s app/build/generated/ggufQwenE2eAssets/instruct-qwen.gguf
 gradle --no-daemon -PggufQwenE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
 adb shell svc wifi disable
 adb shell svc data disable
-gradle --no-daemon -PggufQwenE2e=true :app:connectedDebugAndroidTest
+gradle --no-daemon -PggufQwenE2e=true -Pandroid.testInstrumentationRunnerArguments.class=com.cardenaspiero255.jarvis.LocalQwenBenchmarkInstrumentedTest :app:connectedDebugAndroidTest
 python3 - "$out/quality.json" <<'PY'
 import json
 import re
@@ -73,3 +73,11 @@ print(f"QWEN_REAL_GGUF_PASS source=android14 cases={len(cases)} "
       f"p50_ms={report['p50_latency_ms']} p95_ms={p95:.1f} "
       "semantic_certified=false voice_e2e_verified=false")
 PY
+
+# Separate instrumented run: actual CI-synthesized Spanish PCM through the
+# bundled Vosk model, Qwen JNI, and Android's offline Spanish TTS engine.
+# A missing native ASR recognition or offline voice FAILS this quality gate.
+# This is still not physical microphone-to-speaker certification.
+gradle --no-daemon -PggufQwenE2e=true \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.cardenaspiero255.jarvis.OfflineVoicePcmToTtsInstrumentedTest \
+  :app:connectedDebugAndroidTest
