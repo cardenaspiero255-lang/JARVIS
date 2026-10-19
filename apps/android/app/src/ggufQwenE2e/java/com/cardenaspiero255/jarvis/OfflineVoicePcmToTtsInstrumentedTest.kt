@@ -90,6 +90,92 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         ).replace(Regex("""\p{M}+"""), "").trim().replace(Regex("""\s+"""), " ")
         assertEquals("cual es la capital de chile", normalized)
     }
+
+    // Android may advertise es-* voices with absent assets. An enumerated
+    // "offline" voice is NOT proof that any synthesis can complete offline.
+    // Force the verified, CI-installed eSpeak engine, never Google/cloud.
+    private fun requireOfflineSpanishSynthesizer(): TextToSpeech {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val ready = CountDownLatch(1)
+        val status = AtomicInteger(TextToSpeech.ERROR)
+        val synth = TextToSpeech(context, { outcome ->
+            status.set(outcome)
+            ready.countDown()
+        }, "com.reecedunn.espeak")
+        try {
+            assertTrue("Pinned offline engine did not initialize", ready.await(30, TimeUnit.SECONDS))
+            assertEquals("Offline engine unavailable", TextToSpeech.SUCCESS, status.get())
+            assertEquals("TTS fell back to another engine", "com.reecedunn.espeak",
+                synth.currentEngine)
+            assertEquals("CI TTS default unexpectedly differs", "com.reecedunn.espeak",
+                synth.defaultEngine)
+            val voice = synth.voices?.firstOrNull {
+                it.locale.language == "es" &&
+                    !it.isNetworkConnectionRequired && !it.isNotInstalled
+            }
+            assertNotNull("Spanish TTS voice assets not installed locally", voice)
+            assertEquals("Offline Spanish voice selection failed", TextToSpeech.SUCCESS,
+                synth.setVoice(voice!!))
+            return synth
+        } catch (failure: Throwable) {
+            synth.shutdown()
+            throw failure
+        }
+    }
+
+    private fun requireRealOfflineWave(synth: TextToSpeech, phrase: String, name: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val wav = File(context.cacheDir, name)
+        wav.delete()
+        val finished = CountDownLatch(1)
+        val speechError = AtomicInteger(0)
+        val code = AtomicInteger(0)
+        synth.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) { finished.countDown() }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                speechError.incrementAndGet()
+                finished.countDown()
+            }
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                code.set(errorCode)
+                speechError.incrementAndGet()
+                finished.countDown()
+            }
+        })
+        try {
+            assertEquals("Native synthesizeToFile request was rejected", TextToSpeech.SUCCESS,
+                synth.synthesizeToFile(phrase.take(300), Bundle(), wav, name))
+            assertTrue("Offline engine never finished WAV synthesis", finished.await(50, TimeUnit.SECONDS))
+            assertEquals("Offline engine could not synthesize, code=${code.get()}",
+                0, speechError.get())
+            assertTrue("Offline WAV has no real audio frames", wav.length() > 512L)
+            val header = ByteArray(12)
+            wav.inputStream().use {
+                assertEquals("Truncated audio header", 12, it.read(header))
+            }
+            assertEquals("RIFF", String(header, 0, 4, Charsets.US_ASCII))
+            assertEquals("WAVE", String(header, 8, 4, Charsets.US_ASCII))
+            println("TTS_OFFLINE_PREFLIGHT_PASS engine=com.reecedunn.espeak " +
+                "size_bytes=${wav.length()} source=android14 no_network=true")
+        } finally {
+            wav.delete()
+        }
+    }
+
+    @Test(timeout = 110_000L)
+    fun synthesizesRealOfflineSpanishWavBeforeModelLoad() {
+        val synth = requireOfflineSpanishSynthesizer()
+        try {
+            requireRealOfflineWave(synth, "Esta es una prueba de voz española sin internet.",
+                "jarvis-spanish-offline-preflight.wav")
+        } finally {
+            synth.stop()
+            synth.shutdown()
+        }
+    }
+
     @Test(timeout = 960_000L)
     fun realPcmVoskQwenAndOfflineTtsSynthesizesWave() {
         val inst = InstrumentationRegistry.getInstrumentation()
@@ -135,43 +221,13 @@ class OfflineVoicePcmToTtsInstrumentedTest {
             assertFalse(response.contains("La inferencia local falló"))
             assertFalse(response.contains("No se pudo cargar el modelo"))
 
-            val initialized = CountDownLatch(1)
-            val initStatus = AtomicInteger(TextToSpeech.ERROR)
-            val synth = TextToSpeech(context) { status ->
-                initStatus.set(status)
-                initialized.countDown()
-            }
+            val synth = requireOfflineSpanishSynthesizer()
             try {
-                assertTrue("Local Android TTS did not initialize",
-                    initialized.await(25, TimeUnit.SECONDS))
-                assertEquals("Android TTS initialization failed",
-                    TextToSpeech.SUCCESS, initStatus.get())
-                val offlineSpanish = synth.voices?.firstOrNull {
-                    it.locale.language == "es" && !it.isNetworkConnectionRequired
-                }
-                assertNotNull("Offline Spanish voice missing on Android14 emulator",
-                    offlineSpanish)
-                assertEquals(TextToSpeech.SUCCESS, synth.setVoice(offlineSpanish!!))
-                val wav = File(context.cacheDir, "jarvis-qwen-tts-ci.wav")
-                wav.delete()
-                val spoken = CountDownLatch(1)
-                val spokenErrors = AtomicInteger(0)
-                synth.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) { spoken.countDown() }
-                    @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {
-                        spokenErrors.incrementAndGet(); spoken.countDown()
-                    }
-                })
-                assertEquals(TextToSpeech.SUCCESS,
-                    synth.synthesizeToFile(response.take(300), Bundle(), wav, "jarvis-qwen-e2e"))
-                assertTrue("Offline TTS did not finish", spoken.await(55, TimeUnit.SECONDS))
-                assertEquals("TTS did not synthesize a wave", 0, spokenErrors.get())
-                assertTrue("TTS audio file empty", wav.length() > 44L)
+                requireRealOfflineWave(synth, response,
+                    "jarvis-qwen-real-generated-answer.wav")
                 println("VOICE_PCM_VOSK_GGUF_TTS_PASS device=android14 " +
-                    "source=synthetic_pcm wake_pre_authorized=simulated physical_mic=false private_audio=false")
-                wav.delete()
+                    "source=synthetic_pcm wake_pre_authorized=simulated " +
+                    "physical_mic=false private_audio=false")
             } finally {
                 synth.stop()
                 synth.shutdown()
