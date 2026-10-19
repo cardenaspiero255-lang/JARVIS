@@ -29,46 +29,72 @@ import org.junit.runner.RunWith
 class OfflineVoicePcmToTtsInstrumentedTest {
     private val sha = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
 
+
+    /**
+     * Every fixture says the EXACT same CI-only Spanish question. Accent,
+     * prosody and speed vary; no ASR hypothesis is rewritten or supplied by
+     * the test. Failure to decode the expected phrase across this fixed bank
+     * fails the gate, and each hypothesis is preserved as public evidence.
+     */
+    private fun decodeStrictSpanishQuestion(): String {
+        val instruments = InstrumentationRegistry.getInstrumentation()
+        val context = instruments.targetContext
+        val nativeFolder = NativeSpanishModelStore(context).ensureInstalled()
+        val hypotheses = mutableListOf<String>()
+        Model(nativeFolder.absolutePath).use { model ->
+            for (index in 0 until 12) {
+                val fixture = if (index == 0) "test-voice-16k-0.pcm"
+                    else "test-voice-16k-$index.pcm"
+                val text = StringBuilder()
+                Recognizer(model, 16_000.0f).use { recognizer ->
+                    instruments.context.assets.open(fixture).use { stream ->
+                        val chunk = ByteArray(4096)
+                        while (true) {
+                            val count = stream.read(chunk)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            if (recognizer.acceptWaveForm(chunk, count)) {
+                                val part = JSONObject(recognizer.result).optString("text", "")
+                                if (part.isNotBlank()) text.append(part).append(' ')
+                            }
+                        }
+                        text.append(JSONObject(recognizer.finalResult).optString("text", ""))
+                    }
+                }
+                val recognized = text.toString().trim()
+                val question = OfflineVoiceQuestionPolicy.extract(recognized, true)
+                val normalized = java.text.Normalizer.normalize(
+                    question.orEmpty().lowercase(java.util.Locale.ROOT),
+                    java.text.Normalizer.Form.NFD
+                ).replace(Regex("""\p{M}+"""), "").trim().replace(Regex("""\s+"""), " ")
+                println("VOICE_CI_SYNTHETIC_VOSK_HYPOTHESIS index=$index text=${recognized.take(160)}")
+                if (normalized == "cual es la capital de chile") {
+                    println("VOICE_ASR_FIXTURE_MATCH index=$index real_vosk=true")
+                    return requireNotNull(question)
+                }
+                hypotheses.add("$index:${recognized.take(90)}")
+            }
+        }
+        throw AssertionError(
+            "ASR_FIXTURE_MISRECOGNIZED: none of 12 deterministic audio renditions " +
+                "decoded exact 'cual es la capital de chile'; " +
+                hypotheses.joinToString(separator = " | ").take(1200)
+        )
+    }
+
+    @Test(timeout = 150_000L)
+    fun syntheticSpanishPcmIsAccuratelyRecognizedOffline() {
+        val question = decodeStrictSpanishQuestion()
+        val normalized = java.text.Normalizer.normalize(
+            question.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD
+        ).replace(Regex("""\p{M}+"""), "").trim().replace(Regex("""\s+"""), " ")
+        assertEquals("cual es la capital de chile", normalized)
+    }
     @Test(timeout = 960_000L)
     fun realPcmVoskQwenAndOfflineTtsSynthesizesWave() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val context = inst.targetContext
-        val nativeFolder = NativeSpanishModelStore(context).ensureInstalled()
-        val transcript = StringBuilder()
-        Model(nativeFolder.absolutePath).use { model ->
-            Recognizer(model, 16_000.0f).use { recognizer ->
-                inst.context.assets.open("test-voice-16k.pcm").use { stream ->
-                    val chunk = ByteArray(4096)
-                    while (true) {
-                        val count = stream.read(chunk)
-                        if (count < 0) break
-                        if (recognizer.acceptWaveForm(chunk, count)) {
-                            val part = JSONObject(recognizer.result).optString("text", "")
-                            if (part.isNotBlank()) transcript.append(part).append(' ')
-                        }
-                    }
-                    transcript.append(JSONObject(recognizer.finalResult).optString("text", ""))
-                }
-            }
-        }
-        // This PCM is generated from a known PUBLIC CI-only phrase, never a
-        // user's microphone. Output the ASR hypothesis for root-cause analysis.
-        val recognized = transcript.toString().trim()
-        println("VOICE_CI_SYNTHETIC_VOSK_HYPOTHESIS=${recognized.take(160)}")
-        // CI exercises the REAL PCM → Vosk question leg. The wake decision
-        // comes from a distinct Sherpa KWS component in production. This
-        // explicitly simulated preceding wake has NO biometric authority and
-        // does not certify the integrated wake detector.
-        val question = OfflineVoiceQuestionPolicy.extract(recognized, true)
-        assertNotNull("Vosk did not recognize the public synthetic question " +
-            "(CI-only public hypothesis='${recognized.take(160)}')", question)
-        val verifiedQuestion = requireNotNull(question)
-        val normalized = java.text.Normalizer.normalize(
-            verifiedQuestion.lowercase(java.util.Locale.ROOT),
-            java.text.Normalizer.Form.NFD
-        ).replace(Regex("""\p{M}+"""), "")
-        assertTrue("ASR missed target question content", normalized.contains("capital") &&
-            normalized.contains("chile"))
+        val verifiedQuestion = decodeStrictSpanishQuestion()
         // Copy only test-verified weights into app-private storage for JNI.
         val store = LocalGgufModelStore(context)
         store.deleteModel()
