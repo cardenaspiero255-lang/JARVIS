@@ -12,6 +12,13 @@ import java.security.MessageDigest
  * SHA-256 is persisted and revalidated before use (on a worker).
  */
 class LocalGgufModelStore(private val context: Context) {
+    private companion object {
+        // Activity recreation creates NEW store objects. Synchronizing only
+        // 'this' would let another Activity delete a model during native use.
+        // One process-wide lock covers verification, inference lease and file
+        // mutation, without ever blocking the UI-only hasModel hint.
+        val processModelLock = Any()
+    }
     private val prefs get() = context.getSharedPreferences("jarvis_gguf_v1", Context.MODE_PRIVATE)
     private val directory get() = File(context.filesDir, "private_gguf")
     private val file get() = File(directory, "selected.gguf")
@@ -22,7 +29,7 @@ class LocalGgufModelStore(private val context: Context) {
     fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
 
     /** Caller must run on a worker, never the UI thread. Returns a private SHA. */
-    @Synchronized fun import(uri: Uri): String {
+    @Synchronized fun import(uri: Uri): String = synchronized(processModelLock) {
         require(uri.scheme == "content") { "Selecciona un archivo mediante Android." }
         check(directory.isDirectory || directory.mkdirs()) { "Sin espacio privado." }
         val tmp = File(directory, "selected.tmp")
@@ -59,7 +66,7 @@ class LocalGgufModelStore(private val context: Context) {
                 deleteModel()
                 "No se pudo registrar la integridad del modelo."
             }
-            return sha
+            sha
         } finally {
             tmp.delete()
         }
@@ -72,12 +79,27 @@ class LocalGgufModelStore(private val context: Context) {
      * Call only from a worker; the block must return after native model_free.
      */
     @Synchronized fun <T> withVerifiedModel(block: (File?) -> T): T =
-        block(verifiedFile())
+        synchronized(processModelLock) { block(verifiedFile()) }
+
+    /**
+     * A single immutably verified identity for native warm-model reuse.
+     * The SHA is read while holding the same monitor as import/delete; native
+     * inference must finish *before* the callback returns.
+     * A missing/tampered file yields null for both values.
+     */
+    @Synchronized fun <T> withVerifiedModelRevision(
+        block: (File?, String?) -> T
+    ): T = synchronized(processModelLock) {
+        val verified = verifiedFile()
+        val revision = if (verified != null) prefs.getString("sha256", null) else null
+        block(verified, revision)
+    }
 
     /** Check hash on every inference. Never trust name/extension alone. */
-    @Synchronized fun verifiedFile(): File? {
-        val expected = prefs.getString("sha256", null) ?: return null
-        if (!file.isFile || !LocalGgufPolicy.validLength(file.length())) return null
+    @Synchronized fun verifiedFile(): File? = synchronized(processModelLock) {
+        val expected = prefs.getString("sha256", null) ?: return@synchronized null
+        if (!file.isFile || !LocalGgufPolicy.validLength(file.length()))
+            return@synchronized null
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
             val data = ByteArray(64 * 1024)
@@ -88,12 +110,12 @@ class LocalGgufModelStore(private val context: Context) {
             }
         }
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        return if (expected == actual) file else null
+        if (expected == actual) file else null
     }
 
-    @Synchronized fun deleteModel(): Boolean {
+    @Synchronized fun deleteModel(): Boolean = synchronized(processModelLock) {
         val removed = !file.exists() || file.delete()
         prefs.edit().clear().commit()
-        return removed
+        removed
     }
 }

@@ -86,6 +86,11 @@ class LocalGgufRealModelInstrumentedTest {
 
             val answers = mutableListOf<String>()
             val durations = mutableListOf<Long>()
+            // These are real JNI counters, not timing-based guesses.
+            // System.loadLibrary is explicit here because this is a native E2E.
+            System.loadLibrary("jarvis_llm")
+            val nativeBefore = inference.nativeCacheCounters()
+            assertEquals(3, nativeBefore.size)
             sampling.set(true)
             sampler.start()
 
@@ -142,6 +147,12 @@ class LocalGgufRealModelInstrumentedTest {
 
             sampling.set(false)
             sampler.join(2_000L)
+            val nativeAfter = inference.nativeCacheCounters()
+            val newLoads = nativeAfter[0] - nativeBefore[0]
+            val warmHits = nativeAfter[1] - nativeBefore[1]
+            assertEquals("One verified native load", 1L, newLoads)
+            assertTrue("Repeated authentic queries hit the warm model", warmHits >= 4L)
+            println("GGUF_WARM_MODEL_VERIFIED loads=$newLoads hits=$warmHits")
             val pssPeak = maxOf(basePss, peakPss.get(), Debug.getPss())
             val javaPeak = maxOf(1L, peakJava.get())
             val isEmulator = Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
@@ -164,7 +175,13 @@ class LocalGgufRealModelInstrumentedTest {
                         JSONArray(answers.map { it.length }))
                     .put("baseline_pss_kib", basePss)
                     .put("peak_pss_kib", pssPeak)
-                    .put("peak_java_heap_kib", javaPeak))
+                    .put("peak_java_heap_kib", javaPeak)
+                    .put("warm_cache", JSONObject()
+                        .put("native_model_loads", newLoads)
+                        .put("native_cache_hits", warmHits)
+                        .put("native_cache_evictions",
+                            nativeAfter[2] - nativeBefore[2])
+                        .put("verified_sha_revision", true)))
                 .put("quality", JSONObject()
                     .put("method", "keyword_proxy_v1")
                     .put("cases", quality))
@@ -186,6 +203,25 @@ class LocalGgufRealModelInstrumentedTest {
                 "first_ms=${durations.first()} " +
                 "peak_pss_kib=$pssPeak report=gguf-qa-raw.json"
             )
+            // User-selected deletion is ordered AFTER native inference and
+            // MUST release retained weights before removing the GGUF bytes.
+            val deletionFinished = CountDownLatch(1)
+            val deletedResult = AtomicReference<Boolean?>()
+            assertTrue("Delete must be scheduled on the JNI executor",
+                inference.deleteModel { deleted ->
+                    deletedResult.set(deleted)
+                    deletionFinished.countDown()
+                })
+            assertTrue("Native eviction/deletion timed out",
+                deletionFinished.await(35L, TimeUnit.SECONDS))
+            assertEquals("Deletion must report actual result", true, deletedResult.get())
+            assertFalse("Deleted GGUF must not remain in private storage", privateFile.exists())
+            val postDeleteCache = inference.nativeCacheCounters()
+            assertTrue("Deleting model must unload native cached weights",
+                postDeleteCache[2] > nativeAfter[2])
+            println("GGUF_CACHE_EVICTION_VERIFIED deleted=true " +
+                "evictions=${postDeleteCache[2] - nativeAfter[2]}")
+
         } finally {
             sampling.set(false)
             if (sampler.isAlive) sampler.join(2_000L)

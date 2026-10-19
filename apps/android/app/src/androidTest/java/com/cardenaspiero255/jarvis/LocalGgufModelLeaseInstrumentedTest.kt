@@ -16,6 +16,9 @@ class LocalGgufModelLeaseInstrumentedTest {
     @Test fun deletionBlocksUntilVerifiedModelConsumerReleasesItsLease() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = LocalGgufModelStore(context)
+        // Simulate an Activity recreation: the deleter has a distinct Store
+        // instance while the old Activity still holds a native model lease.
+        val recreatedActivityStore = LocalGgufModelStore(context)
         store.deleteModel()
         val model = File(context.filesDir, "private_gguf/selected.gguf")
         model.parentFile!!.mkdirs()
@@ -41,7 +44,7 @@ class LocalGgufModelLeaseInstrumentedTest {
             } finally { completed.countDown() }
         }
         val remover = Thread {
-            try { deletionCompleted.set(store.deleteModel()) }
+            try { deletionCompleted.set(recreatedActivityStore.deleteModel()) }
             catch (_: Exception) { /* verified by assertion below */ }
         }
         try {
