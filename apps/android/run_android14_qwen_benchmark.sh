@@ -8,8 +8,23 @@ for i in $(seq 0 11); do
   test -s "app/build/generated/ggufQwenE2eAssets/test-voice-16k-$i.pcm"
 done
 gradle --no-daemon -PggufQwenE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
+# Install signed, SHA-256 verified F-Droid eSpeak 1.52.0 with its embedded
+# voice data. A Google voice that claims "local" but fetches missing data
+# CANNOT satisfy this gate. eSpeak does not get a network permission.
+test -s /tmp/jarvis-offline-espeak-22.apk
+adb install -r /tmp/jarvis-offline-espeak-22.apk
+adb shell pm path com.reecedunn.espeak | grep -q '^package:'
+# Android eSpeak initialization extracts phoneme dictionaries shipped in APK.
+adb shell am start -W -a android.speech.tts.engine.INSTALL_TTS_DATA -p com.reecedunn.espeak
+adb shell settings put secure tts_default_synth com.reecedunn.espeak
+test "$(adb shell settings get secure tts_default_synth | tr -d '\r')" = "com.reecedunn.espeak"
 adb shell svc wifi disable
 adb shell svc data disable
+# Force a REAL offline WAV on Android BEFORE expensive Qwen decoding.
+gradle --no-daemon -PggufQwenE2e=true \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.cardenaspiero255.jarvis.OfflineVoicePcmToTtsInstrumentedTest#synthesizesRealOfflineSpanishWavBeforeModelLoad \
+  :app:connectedDebugAndroidTest
+
 # Fail early on genuine Vosk recognition before spending CPU on GGUF decoding.
 # This never substitutes the recognized transcript or weakens the exact gate.
 gradle --no-daemon -PggufQwenE2e=true \
