@@ -22,9 +22,16 @@ def output(*argv):
 
 
 def prepare(destination):
+    if destination.is_dir() and not (destination / ".git").exists():
+        # Gradle may precreate outputs.dir before invoking Exec. Only an
+        # entirely empty, auto-created folder may be removed; fail closed
+        # rather than deleting arbitrary user-owned files.
+        if any(destination.iterdir()):
+            raise RuntimeError("Refusing to replace a non-empty untracked upstream folder")
+        destination.rmdir()
     if destination.exists():
-        if not (destination / ".git").exists():
-            raise RuntimeError("Refusing to replace an untracked local upstream folder")
+        if not (destination / ".git").is_dir():
+            raise RuntimeError("Refusing to use a non-Git upstream folder")
         if output("git", "-C", str(destination), "rev-parse", "HEAD") != PINNED_COMMIT:
             raise RuntimeError("Upstream source has a different commit; not replacing it")
         if output("git", "-C", str(destination), "status", "--porcelain"):
@@ -34,6 +41,8 @@ def prepare(destination):
         call("git", "clone", "--filter=blob:none", "--no-checkout", UPSTREAM, str(destination))
         call("git", "-C", str(destination), "fetch", "--depth=1", "origin", PINNED_COMMIT)
         call("git", "-C", str(destination), "checkout", "--detach", PINNED_COMMIT)
+    if output("git", "-C", str(destination), "rev-parse", "HEAD") != PINNED_COMMIT:
+        raise RuntimeError("Pinned source HEAD verification failed")
     for filename in ("include/llama.h", "CMakeLists.txt", "LICENSE"):
         if not (destination / filename).is_file():
             raise RuntimeError("Pinned llama.cpp source is incomplete: " + filename)
