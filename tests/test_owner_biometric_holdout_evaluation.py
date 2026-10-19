@@ -61,7 +61,7 @@ class IndependentBiometricHoldoutTest(unittest.TestCase):
             harness.evaluate(data, minimum_per_class=4)
         data = records()
         data[-1]["replay_source_sha256"] = data[0]["recording_sha256"]
-        with self.assertRaisesRegex(ValueError, "replay source"):
+        with self.assertRaisesRegex(ValueError, "(?i)replay source"):
             harness.evaluate(data, minimum_per_class=4)
 
     def test_missing_consent_and_nonfinite_values_fail_closed(self):
@@ -71,7 +71,7 @@ class IndependentBiometricHoldoutTest(unittest.TestCase):
             harness.evaluate(data, minimum_per_class=4)
         data = records()
         data[0]["score"] = float("nan")
-        with self.assertRaisesRegex(ValueError, "score"):
+        with self.assertRaisesRegex(ValueError, "(?i)score"):
             harness.evaluate(data, minimum_per_class=4)
 
     def test_replay_is_separate_negative_class_and_never_authorizes(self):
@@ -85,9 +85,12 @@ class IndependentBiometricHoldoutTest(unittest.TestCase):
     def test_no_real_measurements_never_become_certificate(self):
         report = harness.evaluate(records(), minimum_per_class=4)
         self.assertEqual("NOT_CERTIFIED", report["authentication"])
-        self.assertEqual("SYNTHETIC_TEST_NOT_EVIDENCE",
-                         report["evaluation_notice"] if "evaluation_notice" in report else
-                         "SYNTHETIC_TEST_NOT_EVIDENCE")
+        self.assertEqual("MANIFEST_PROVENANCE_AND_CONSENT_REQUIRE_INDEPENDENT_AUDIT",
+                         report["evaluation_notice"])
+        self.assertFalse(report["baseline_non_regression_verified"])
+        self.assertFalse(report["holdout_precommitted"])
+        with self.assertRaisesRegex(ValueError, "No independently scored"):
+            harness.evaluate([], minimum_per_class=4)
 
 
 if __name__ == "__main__":
