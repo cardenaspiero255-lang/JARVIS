@@ -75,6 +75,18 @@ jobs:
           done
           test "$i" -eq 12
           test -s apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k-0.pcm
+      - name: Obtain pinned standalone Android offline eSpeak Spanish voice engine
+        run: |
+          # CI-only engine. Its Spanish phoneme dictionaries are packaged inside
+          # the APK and initialized on the emulator BEFORE network is disabled.
+          # No TTS APK or GPL voice data is bundled into the JARVIS application.
+          curl --fail --location --retry 3 --retry-delay 2 --max-time 120 \
+            --output /tmp/jarvis-offline-espeak-22.apk \
+            https://f-droid.org/repo/com.reecedunn.espeak_22.apk
+          echo '0a7822fec54d7f7ae759ffedc9afeaa77f809587b171fb2101998787821ec790  /tmp/jarvis-offline-espeak-22.apk' \
+            | sha256sum --check --status
+          test "$(stat -c %s /tmp/jarvis-offline-espeak-22.apk)" -gt 8000000
+          test "$(stat -c %s /tmp/jarvis-offline-espeak-22.apk)" -lt 12000000
       - name: Enable KVM emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
