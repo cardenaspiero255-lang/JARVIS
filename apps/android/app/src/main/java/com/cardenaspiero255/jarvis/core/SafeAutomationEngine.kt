@@ -44,6 +44,10 @@ data class SafeAutomationReport(
     val outcome: SafeAutomationOutcome,
     val completedSteps: Int,
     val totalSteps: Int,
+    // A successful local intent dispatch cannot certify third-party completion.
+    val externalOutcomeVerified: Boolean = false,
+    // Emergency STOP halts *future* steps, not already executed side effects.
+    val rollbackVerified: Boolean = false,
 )
 
 /**
