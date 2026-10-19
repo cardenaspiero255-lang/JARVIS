@@ -40,8 +40,12 @@ print("GGUF_E2E_PASS: one genuine model instrumentation test completed without s
 PY
 # The instrumentation writes only synthetic-case IDs and aggregate metrics.
 # Fail closed if the app failed to persist the measurements.
-adb exec-out run-as com.cardenaspiero255.jarvis.handsfreepreview \
-  cat files/gguf-qa-raw.json > "$out/gguf-qa-raw.json"
+# connectedDebugAndroidTest uninstalls the target package at teardown.
+# Fetch metrics from the case-specific Gradle logcat captured BEFORE removal;
+# run-as after the test returns "unknown package" as fake JSON.
+python3 ../../tools/extract_gguf_qa_log.py \
+  --test-results app/build/outputs/androidTest-results/connected/debug \
+  --dest "$out/gguf-qa-raw.json"
 test -s "$out/gguf-qa-raw.json"
 python3 ../../tools/gguf_qa_report.py \
   --input "$out/gguf-qa-raw.json" \
