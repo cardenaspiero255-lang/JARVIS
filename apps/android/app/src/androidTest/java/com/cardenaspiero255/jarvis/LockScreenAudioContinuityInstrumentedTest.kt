@@ -49,25 +49,29 @@ class LockScreenAudioContinuityInstrumentedTest {
                 .setAction(HandsFreePreviewService.ACTION_START_LONG_NATIVE)
                 .putExtra(HandsFreePreviewService.EXTRA_TAPPED, true))
 
-            assertTrue("ASR native foreground mic was not ready; last status: " +
-                prefs.getString("status", ""),
-                within(90_000L) {
-                    val s = prefs.getString("status", "").orEmpty()
-                    s.startsWith("EXTENDED_LISTENING: micrófono local activo") ||
-                        s.startsWith("LOCKSCREEN_PCM_OBSERVED")
-                })
+            val nativeReady = within(90_000L) {
+                val status = prefs.getString("status", "").orEmpty()
+                HandsFreePreviewService.isRunning && (
+                    status.startsWith("EXTENDED_LISTENING: micrófono local activo") ||
+                    status.startsWith("ASR_NATIVE_READY:") ||
+                    status.startsWith("ASR_NATIVE_LISTENING:") ||
+                    status.startsWith("LOCKSCREEN_PCM_OBSERVED"))
+            }
+            assertTrue("ASR native foreground mic was not ready; final status: " +
+                prefs.getString("status", "<no service state>"), nativeReady)
             automation.executeShellCommand("input keyevent 223").close() // KEYCODE_SLEEP
             assertTrue("Emulator refused screen sleep",
                 within(10_000L) { !power.isInteractive })
-            assertTrue("No real PCM progress after screen was turned off; last state: " +
-                prefs.getString("lockscreen_result", "none") + "; status: " +
-                prefs.getString("status", ""),
-                within(30_000L) {
+            val offPcmVerified = within(30_000L) {
                     !power.isInteractive &&
                         prefs.getString("lockscreen_result", "") ==
                         "SCREEN_OFF_AUDIO_OBSERVED" &&
                         prefs.getLong("lockscreen_off_samples", 0L) >= 16_000L
-                })
+                }
+            assertTrue("No real PCM progress after screen off; state: " +
+                prefs.getString("lockscreen_result", "none") + "; status: " +
+                prefs.getString("status", "") + "; observed samples: " +
+                prefs.getLong("lockscreen_off_samples", 0L), offPcmVerified)
             assertTrue("Native FGS did not survive sleep", HandsFreePreviewService.isRunning)
         } finally {
             // Restore emulator for later independent tests even if assertions fail.
