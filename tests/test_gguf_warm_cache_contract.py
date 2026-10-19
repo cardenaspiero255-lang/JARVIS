@@ -30,8 +30,8 @@ class WarmModelContract(unittest.TestCase):
         self.assertIn("fun deleteModel(", kotlin)
         self.assertIn("fun importModel(", kotlin)
         self.assertIn("mutationPending", kotlin)
-        self.assertIn("localGgufInference.deleteModel(", main)
-        self.assertIn("localGgufInference.importModel(", main)
+        self.assertIn("localGgufInference.deleteModel {", main)
+        self.assertIn("localGgufInference.importModel(selected)", main)
         self.assertNotIn("modelImportWorker.submit {", main)
 
     def test_real_instrumentation_must_prove_native_cache_hit(self):
