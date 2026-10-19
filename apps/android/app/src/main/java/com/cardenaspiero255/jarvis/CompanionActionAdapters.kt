@@ -66,6 +66,7 @@ internal class CompanionActionAdapters(private val activity: Activity) :
         SafeAutomationStep.OPEN_DHIZUKU -> openCompanion("com.rosan.dhizuku")
         SafeAutomationStep.OPEN_TERMUX -> openCompanion("com.termux")
         SafeAutomationStep.OPEN_OWNDROID -> openCompanion("com.bintianqi.owndroid")
+        SafeAutomationStep.REQUEST_TERMUX_ID -> requestTermuxIdentityCheck()
         SafeAutomationStep.OPEN_ANDROID_SETTINGS -> try {
             activity.startActivity(Intent(Settings.ACTION_SETTINGS))
             true
