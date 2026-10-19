@@ -16,7 +16,10 @@ class LocalGgufModelStore(private val context: Context) {
     private val directory get() = File(context.filesDir, "private_gguf")
     private val file get() = File(directory, "selected.gguf")
 
-    @Synchronized fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
+    // UI-only inexpensive availability hint: do NOT block the main thread
+    // waiting for withVerifiedModel's potentially minute-long native lease.
+    // Actual use is always independently SHA-verified under the store monitor.
+    fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
 
     /** Caller must run on a worker, never the UI thread. Returns a private SHA. */
     @Synchronized fun import(uri: Uri): String {
