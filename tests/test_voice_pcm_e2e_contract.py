@@ -22,7 +22,17 @@ class VoicePcmE2eContract(unittest.TestCase):
         self.assertIn("OfflineVoiceQuestionPolicy.extract(recognized, true)", kt)
         self.assertIn("ASR missed target question content", kt)
         self.assertIn("wake_pre_authorized=simulated", kt)
-        self.assertIn("test-voice-16k.pcm", workflow)
+        self.assertIn("test-voice-16k-0.pcm", workflow)
+        self.assertIn('test-voice-16k-$i.pcm', workflow)
+        self.assertIn("syntheticSpanishPcmIsAccuratelyRecognizedOffline", kt)
+        self.assertIn("assertEquals(\"cual es la capital de chile\"", kt)
+        self.assertIn("ASR_FIXTURE_MISRECOGNIZED", kt)
+        self.assertIn("VOICE_ASR_FIXTURE_MATCH", kt)
+        self.assertIn("test-voice-16k-0.pcm", kt)
+        self.assertIn("syntheticSpanishPcmIsAccuratelyRecognizedOffline", (
+            ROOT / "apps/android/run_android14_qwen_benchmark.sh"
+        ).read_text())
+        self.assertNotIn('assertTrue("ASR missed target question content"', kt)
 
 if __name__ == "__main__":
     unittest.main()
