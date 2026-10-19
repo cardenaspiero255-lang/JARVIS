@@ -132,6 +132,14 @@ def evaluate(rows, minimum_per_class=300, expected_holdout_sha256=None):
     validate(rows)
     by_split = {split: [r for r in rows if r["split"] == split] for split in SPLITS}
     for split, trials in by_split.items():
+        if minimum_per_class >= 300:
+            impostors = {r["speaker_id"] for r in trials if r["kind"] == "impostor"}
+            replay_sources = {r["replay_source_sha256"] for r in trials
+                              if r["kind"] == "replay"}
+            genuine_sessions = {r["session_id"] for r in trials
+                                if r["kind"] == "genuine"}
+            if len(impostors) < 20 or len(replay_sources) < 20 or len(genuine_sessions) < 3:
+                raise ValueError(f"{split}: independent speakers/replay sources/sessions insufficient")
         for kind in KINDS:
             needed = min(30, minimum_per_class) if kind == "genuine" else minimum_per_class
             if sum(r["kind"] == kind for r in trials) < needed:
