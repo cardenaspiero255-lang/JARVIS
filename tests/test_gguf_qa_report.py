@@ -54,7 +54,7 @@ class GgufReportTest(unittest.TestCase):
         self.assertEqual("NOT_CERTIFIED", record["certification"]["overall"])
 
     def test_nearest_rank_quantiles_use_real_observations(self):
-        self.assertEqual(4, nearest_rank([1, 2, 3, 4, 5], 0.5))
+        self.assertEqual(3, nearest_rank([1, 2, 3, 4, 5], 0.5))
         self.assertEqual(5, nearest_rank([1, 2, 3, 4, 5], 0.95))
         with self.assertRaises(ValueError):
             nearest_rank([], 0.95)
