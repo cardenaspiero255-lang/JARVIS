@@ -82,6 +82,7 @@ class NativeSpanishSpeechRunner(
         var microphone: AudioRecord? = null
         var model: Model? = null
         var recognizer: Recognizer? = null
+        var wakeBridge: SherpaNativeWakeBridge? = null
         var result: PreviewWake? = null
         var failure: String? = null
         val levels = AudioInputMeter()
@@ -121,6 +122,8 @@ class NativeSpanishSpeechRunner(
                 recognizer = createCommandRecognizer(model, fresh)
             }
             if (!modelReady()) return
+            // Optional second decoder on the same worker; never opens a second microphone.
+            wakeBridge = SherpaNativeWakeBridge.tryOpen(context, onStatus)
             onStatus("ASR_NATIVE_AUDIO_OPEN")
 
             val minimum = AudioRecord.getMinBufferSize(
@@ -154,6 +157,32 @@ class NativeSpanishSpeechRunner(
                 when {
                     received > 0 -> {
                         levels.observe(audio, received)
+                        // Native KWS provides only a candidate; Vosk still decides
+                        // completed public requests. Voice identity stays UNAVAILABLE.
+                        try {
+                            if (wakeBridge?.consume(audio, received,
+                                    SystemClock.elapsedRealtime()) == true) {
+                                // The real JNI candidate opens only the same bounded
+                                // 8-second PUBLIC command window as ASR "Jarvis".
+                                // Identity remains UNAVAILABLE; never run partial orders.
+                                val gateDecision = turnGate.observe(
+                                    "Jarvis", SystemClock.elapsedRealtime(),
+                                    SpeakerEvidence.UNAVAILABLE
+                                )
+                                if (gateDecision == WakeTurnDecision.WAITING) {
+                                    onStatus("KWS_NATIVE_WAKE_WAITING: Jarvis detectado; " +
+                                        "di «dime la hora» en 8 s (sin identidad verificada).")
+                                }
+                            }
+                        } catch (_: Exception) {
+                            try { wakeBridge?.close() } catch (_: Exception) {}
+                            wakeBridge = null
+                            onStatus("KWS_NATIVE_RUNTIME_FALLBACK: Vosk sigue activo.")
+                        } catch (_: UnsatisfiedLinkError) {
+                            try { wakeBridge?.close() } catch (_: Exception) {}
+                            wakeBridge = null
+                            onStatus("KWS_NATIVE_ABI_FALLBACK: Vosk sigue activo.")
+                        }
                         if (recognizer.acceptWaveForm(audio, received)) {
                             // A partial wake is advisory only. Only completed speech
                             // enters PreviewWakeTurnGate for command authorization.
@@ -259,6 +288,7 @@ class NativeSpanishSpeechRunner(
             try { microphone?.stop() } catch (_: RuntimeException) {}
             try { microphone?.release() } catch (_: RuntimeException) {}
             try { recognizer?.close() } catch (_: RuntimeException) {}
+            try { wakeBridge?.close() } catch (_: Exception) {}
             try { model?.close() } catch (_: RuntimeException) {}
             worker = null
             // Never carry raw PCM or the ASR transcript into the UI.

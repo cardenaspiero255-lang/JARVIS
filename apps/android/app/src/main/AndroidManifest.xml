@@ -52,6 +52,9 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".OwnerVoiceEnrollmentActivity"
+            android:exported="false" />
+        <activity
             android:name=".CompanionCenterActivity"
             android:exported="false" />
         <!-- Receives Termux one-shot result only through an explicit PendingIntent. -->

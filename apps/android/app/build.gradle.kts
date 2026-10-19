@@ -56,6 +56,9 @@ dependencies {
     implementation("io.github.iamr0s:Dhizuku-API:2.5.4")
     // Apache-2.0 offline Spanish STT; never depends on Android's speech service.
     implementation("com.alphacephei:vosk-android:0.3.47")
+    // Official sherpa-onnx AAR (Kotlin/JNI). Pinned SHA-256 below. The KWS
+    // engine is disabled if its independent model assets are not verified.
+    implementation("com.k2fsa.sherpa.release:sherpa-onnx:1.13.8@aar")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
@@ -136,3 +139,66 @@ val bundleOfflineSpanish by tasks.registering {
 
 android.sourceSets.getByName("main").assets.srcDir(offlineSpeechAssets)
 tasks.named("preBuild") { dependsOn(bundleOfflineSpanish) }
+
+/**
+ * Verify bytes of the exact Android JNI/Kotlin AAR published upstream
+ * (GitHub release v1.13.8), not merely a Maven coordinate. Fail the build
+ * on a missing/substituted binary; do not silently ship a different native lib.
+ */
+val verifySherpaAar by tasks.registering {
+    group = "verification"
+    description = "Verify official sherpa-onnx 1.13.8 Android AAR SHA-256"
+    doLast {
+        val artifacts = configurations.getByName("debugRuntimeClasspath")
+            .resolvedConfiguration.resolvedArtifacts
+        val artifact = artifacts.firstOrNull {
+            it.moduleVersion.id.group == "com.k2fsa.sherpa.release" &&
+                it.name == "sherpa-onnx" &&
+                it.moduleVersion.id.version == "1.13.8"
+        } ?: error("Official sherpa-onnx Android AAR dependency is absent")
+        val digest = MessageDigest.getInstance("SHA-256")
+        artifact.file.inputStream().buffered().use { input ->
+            val bytes = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(bytes)
+                if (n < 0) break
+                digest.update(bytes, 0, n)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        check(actual == "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96") {
+            "Sherpa native AAR SHA-256 mismatch: refusing APK"
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifySherpaAar) }
+
+/**
+ * Reproducibly bundle the official upstream English mobile KWS model.
+ * The script verifies EACH ONNX/BPE asset against independent pinned hashes,
+ * derives the precise 'JARVIS @Jarvis' BPE mapping and fails closed.
+ * Build machines require Python 3.10+ and sentencepiece==0.2.1.
+ */
+val kwsAssets = layout.buildDirectory.dir("generated/verifiedSherpaKwsAssets")
+val bundleVerifiedKws by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Acquire SHA-pinned official sherpa KWS model and encode Jarvis"
+    val script = rootProject.file("../../tools/prepare_kws_model.py")
+    inputs.file(script)
+    outputs.dir(kwsAssets)
+    commandLine("python3", script.absolutePath, "--dest", kwsAssets.get().asFile.absolutePath)
+}
+android.sourceSets.getByName("main").assets.srcDir(kwsAssets)
+tasks.named("preBuild") { dependsOn(bundleVerifiedKws) }
+
+/** Optional local speaker model; model bytes are SHA256 pinned at build. */
+val speakerAssets = layout.buildDirectory.dir("generated/verifiedSherpaSpeakerAssets")
+val bundleVerifiedSpeaker by tasks.registering(Exec::class) {
+    group = "build"
+    val script = rootProject.file("../../tools/prepare_speaker_model.py")
+    inputs.file(script)
+    outputs.dir(speakerAssets)
+    commandLine("python3", script.absolutePath, "--dest", speakerAssets.get().asFile.absolutePath)
+}
+android.sourceSets.getByName("main").assets.srcDir(speakerAssets)
+tasks.named("preBuild") { dependsOn(bundleVerifiedSpeaker) }

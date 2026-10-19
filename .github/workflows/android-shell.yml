@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - "apps/android/**"
+      - "tools/prepare_kws_model.py"
+      - "tools/prepare_speaker_model.py"
       - ".github/workflows/android-shell.yml"
   pull_request:
     paths:
@@ -41,6 +43,8 @@ jobs:
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
           gradle-version: "8.13"
+      - name: Build-only BPE tokenizer
+        run: python3 -m pip install --disable-pip-version-check --no-deps sentencepiece==0.2.1
       - name: Unit tests and debug APK
         run: gradle -p apps/android --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Upload testable debug APK
