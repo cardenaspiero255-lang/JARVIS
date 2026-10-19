@@ -37,8 +37,8 @@ class RealGgufEvidenceContract(unittest.TestCase):
                  "LocalGgufModelStore.kt").read_text()
         infer = (APP / "src/main/java/com/cardenaspiero255/jarvis/"
                  "LocalGgufInference.kt").read_text()
-        self.assertIn("store.withVerifiedModel { model ->", infer)
-        self.assertIn("@Synchronized fun <T> withVerifiedModel", store)
+        self.assertIn("store.withVerifiedModelRevision { model, verifiedSha ->", infer)
+        self.assertIn("@Synchronized fun <T> withVerifiedModelRevision", store)
         self.assertIn("fun hasModel(): Boolean", store)
         self.assertNotIn("@Synchronized fun hasModel()", store)
         self.assertNotIn("active?.cancel(true)", infer)
