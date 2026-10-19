@@ -236,6 +236,27 @@ class MainActivity : Activity() {
                     .show()
             }
         })
+        layout.addView(primaryButton("CONVERSAR OFFLINE CON IA · 30 MIN") {
+            if (HandsFreePreviewService.isRunning) {
+                stopHandsFreePreview()
+            } else if (!localGgufStore.hasModel()) {
+                statusText.text = "Importa un modelo GGUF compatible en IA GENERATIVA LOCAL."
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Preguntas habladas sin Internet · 30 minutos")
+                    .setMessage("Vosk escuchará solo durante la sesión autorizada y " +
+                        "pasará preguntas generales a tu GGUF privado. " +
+                        "JARVIS responderá con una voz española local instalada. " +
+                        "No reconoce aún la identidad del propietario y jamás " +
+                        "ejecutará órdenes del teléfono desde respuestas de IA. " +
+                        "Puedes DETENER desde la notificación incluso con pantalla apagada.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("ACTIVAR") { _, _ ->
+                        toggleHandsFreePreviewByTap(extended = true, questions = true)
+                    }
+                    .show()
+            }
+        })
         layout.addView(primaryButton("REGISTRAR MI VOZ · 3 MUESTRAS") {
             // Biometric enrollment is optional and requires a separate consent.
             startActivity(Intent(this, OwnerVoiceEnrollmentActivity::class.java))
@@ -845,7 +866,8 @@ class MainActivity : Activity() {
     }
 
     private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false,
-        systemMode: Boolean = false, extended: Boolean = false) {
+        systemMode: Boolean = false, extended: Boolean = false,
+        questions: Boolean = false) {
         if (HandsFreePreviewService.isRunning) {
             stopHandsFreePreview()
             statusText.text = "Prueba manos libres detenida. Micrófono liberado."
@@ -897,7 +919,8 @@ class MainActivity : Activity() {
                     action = when {
                         diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
                         systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
-                        extended -> HandsFreePreviewService.ACTION_START_LONG_NATIVE
+                        questions && extended -> HandsFreePreviewService.ACTION_START_LONG_NATIVE_QA
+                         extended -> HandsFreePreviewService.ACTION_START_LONG_NATIVE
                         else -> HandsFreePreviewService.ACTION_START_NATIVE
                     }
                     putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
@@ -908,7 +931,9 @@ class MainActivity : Activity() {
                     systemMode -> "Prueba del proveedor normal de Android solicitada. " +
                         "Puede usar Internet. Di «Jarvis, dime la hora»; " +
                         "después revisa el diagnóstico. No envía órdenes externas."
-                    extended -> "EXTENDED_LISTENING: 30 minutos de escucha local " +
+                    questions && extended -> "LLM_LOCAL_LISTENING: Vosk → GGUF → TTS " +
+                         "hasta 30 min, sin Internet y con DETENER visible."
+                     extended -> "EXTENDED_LISTENING: 30 minutos de escucha local " +
                         "con control DETENER visible. No requiere Internet ni identifica propietario."
                     else -> "Preparando reconocimiento Vosk español dentro de la APK. " +
                         "Cuando esté listo, di «Jarvis, dime la hora» durante 60 s. " +
