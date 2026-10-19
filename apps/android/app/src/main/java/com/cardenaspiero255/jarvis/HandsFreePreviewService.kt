@@ -636,6 +636,8 @@ class HandsFreePreviewService : Service() {
     private fun acquireShortWakeLock() {
         try {
             val pm = getSystemService(POWER_SERVICE) as? PowerManager ?: return
+            // Never overlap consecutive timed CPU locks during extended sessions.
+            if (wakeLock?.isHeld == true) wakeLock?.release()
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
                 "jarvis:HandsFreePreview").also { it.acquire(60_000L) }
             if (extendedListening) {
