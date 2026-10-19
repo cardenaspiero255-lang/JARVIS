@@ -35,6 +35,15 @@ class LongListeningOwnerProbeContract(unittest.TestCase):
         self.assertIn("nativeRunner?.setResponsePlayback", service)
         self.assertIn("continuous = extendedListening", service)
 
+    def test_voice_echo_and_pending_tts_timeout_are_bounded(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        enrollment = (SRC / "OwnerVoiceEnrollmentActivity.kt").read_text()
+        self.assertIn('TTS_INIT_TIMEOUT', service)
+        self.assertIn('350L', service)
+        self.assertIn('pendingSpeech = null', service)
+        self.assertIn('verifyingOnly = false // Permission flow', enrollment)
+        self.assertIn('PROBAR MI VOZ otra vez', enrollment)
+
     def test_real_owner_probe_never_grants_owner_authority(self):
         engine = (SRC / "SherpaOwnerVoiceProbeEngine.kt").read_text()
         enrollment = (SRC / "OwnerVoiceEnrollmentActivity.kt").read_text()
