@@ -362,7 +362,10 @@ class HandsFreePreviewService : Service() {
                         nativeRunner?.stop()
                     }
                     when (wake) {
-                        PreviewWake.STOP -> finish("ASR_NATIVE_STOP_BY_VOICE: micrófono detenido por orden de voz.")
+                        PreviewWake.STOP -> {
+                            localGgufInference?.cancelActive()
+                            finish("ASR_NATIVE_STOP_BY_VOICE: micrófono y GGUF cancelados por voz.")
+                        }
                         PreviewWake.LOCAL_TIME -> {
                             val now = LocalTime.now()
                             val answer = if (now.minute == 0)
@@ -406,6 +409,11 @@ class HandsFreePreviewService : Service() {
                         if (reply.isBlank()) {
                             finishOrResume("LLM_EMPTY: el modelo no respondió.")
                         } else {
+                            // Switch from decoding (STOP still audible) to TTS
+                            // (microphone echo muted); never treat model output
+                            // as a device command.
+                            nativeRunner?.finishInference()
+                            nativeRunner?.setResponsePlayback(true)
                             showStatus("LLM_LOCAL_ANSWER_READY: respuesta generada sin red.")
                             speakThenStop(reply)
                         }
@@ -765,6 +773,7 @@ class HandsFreePreviewService : Service() {
     }
 
     private fun finishOrResume(reason: String) {
+        nativeRunner?.finishInference()
         if (extendedListening && isRunning && !closed && !endedNormally) {
             // Keep a short post-TTS echo guard before analyzing microphone PCM.
             main.postDelayed({
