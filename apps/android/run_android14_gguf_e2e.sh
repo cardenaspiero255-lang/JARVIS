@@ -6,7 +6,13 @@ out="app/build/diagnostics/gguf-e2e"
 mkdir -p "$out"
 echo "=== Genuine GGUF JNI generation; SHA=${GITHUB_SHA:-unknown} ==="
 test -s "app/build/generated/ggufE2eAssets/e2e-smollm.gguf"
-gradle --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
+# The production APK has no INTERNET permission. The model was fetched and
+# hashed earlier, on the build host, before Android instrumentation starts.
+# Build APKs while Gradle still has network access, then run tests offline.
+gradle --no-daemon -PggufE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
+adb shell svc wifi disable
+adb shell svc data disable
+gradle --offline --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
 python3 - <<'PY'
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -28,4 +34,17 @@ if any(tc.find(x) is not None for x in ("failure", "error", "skipped")):
     raise SystemExit("GGUF_E2E_INVALID_RESULT: test failed or was skipped")
 print("GGUF_E2E_PASS: one genuine model instrumentation test completed without skips")
 PY
-echo "GGUF_E2E_PASS: native path verified on Android emulator" > "$out/summary.txt"
+# The instrumentation writes only synthetic-case IDs and aggregate metrics.
+# Fail closed if the app failed to persist the measurements.
+adb exec-out run-as com.cardenaspiero255.jarvis.handsfreepreview \
+  cat files/gguf-qa-raw.json > "$out/gguf-qa-raw.json"
+test -s "$out/gguf-qa-raw.json"
+python3 ../../tools/gguf_qa_report.py \
+  --input "$out/gguf-qa-raw.json" \
+  --json "$out/gguf-qa-results.json" \
+  --markdown "$out/gguf-qa-results.md"
+cat "$out/gguf-qa-results.md"
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  cat "$out/gguf-qa-results.md" >> "$GITHUB_STEP_SUMMARY"
+fi
+echo "GGUF_E2E_PASS: native path and measured QA verified on Android emulator" > "$out/summary.txt"
