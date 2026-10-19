@@ -20,6 +20,14 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake {
+                arguments("-DGGML_NATIVE=OFF", "-DGGML_OPENMP=OFF",
+                    "-DGGML_CPU_KLEIDIAI=OFF", "-DLLAMA_BUILD_TESTS=OFF",
+                    "-DLLAMA_BUILD_EXAMPLES=OFF")
+            }
+        }
     }
 
     buildTypes {
@@ -36,6 +44,14 @@ android {
         }
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    ndkVersion = "27.2.12479018"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,6 +62,16 @@ android {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
+}
+
+// A REAL GGUF integration suite runs only with -PggufE2e=true, using a
+// SHA-pinned Apache-2.0 fixture downloaded on the CI build host. Neither the
+// production APK nor normal AndroidTest builds bundle model weights.
+if (providers.gradleProperty("ggufE2e").orNull == "true") {
+    android.sourceSets.getByName("androidTest").java.srcDir("src/ggufE2e/java")
+    android.sourceSets.getByName("androidTest").assets.srcDir(
+        layout.buildDirectory.dir("generated/ggufE2eAssets")
+    )
 }
 
 dependencies {
@@ -202,3 +228,25 @@ val bundleVerifiedSpeaker by tasks.registering(Exec::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(speakerAssets)
 tasks.named("preBuild") { dependsOn(bundleVerifiedSpeaker) }
+
+
+/**
+ * The source is always SHA-pinned; CMake must never use moving 'master'.
+ * Only BUILD machines fetch source, no weights/network permission in APK.
+ */
+val pinnedLlamaSource = layout.projectDirectory.dir("src/main/cpp/third_party/llama.cpp")
+val preparePinnedLlama by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Fetch/verify reproducibly pinned llama.cpp Android source"
+    val script = rootProject.file("../../tools/prepare_llama_cpp.py")
+    inputs.file(script)
+    outputs.dir(pinnedLlamaSource)
+    commandLine("python3", script.absolutePath, "--dest",
+        pinnedLlamaSource.asFile.absolutePath)
+}
+// AGP configures CMake before preBuild; attach directly to its configure tasks.
+tasks.configureEach {
+    if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) {
+        dependsOn(preparePinnedLlama)
+    }
+}

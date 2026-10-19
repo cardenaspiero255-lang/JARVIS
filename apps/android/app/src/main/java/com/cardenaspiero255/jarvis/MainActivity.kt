@@ -14,6 +14,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.net.Uri
+import java.util.concurrent.Executors
+import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import android.text.InputType
 import android.widget.EditText
 import android.provider.Settings
@@ -118,9 +121,15 @@ class MainActivity : Activity() {
     private lateinit var capabilityStatusText: TextView
     private lateinit var gameReadinessText: TextView
     private var lastChatReply: String? = null
+    private lateinit var localGgufStore: LocalGgufModelStore
+    private lateinit var localGgufInference: LocalGgufInference
+    private val modelImportWorker = Executors.newSingleThreadExecutor()
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        localGgufStore = LocalGgufModelStore(this)
+        localGgufInference = LocalGgufInference(localGgufStore)
         visionPickerRequest = VisionPickerRequestGate(
             savedInstanceState?.getInt(VISION_PICKER_COUNTER_KEY, 0) ?: 0
         )
@@ -341,6 +350,72 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        })
+        section.addView(label(
+            "IA GENERATIVA LOCAL OPCIONAL · GGUF. Sin conexión ni comandos " +
+                "automáticos. Importa un modelo compatible que tengas derecho " +
+                "a usar; puede ocupar hasta 1,6 GB y consumir bastante RAM. " +
+                "Si no instalas ninguno, el chat de siempre continúa funcionando.",
+            12f, Color.rgb(164, 166, 174)
+        ))
+        section.addView(primaryButton("IMPORTAR MODELO GGUF · ARCHIVO LOCAL") {
+            AlertDialog.Builder(this)
+                .setTitle("Importar un modelo GGUF privado")
+                .setMessage("La importación es opcional. Comprueba los derechos " +
+                    "de uso del modelo. Se copiará al almacenamiento privado " +
+                    "de JARVIS, se calculará SHA-256 y nunca se subirá. " +
+                    "El archivo puede ser pesado. ¿Quieres seleccionarlo?")
+                .setNegativeButton("CANCELAR", null)
+                .setPositiveButton("SELECCIONAR") { _, _ ->
+                    val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    try {
+                        startActivityForResult(picker, GGUF_PICKER_REQUEST)
+                    } catch (_: ActivityNotFoundException) {
+                        statusText.text = "Android no dispone de un selector de archivos."
+                    }
+                }.show()
+        })
+        section.addView(primaryButton("PREGUNTAR AL MODELO LOCAL · SIN INTERNET") {
+            val question = chatInput.text.toString().trim()
+            if (!localGgufStore.hasModel()) {
+                statusText.text = "Importa primero un GGUF compatible."
+            } else if (!LocalGgufPolicy.validPrompt(question)) {
+                statusText.text = "Introduce una pregunta normal y breve, " +
+                    "sin órdenes para controlar el teléfono."
+            } else if (localGgufInference.ask(question) { answer ->
+                    if (isFinishing || isDestroyed) return@ask
+                    // Generated output is ephemeral, untrusted data only.
+                    lastChatReply = answer
+                    chatLog.text = "JARVIS (modelo privado, no verificado): " + answer
+                    statusText.text = "Respuesta local generada. Ninguna acción se ejecutó."
+                }) {
+                chatInput.text.clear()
+                statusText.text = "Generando en este dispositivo, sin Internet…"
+            } else {
+                statusText.text = "Ya hay otra consulta activa o la entrada es inválida."
+            }
+        })
+        section.addView(primaryButton("ELIMINAR MODELO LOCAL · LIBERAR ESPACIO") {
+            AlertDialog.Builder(this)
+                .setTitle("¿Eliminar el modelo de JARVIS?")
+                .setMessage("Se borrará la copia privada GGUF del dispositivo. " +
+                    "No se eliminará el archivo original que seleccionaste.")
+                .setNegativeButton("CANCELAR", null)
+                .setPositiveButton("ELIMINAR") { _, _ ->
+                    localGgufInference.cancelActive()
+                    modelImportWorker.submit {
+                        val deleted = localGgufStore.deleteModel()
+                        runOnUiThread {
+                            if (!isDestroyed) statusText.text =
+                                if (deleted) "Modelo privado eliminado."
+                                else "No se pudo eliminar completamente el modelo."
+                        }
+                    }
+                }.show()
         })
         section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
             val answer = lastChatReply
@@ -714,6 +789,7 @@ class MainActivity : Activity() {
         // numeric answer while our explicitly started recognition is pending.
         if (!recognitionRequest.isPending(SystemClock.elapsedRealtime())) voiceMathSession.clear()
         if (::privateMemory.isInitialized) privateMemory.stop()
+        if (::localGgufInference.isInitialized) localGgufInference.cancelActive()
         voiceConsent.cancel()
         lastChatReply = null
         if (::visionRecognizer.isInitialized) visionRecognizer.cancel()
@@ -735,6 +811,8 @@ class MainActivity : Activity() {
         ScreenObservationService.stopNow()
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
+        if (::localGgufInference.isInitialized) localGgufInference.close()
+        modelImportWorker.shutdownNow()
         super.onDestroy()
     }
 
@@ -1160,6 +1238,27 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == GGUF_PICKER_REQUEST) {
+            val selected: Uri? = if (resultCode == RESULT_OK) data?.data else null
+            if (selected != null && foregroundGate.canAcceptRecognitionResult()) {
+                statusText.text = "Copiando y verificando modelo GGUF privado…"
+                modelImportWorker.submit {
+                    val outcome = try {
+                        localGgufStore.import(selected)
+                        "GGUF importado y SHA-256 registrado. " +
+                            "Puedes hacer una pregunta sin Internet."
+                    } catch (_: Exception) {
+                        "Importación fallida: archivo incompatible, sin acceso o sin espacio."
+                    }
+                    runOnUiThread {
+                        if (!isDestroyed) statusText.text = outcome
+                    }
+                }
+            } else {
+                statusText.text = "Modelo no seleccionado o sesión no autorizada."
+            }
+            return
+        }
         if (screenConsentGate.owns(requestCode)) {
             val authorized = screenConsentGate.consume(requestCode, SystemClock.elapsedRealtime())
             if (!authorized) {
@@ -1419,6 +1518,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SPEECH_REQUEST = 7001
+        const val GGUF_PICKER_REQUEST = 9102
         private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"
         private const val SCREEN_CONSENT_COUNTER_KEY = "jarvis.screen.consent.issued"
         private const val REQUEST_SCREEN_NOTIFICATIONS = 9004
