@@ -219,6 +219,21 @@ class SafeAutomationEngineTest {
         assertFalse(partlySent.rollbackVerified)
     }
 
+    @Test fun termuxIdentityProbeNeedsFreshVisibleConsentAndExternalCallback() {
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true).outcome)
+        engine.prepare(SafeRoutine.TERMUX_ID_DIAGNOSTIC)
+        val result = engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true)
+        assertEquals(SafeAutomationOutcome.COMPLETED, result.outcome)
+        assertEquals(listOf(SafeAutomationStep.REQUEST_TERMUX_ID), gateway.completed)
+        assertFalse(result.externalOutcomeVerified)
+        assertEquals(SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT, result.recoveryAdvice)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.TERMUX_ID_DIAGNOSTIC, true).outcome)
+    }
+
     @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))
