@@ -55,9 +55,19 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         // user's microphone. Output the ASR hypothesis for root-cause analysis.
         val recognized = transcript.toString().trim()
         println("VOICE_CI_SYNTHETIC_VOSK_HYPOTHESIS=${recognized.take(160)}")
-        val question = OfflineVoiceQuestionPolicy.extract(recognized, false)
-        assertNotNull("Vosk did not recognize the public synthetic wake+question " +
+        // CI exercises the REAL PCM → Vosk question leg. The wake decision
+        // comes from a distinct Sherpa KWS component in production. This
+        // explicitly simulated preceding wake has NO biometric authority and
+        // does not certify the integrated wake detector.
+        val question = OfflineVoiceQuestionPolicy.extract(recognized, true)
+        assertNotNull("Vosk did not recognize the public synthetic question " +
             "(CI-only public hypothesis='${recognized.take(160)}')", question)
+        val normalized = java.text.Normalizer.normalize(
+            question!!.lowercase(java.util.Locale.ROOT),
+            java.text.Normalizer.Form.NFD
+        ).replace(Regex("""\\p{M}+"""), "")
+        assertTrue("ASR missed target question content", normalized.contains("capital") &&
+            normalized.contains("chile"))
         // Copy only test-verified weights into app-private storage for JNI.
         val store = LocalGgufModelStore(context)
         store.deleteModel()
@@ -88,7 +98,7 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         val result = AtomicReference<String>()
         val completed = CountDownLatch(1)
         try {
-            assertTrue(inference.ask(question!!) {
+            assertTrue(inference.ask(question) {
                 result.set(it)
                 completed.countDown()
             })
@@ -133,7 +143,7 @@ class OfflineVoicePcmToTtsInstrumentedTest {
                 assertEquals("TTS did not synthesize a wave", 0, spokenErrors.get())
                 assertTrue("TTS audio file empty", wav.length() > 44L)
                 println("VOICE_PCM_VOSK_GGUF_TTS_PASS device=android14 " +
-                    "source=synthetic_pcm physical_mic=false private_audio=false")
+                    "source=synthetic_pcm wake_pre_authorized=simulated physical_mic=false private_audio=false")
                 wav.delete()
             } finally {
                 synth.stop()
