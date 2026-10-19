@@ -19,7 +19,13 @@ def payload():
             "subsequent_request_ms": [100, 200, 300, 400],
             "generated_characters": [36, 30, 45, 50, 40],
             "baseline_pss_kib": 55000, "peak_pss_kib": 175000,
-            "peak_java_heap_kib": 8500
+            "peak_java_heap_kib": 8500,
+            "warm_cache": {
+                "native_model_loads": 1,
+                "native_cache_hits": 4,
+                "native_cache_evictions": 0,
+                "verified_sha_revision": True,
+            }
         },
         "quality": {
             "method": "keyword_proxy_v1",
@@ -48,10 +54,31 @@ class GgufReportTest(unittest.TestCase):
         self.assertEqual(2, record["quality_proxy"]["matched"])
         self.assertEqual(4, record["quality_proxy"]["count"])
         self.assertEqual(50.0, record["quality_proxy"]["percent"])
+        self.assertEqual(1, record["warm_model"]["native_model_loads"])
+        self.assertEqual(4, record["warm_model"]["native_cache_hits"])
+        self.assertTrue(record["warm_model"]["verified_sha_revision"])
         self.assertFalse(record["certification"]["physical_vivo_verified"])
         self.assertFalse(record["certification"]["voice_e2e_verified"])
         self.assertFalse(record["certification"]["semantic_quality_certified"])
         self.assertEqual("NOT_CERTIFIED", record["certification"]["overall"])
+
+    def test_rejects_forged_missing_or_inconsistent_warm_cache_counters(self):
+        missing = payload()
+        missing["inference"].pop("warm_cache")
+        with self.assertRaises(ValueError):
+            evaluate(missing)
+        for field, invalid in (
+            ("native_model_loads", 0),
+            ("native_model_loads", 2),
+            ("native_cache_hits", 3),
+            ("native_cache_hits", True),
+            ("native_cache_evictions", -1),
+            ("verified_sha_revision", False),
+        ):
+            forged = payload()
+            forged["inference"]["warm_cache"][field] = invalid
+            with self.subTest(field=field, invalid=invalid), self.assertRaises(ValueError):
+                evaluate(forged)
 
     def test_nearest_rank_quantiles_use_real_observations(self):
         self.assertEqual(3, nearest_rank([1, 2, 3, 4, 5], 0.5))
