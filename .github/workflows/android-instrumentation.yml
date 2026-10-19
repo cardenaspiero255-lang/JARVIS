@@ -6,6 +6,9 @@ on:
       - "tools/prepare_kws_model.py"
       - "tools/prepare_speaker_model.py"
       - ".github/workflows/android-instrumentation.yml"
+  schedule:
+    # Nightly real emulator run; no fabricated acoustic/physical claims.
+    - cron: '0 8 * * *'
   workflow_dispatch:
 
 permissions:
