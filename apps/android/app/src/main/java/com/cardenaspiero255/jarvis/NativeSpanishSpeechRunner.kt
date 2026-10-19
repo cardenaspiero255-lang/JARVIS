@@ -10,6 +10,7 @@ import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
 import com.cardenaspiero255.jarvis.core.OfflineVoiceQuestionPolicy
+import com.cardenaspiero255.jarvis.core.OfflineVoiceInferenceGate
 import com.cardenaspiero255.jarvis.core.PartialWakeSignalPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
@@ -45,9 +46,13 @@ class NativeSpanishSpeechRunner(
     init { require(sessionDurationMillis in 60_000L..30 * 60_000L) }
     private val active = AtomicBoolean(false)
     private val responsePlayback = AtomicBoolean(false)
+    private val inferenceGate = OfflineVoiceInferenceGate()
 
     /** Block any echo of JARVIS TTS from becoming a new voice request. */
     fun setResponsePlayback(playing: Boolean) { responsePlayback.set(playing) }
+
+    /** The decoding gate is distinct from the anti-echo mute used during TTS. */
+    fun finishInference() { inferenceGate.finishInference() }
     @Volatile private var worker: Thread? = null
     @Volatile private var recorder: AudioRecord? = null
     // Keep the voice policy unchanged; this preview authorizes ONLY public time.
@@ -65,6 +70,7 @@ class NativeSpanishSpeechRunner(
     fun stop() {
         active.set(false)
         responsePlayback.set(false)
+        inferenceGate.finishInference()
         worker?.interrupt()
         try { recorder?.stop() } catch (_: RuntimeException) {}
     }
@@ -230,6 +236,15 @@ class NativeSpanishSpeechRunner(
                                 // Support "Jarvis" then "dime la hora" within 8 s,
                                 // but never treat wake or ASR as speaker identity.
                                 val now = SystemClock.elapsedRealtime()
+                                if (allowLocalQuestions && inferenceGate.inferenceActive()) {
+                                    // Do NOT mute Vosk while llama.cpp is decoding:
+                                    // the only accepted utterance is emergency STOP.
+                                    if (inferenceGate.isEmergencyStop(text)) {
+                                        result = PreviewWake.STOP
+                                        break
+                                    }
+                                    continue
+                                }
                                 val freshQuestionWake = questionWakeUntil >= 0L &&
                                     now <= questionWakeUntil
                                 // A completed Spanish question is DATA, never an action.
@@ -240,8 +255,11 @@ class NativeSpanishSpeechRunner(
                                     else null
                                 if (question != null) {
                                     questionWakeUntil = -1L
-                                    responsePlayback.set(true)
-                                    onQuestion(question)
+                                    if (inferenceGate.beginInference()) {
+                                        // Still capture PCM for STOP. Ignore every other
+                                        // spoken command until generation is finished.
+                                        onQuestion(question)
+                                    }
                                     continue
                                 }
                                 val decision = turnGate.observe(
