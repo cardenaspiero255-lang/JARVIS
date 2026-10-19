@@ -23,7 +23,11 @@ class HandsFreePreviewContract(unittest.TestCase):
         self.assertEqual(1, len(mic))
         self.assertEqual(".HandsFreePreviewService", mic[0].get(NS + "name"))
         self.assertEqual("false", mic[0].get(NS + "exported"))
-        self.assertEqual("true", mic[0].get(NS + "stopWithTask"))
+        self.assertEqual("false", mic[0].get(NS + "stopWithTask"))
+        service = (SRC / "HandsFreePreviewService.kt").read_text(encoding="utf-8")
+        self.assertIn("if (!extendedListening)", service)
+        self.assertIn("START_NOT_STICKY", service)
+        self.assertIn("ACTION_STOP", service)
         self.assertFalse(any(
             f.get(NS + "name", "").endswith("BOOT_COMPLETED")
             for f in manifest.findall("./application/receiver/intent-filter/action")
