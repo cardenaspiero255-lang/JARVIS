@@ -74,6 +74,20 @@ class LocalGgufModelStore(private val context: Context) {
     @Synchronized fun <T> withVerifiedModel(block: (File?) -> T): T =
         block(verifiedFile())
 
+    /**
+     * A single immutably verified identity for native warm-model reuse.
+     * The SHA is read while holding the same monitor as import/delete; native
+     * inference must finish *before* the callback returns.
+     * A missing/tampered file yields null for both values.
+     */
+    @Synchronized fun <T> withVerifiedModelRevision(
+        block: (File?, String?) -> T
+    ): T {
+        val verified = verifiedFile()
+        val revision = if (verified != null) prefs.getString("sha256", null) else null
+        return block(verified, revision)
+    }
+
     /** Check hash on every inference. Never trust name/extension alone. */
     @Synchronized fun verifiedFile(): File? {
         val expected = prefs.getString("sha256", null) ?: return null
