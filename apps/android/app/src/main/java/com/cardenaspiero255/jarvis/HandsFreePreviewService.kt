@@ -743,7 +743,7 @@ class HandsFreePreviewService : Service() {
                         val voice = try {
                             engine?.voices?.firstOrNull {
                                 it.locale.language == "es" && !it.isNetworkConnectionRequired &&
-                                    !it.isNotInstalled
+                                    it.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) != true
                             }
                         } catch (_: RuntimeException) { null }
                         if (voice != null) {
