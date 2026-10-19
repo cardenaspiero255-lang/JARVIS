@@ -1,0 +1,40 @@
+JARVIS OMEGA — AVISOS DE TERCEROS PARA MODELOS DE VOZ
+Actualización: 2026-10-18
+
+Este archivo forma parte de la APK en assets/legal. El código fuente de
+JARVIS y cada componente externo son obras distintas; este aviso NO certifica
+la licencia de todo el proyecto ni acredita precisión biométrica.
+
+1. sherpa-onnx Kotlin/JNI 1.13.8
+   Autor: k2-fsa/sherpa-onnx y colaboradores
+   Fuente: https://github.com/k2-fsa/sherpa-onnx
+   Licencia del código del motor: Apache License, Version 2.0.
+   El texto de licencia se incluye en assets/legal/Apache-2.0.txt.
+
+2. KWS GigaSpeech Zipformer 3.3M (2024-01-01, archivo NO mobile)
+   Editor: k2-fsa/sherpa-onnx; autores de modelo: pkufool/icefall
+   Fuente: https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
+   Archivo original:
+     sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+   SHA-256:
+     f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a
+   El README.md incluido en el archivo original declara Apache License 2.0
+   para el modelo. Conservar los avisos originales del modelo al redistribuir.
+   El modelo fue entrenado con GigaSpeech XL; el uso de los pesos y los
+   eventuales derechos sobre datos originales requieren evaluación separada
+   antes de cualquier distribución comercial externa.
+
+3. Modelo de embeddings ERes2Net / 3D-Speaker
+   Origen: https://modelscope.cn/models/iic/speech_eres2net_base_sv_zh-cn_3dspeaker_16k
+   ONNX: https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+   Archivo:
+     3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
+   SHA-256:
+     1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b
+   Ficha del modelo ModelScope: Apache License 2.0; conservar créditos y
+   licencia de los autores originales.
+
+Esta APK es una vista previa de desarrollo. La palabra de activación y
+los vectores biométricos no están calibrados para autenticación.
+No afirmar precisión/falsos positivos ni resistencia anti-replay hasta medirlo
+sobre datos originales e independientes.
