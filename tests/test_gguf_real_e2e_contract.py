@@ -32,6 +32,18 @@ class RealGgufEvidenceContract(unittest.TestCase):
         self.assertIn("GGUF_E2E_INVALID_RESULT", script)
         self.assertIn("-PggufE2e=true", script)
 
+    def test_native_model_lease_cannot_block_ui_presence_probe(self):
+        store = (APP / "src/main/java/com/cardenaspiero255/jarvis/"
+                 "LocalGgufModelStore.kt").read_text()
+        infer = (APP / "src/main/java/com/cardenaspiero255/jarvis/"
+                 "LocalGgufInference.kt").read_text()
+        self.assertIn("store.withVerifiedModel { model ->", infer)
+        self.assertIn("@Synchronized fun <T> withVerifiedModel", store)
+        self.assertIn("fun hasModel(): Boolean", store)
+        self.assertNotIn("@Synchronized fun hasModel()", store)
+        self.assertNotIn("active?.cancel(true)", infer)
+        self.assertIn("runState.finish()", infer)
+
     def test_product_apk_never_bundles_ci_model(self):
         gradle = (APP / "build.gradle.kts").read_text()
         manifest = (APP / "src/main/AndroidManifest.xml").read_text()
