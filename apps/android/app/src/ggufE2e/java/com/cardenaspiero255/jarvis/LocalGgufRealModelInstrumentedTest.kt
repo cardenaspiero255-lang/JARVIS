@@ -86,6 +86,11 @@ class LocalGgufRealModelInstrumentedTest {
 
             val answers = mutableListOf<String>()
             val durations = mutableListOf<Long>()
+            // These are real JNI counters, not timing-based guesses.
+            // System.loadLibrary is explicit here because this is a native E2E.
+            System.loadLibrary("jarvis_llm")
+            val nativeBefore = inference.nativeCacheCounters()
+            assertEquals(3, nativeBefore.size)
             sampling.set(true)
             sampler.start()
 
@@ -142,6 +147,12 @@ class LocalGgufRealModelInstrumentedTest {
 
             sampling.set(false)
             sampler.join(2_000L)
+            val nativeAfter = inference.nativeCacheCounters()
+            val newLoads = nativeAfter[0] - nativeBefore[0]
+            val warmHits = nativeAfter[1] - nativeBefore[1]
+            assertEquals("One verified native load", 1L, newLoads)
+            assertTrue("Repeated authentic queries hit the warm model", warmHits >= 4L)
+            println("GGUF_WARM_MODEL_VERIFIED loads=$newLoads hits=$warmHits")
             val pssPeak = maxOf(basePss, peakPss.get(), Debug.getPss())
             val javaPeak = maxOf(1L, peakJava.get())
             val isEmulator = Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
