@@ -42,6 +42,7 @@ import com.cardenaspiero255.jarvis.core.PreviewWake
 import com.cardenaspiero255.jarvis.core.LockScreenAudioEvidence
 import com.cardenaspiero255.jarvis.core.LockScreenAudioState
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
+import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import java.time.LocalTime
 
 /**
@@ -79,6 +80,8 @@ class HandsFreePreviewService : Service() {
     private var systemRecognizerRequested = false
     private var nativeModeRequested = false
     private var extendedListening = false
+    private var questionModeRequested = false
+    private var localGgufInference: LocalGgufInference? = null
     // Persistent evidence contains sample counts only, never voices or transcript.
     private val screenOffEvidence = LockScreenAudioEvidence()
     private val wakeLockRefresh = object : Runnable {
@@ -115,7 +118,9 @@ class HandsFreePreviewService : Service() {
         }
         val diagnostic = intent?.action == ACTION_DIAGNOSE
         val systemRequested = intent?.action == ACTION_START_SYSTEM
-        val extendedRequested = intent?.action == ACTION_START_LONG_NATIVE
+        val questionRequested = intent?.action == ACTION_START_LONG_NATIVE_QA
+        val extendedRequested = intent?.action == ACTION_START_LONG_NATIVE ||
+            questionRequested
         val nativeRequested = intent?.action == ACTION_START_NATIVE || extendedRequested
         if ((intent?.action != ACTION_START && !diagnostic && !systemRequested &&
                 !nativeRequested) ||
@@ -137,6 +142,11 @@ class HandsFreePreviewService : Service() {
             SpeechRecognizer.isRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
         extendedListening = extendedRequested
+        questionModeRequested = questionRequested
+        if (questionModeRequested && !LocalGgufModelStore(applicationContext).hasModel()) {
+            finish("LLM_LOCAL_MISSING: importa un GGUF compatible desde JARVIS antes de hablar.")
+            return START_NOT_STICKY
+        }
         timeGate = PreviewTimeGate(if (extendedListening) 30 * 60_000L else 60_000L)
         val result = policy.canStart(
             explicitUserTap = true,
@@ -180,7 +190,12 @@ class HandsFreePreviewService : Service() {
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
+        if (questionModeRequested) {
+            localGgufInference = LocalGgufInference(LocalGgufModelStore(applicationContext))
+        }
         record(when {
+            questionModeRequested -> "ASR_GGUF_PREPARING: Vosk español + GGUF privado " +
+                "+ voz local; no hay permisos para órdenes, nube ni descargas."
             nativeModeRequested -> "ASR_NATIVE_PREPARING: preparando motor español " +
                 "Vosk incluido en la APK; no usa servicios de voz de Android."
             diagnostic -> "DIAGNOSTIC_START: micrófono y TTS sin usar reconocedor."
@@ -327,7 +342,10 @@ class HandsFreePreviewService : Service() {
                     acquireShortWakeLock()
                     val duration = if (extendedListening) 30 * 60_000L else 60_000L
                     main.postDelayed(timeout, duration)
-                    showStatus(if (extendedListening)
+                    showStatus(if (questionModeRequested)
+                        "ASR_GGUF_READY: Vosk local listo hasta 30 min; " +
+                            "di «Jarvis, qué es un procesador». Aviso DETENER visible." else
+                        if (extendedListening)
                         "EXTENDED_LISTENING: micrófono local activo hasta 30 min; " +
                             "aviso visible con DETENER. Di «Jarvis, dime la hora»." else
                         "ASR_NATIVE_READY: escucha local 60 s activa. " +
@@ -368,6 +386,37 @@ class HandsFreePreviewService : Service() {
                     }
                 }
             },
+            onQuestion = { question ->
+                // Called by the bounded Vosk worker. Never store text or audio.
+                // The model cannot invoke intents, shell, Shizuku or network.
+                main.post {
+                    if (!isRunning || closed || !extendedListening || !questionModeRequested ||
+                        !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    if (!LocalGgufPolicy.validPrompt(question)) {
+                        finishOrResume("LLM_QUESTION_REJECTED: pregunta insegura.")
+                        return@post
+                    }
+                    val inference = localGgufInference
+                    if (inference == null || !inference.ask(question) { answer ->
+                        if (!isRunning || closed || !questionModeRequested ||
+                            !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@ask
+                        // Generated text is untrusted. It is ONLY spoken locally,
+                        // never parsed into a device command or persisted.
+                        val reply = answer.trim().take(420)
+                        if (reply.isBlank()) {
+                            finishOrResume("LLM_EMPTY: el modelo no respondió.")
+                        } else {
+                            showStatus("LLM_LOCAL_ANSWER_READY: respuesta generada sin red.")
+                            speakThenStop(reply)
+                        }
+                    }) {
+                        finishOrResume("LLM_BUSY: consulta anterior aún activa.")
+                    } else {
+                        showStatus("LLM_LOCAL_INFERENCE: generando respuesta privada.")
+                    }
+                }
+            },
+            allowLocalQuestions = questionModeRequested,
             onFailure = { message ->
                 main.post {
                     if (isRunning && !closed && nativeModeRequested && !consumed)
@@ -848,7 +897,12 @@ class HandsFreePreviewService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        finish("JARVIS fue retirado de aplicaciones recientes. Micrófono liberado.")
+        // Removing the Activity must not silently cancel an explicitly started
+        // 30-minute foreground voice session. Notification STOP remains available.
+        // One-shot/diagnostic previews do stop when the task is dismissed.
+        if (!extendedListening) {
+            finish("JARVIS retirado de recientes; micrófono de prueba liberado.")
+        }
         super.onTaskRemoved(rootIntent)
     }
 
@@ -867,6 +921,9 @@ class HandsFreePreviewService : Service() {
         main.removeCallbacks(nativeStartupTimeout)
         nativeRunner?.stop()
         nativeRunner = null
+        localGgufInference?.cancelActive()
+        localGgufInference?.close()
+        localGgufInference = null
         ttsWatchdog?.let { main.removeCallbacks(it) }
         ttsWatchdog = null
         pendingRetry?.let(main::removeCallbacks)
@@ -890,6 +947,8 @@ class HandsFreePreviewService : Service() {
         const val ACTION_START = "com.cardenaspiero255.jarvis.HANDSFREE_START"
         const val ACTION_START_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_VOSK_NATIVE"
         const val ACTION_START_LONG_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_LONG_NATIVE"
+        const val ACTION_START_LONG_NATIVE_QA =
+            "com.cardenaspiero255.jarvis.HANDSFREE_LONG_NATIVE_QA"
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
