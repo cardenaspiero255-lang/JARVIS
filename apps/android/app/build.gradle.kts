@@ -74,6 +74,15 @@ if (providers.gradleProperty("ggufE2e").orNull == "true") {
     )
 }
 
+// Dedicated, never-shipped quality experiment with authentic instruction
+// weights. Default builds and the baseline GGUF E2E stay unchanged.
+if (providers.gradleProperty("ggufInstructE2e").orNull == "true") {
+    android.sourceSets.getByName("androidTest").java.srcDir("src/ggufInstructE2e/java")
+    android.sourceSets.getByName("androidTest").assets.srcDir(
+        layout.buildDirectory.dir("generated/ggufInstructE2eAssets")
+    )
+}
+
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     // Permission inspection only; privileged execution requires separate reviewed adapters.
