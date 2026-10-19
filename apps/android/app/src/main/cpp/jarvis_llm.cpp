@@ -12,6 +12,34 @@ namespace {
 std::mutex inference_mutex;
 std::once_flag backend_once;
 
+// Maximum ONE retained weight set per process; always guarded by inference_mutex.
+// Session context/sampler is fresh every request, preventing conversational
+// state leakage. The Kotlin side supplies a *verified* SHA-256 revision.
+llama_model * cached_model = nullptr;
+std::string cached_path;
+std::string cached_revision;
+uint64_t native_model_loads = 0;
+uint64_t native_cache_hits = 0;
+uint64_t native_cache_evictions = 0;
+
+void release_cached_locked() {
+    if (cached_model) {
+        llama_model_free(cached_model);
+        cached_model = nullptr;
+        native_cache_evictions++;
+    }
+    cached_path.clear();
+    cached_revision.clear();
+}
+
+bool valid_sha256(const std::string & sha) {
+    if (sha.size() != 64) return false;
+    for (char ch : sha) {
+        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+    }
+    return true;
+}
+
 jstring make_java_string(JNIEnv * env, const std::string & text) {
     const auto length = static_cast<jsize>(std::min<size_t>(text.size(), 8192));
     jbyteArray bytes = env->NewByteArray(length);
@@ -36,9 +64,11 @@ bool was_cancelled(JNIEnv * env, jobject signal, jmethodID getMethod) {
 }
 
 std::string run_inference(JNIEnv * env, const std::string & path,
-    const std::string & prompt, jint requested, jobject signal) {
+    const std::string & revision, const std::string & prompt, jint requested,
+    jobject signal, bool keep_loaded) {
     if (path.empty() || path.size() > 1024 || prompt.size() > 4096 ||
-        requested < 1 || requested > 96 || !signal) return "Solicitud local inválida.";
+        requested < 1 || requested > 96 || !signal ||
+        (keep_loaded && !valid_sha256(revision))) return "Solicitud local inválida.";
 
     jclass atomicClass = env->FindClass("java/util/concurrent/atomic/AtomicBoolean");
     if (!atomicClass) return "No se pudo iniciar la cancelación.";
@@ -52,9 +82,23 @@ std::string run_inference(JNIEnv * env, const std::string & path,
         return "";
     }
 
-    llama_model_params modelOpts = llama_model_default_params();
-    modelOpts.n_gpu_layers = 0; // portable CPU, no privileged GPU access
-    llama_model * model = llama_model_load_from_file(path.c_str(), modelOpts);
+    llama_model * model = nullptr;
+    if (keep_loaded && cached_model && cached_path == path &&
+        cached_revision == revision) {
+        model = cached_model;
+        native_cache_hits++;
+    } else {
+        if (keep_loaded) release_cached_locked();
+        llama_model_params modelOpts = llama_model_default_params();
+        modelOpts.n_gpu_layers = 0; // portable CPU, no privileged GPU access
+        model = llama_model_load_from_file(path.c_str(), modelOpts);
+        if (model && keep_loaded) {
+            cached_model = model;
+            cached_path = path;
+            cached_revision = revision;
+            native_model_loads++;
+        }
+    }
     if (!model) {
         env->DeleteLocalRef(atomicClass);
         return "No se pudo cargar el modelo GGUF.";
@@ -121,7 +165,7 @@ std::string run_inference(JNIEnv * env, const std::string & path,
 
     if (sampler) llama_sampler_free(sampler);
     if (context) llama_free(context);
-    llama_model_free(model);
+    if (!keep_loaded) llama_model_free(model);
     env->DeleteLocalRef(atomicClass);
     return output;
 }
@@ -140,8 +184,57 @@ Java_com_cardenaspiero255_jarvis_LocalGgufInference_generate(
         if (prompt) env->ReleaseStringUTFChars(jprompt, prompt);
         return make_java_string(env, "No se pudo preparar el mensaje.");
     }
-    std::string result = run_inference(env, path, prompt, maxTokens, cancellation);
+    std::string result = run_inference(
+        env, path, "", prompt, maxTokens, cancellation, false);
     env->ReleaseStringUTFChars(jpath, path);
     env->ReleaseStringUTFChars(jprompt, prompt);
     return make_java_string(env, result);
+}
+
+
+// Cache-aware path: this entrypoint accepts the SHA-256 already authenticated
+// by LocalGgufModelStore.withVerifiedModelRevision. Never trust path alone.
+// The same mutex guards decode, eviction and all model-cache counters.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_cardenaspiero255_jarvis_LocalGgufInference_generateCached(
+    JNIEnv * env, jobject /*self*/, jstring jpath, jstring jrevision,
+    jstring jprompt, jint maxTokens, jobject cancellation) {
+    if (!jpath || !jrevision || !jprompt || !cancellation)
+        return make_java_string(env, "Parámetros faltantes.");
+    const char * path = env->GetStringUTFChars(jpath, nullptr);
+    const char * revision = env->GetStringUTFChars(jrevision, nullptr);
+    const char * prompt = env->GetStringUTFChars(jprompt, nullptr);
+    if (!path || !revision || !prompt) {
+        if (path) env->ReleaseStringUTFChars(jpath, path);
+        if (revision) env->ReleaseStringUTFChars(jrevision, revision);
+        if (prompt) env->ReleaseStringUTFChars(jprompt, prompt);
+        return make_java_string(env, "No se pudo preparar el mensaje.");
+    }
+    const std::string result = run_inference(
+        env, path, revision, prompt, maxTokens, cancellation, true);
+    env->ReleaseStringUTFChars(jpath, path);
+    env->ReleaseStringUTFChars(jrevision, revision);
+    env->ReleaseStringUTFChars(jprompt, prompt);
+    return make_java_string(env, result);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_cardenaspiero255_jarvis_LocalGgufInference_releaseCachedModel(
+    JNIEnv * /*env*/, jobject /*self*/) {
+    std::lock_guard<std::mutex> lock(inference_mutex);
+    release_cached_locked();
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_cardenaspiero255_jarvis_LocalGgufInference_nativeCacheCounters(
+    JNIEnv * env, jobject /*self*/) {
+    std::lock_guard<std::mutex> lock(inference_mutex);
+    jlong counters[] = {
+        static_cast<jlong>(native_model_loads),
+        static_cast<jlong>(native_cache_hits),
+        static_cast<jlong>(native_cache_evictions)
+    };
+    jlongArray result = env->NewLongArray(3);
+    if (result) env->SetLongArrayRegion(result, 0, 3, counters);
+    return result;
 }
