@@ -95,6 +95,27 @@ class LocalDialogueTest {
         assertEquals(previous, dialogue.reply("repítelo"))
     }
 
+    @Test fun typedOfflinePlannerExplainsPreviewWithoutExecutingDeviceActions() {
+        val dialogue = LocalDialogue()
+        val answer = dialogue.reply("planifica Jarvis revisa Shizuku y abre ajustes")
+        assertTrue(answer.contains("Plan local"))
+        assertTrue(answer.contains("confirmación"))
+        assertFalse(answer.contains("He ejecutado"))
+        val history = dialogue.history()
+        assertTrue(history.any { it.contains("Plan local") })
+        assertTrue(dialogue.reply("planifica Jarvis revisa Shizuku y borra fotos")
+            .contains("respuesta local verificada"))
+    }
+
+    @Test fun recoveredPlanTextIsNotReplayedAsDeviceAuthorization() {
+        val dialogue = LocalDialogue()
+        dialogue.restore("Tú: planifica Jarvis revisa Shizuku y abre ajustes\\n" +
+            "JARVIS: Plan local: peligro al restaurar")
+        val answer = dialogue.reply("repite")
+        assertTrue(answer.contains("Plan local"))
+        assertFalse(dialogue.reply("jarvis ejecuta plan").contains("He ejecutado"))
+    }
+
     @Test fun exactShortAliasesRemainAvailableWithoutInternet() {
         val dialogue = LocalDialogue()
         assertTrue(dialogue.reply("buenas").contains("Hola"))
