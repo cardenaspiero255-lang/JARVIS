@@ -34,6 +34,17 @@ class GgufBenchmarkIntegrationContract(unittest.TestCase):
         self.assertIn("GGUF_QA_REPORT_VALIDATED", (ROOT / "tools/gguf_qa_report.py").read_text())
         self.assertNotIn("e2e-smollm.gguf", workflow.split("Upload only test reports")[1])
 
+    def test_optional_vivo_runner_is_manual_and_does_not_touch_funtouch(self):
+        script = (ROOT / "tools/run_vivo_gguf_qa.sh").read_text()
+        self.assertIn("--accept-debug-test-model-reset", script)
+        self.assertIn("Refusing to claim Vivo benchmark", script)
+        self.assertIn("usb_adb_instrumentation", script)
+        self.assertIn("gguf-qa-report", script.replace("_", "-"))
+        self.assertIn("run-as com.cardenaspiero255.jarvis.handsfreepreview", script)
+        self.assertNotIn("adb shell svc wifi disable", script)
+        self.assertNotIn("adb shell settings put", script)
+        self.assertNotIn("adb shell pm uninstall", script)
+
     def test_voice_asr_to_llm_and_tts_not_falsely_claimed(self):
         main = (SRC / "MainActivity.kt").read_text()
         voice = main.split("private fun processRecognizedSpeech(", 1)[1].split(
