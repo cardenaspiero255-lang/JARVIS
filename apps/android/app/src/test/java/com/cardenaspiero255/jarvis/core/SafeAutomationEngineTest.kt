@@ -134,6 +134,18 @@ class SafeAutomationEngineTest {
         }
     }
 
+    @Test fun localGatewayAcceptanceMustNotBeSoldAsExternalActionVerification() {
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway)
+        engine.prepare(SafeRoutine.OPEN_TERMUX)
+        val report = engine.confirmAndRun(SafeRoutine.OPEN_TERMUX, true)
+        assertEquals(SafeAutomationOutcome.COMPLETED, report.outcome)
+        // COMPLETED currently means gateway accepted a local step, not that
+        // Termux executed a command or external tools confirmed their effects.
+        assertFalse(report.externalOutcomeVerified)
+        assertFalse(report.rollbackVerified)
+    }
+
     @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))
