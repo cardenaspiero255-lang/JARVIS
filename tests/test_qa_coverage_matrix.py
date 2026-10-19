@@ -37,10 +37,26 @@ class CoverageMatrixContract(unittest.TestCase):
         by_id = {f["id"]: f for f in report["features"]}
         self.assertTrue(by_id[35]["defined_tests"])
         self.assertTrue(by_id[47]["defined_tests"])
-        self.assertEqual("NO_MAPPED_TESTS", by_id[3]["automated_coverage"])
-        self.assertEqual("NO_MAPPED_TESTS", by_id[45]["automated_coverage"])
+        self.assertEqual("NEGATIVE_GUARD_ONLY", by_id[3]["automated_coverage"])
+        self.assertEqual("NEGATIVE_GUARD_ONLY", by_id[45]["automated_coverage"])
+        self.assertEqual(50, report["features_with_defined_tests"])
+        self.assertEqual(17, report["features_with_negative_guard_only"])
+        self.assertEqual(17, report["features_without_positive_functional_tests"])
+        self.assertEqual(33, report["features_with_functional_test_candidates"])
         self.assertNotEqual("VERIFIED", by_id[47]["automated_coverage"])
         self.assertFalse(report["device_test_executed_here"])
+
+    def test_negative_safety_guards_do_not_count_as_feature_implementation(self):
+        module = loader()
+        report = module.build_report(ROOT)
+        self.assertEqual(0, report["features_certified"])
+        for feature in report["features"]:
+            if feature["id"] in module.NEGATIVE_GUARDS:
+                self.assertTrue(feature["tracker_status"].startswith("Pendiente"))
+                self.assertEqual("NEGATIVE_GUARD_ONLY", feature["automated_coverage"])
+                self.assertEqual(["tests/test_sss50_pending_feature_guards.py"],
+                                 feature["defined_tests"])
+                self.assertFalse(feature["fully_certified"])
 
     def test_missing_coverage_does_not_silently_disappear(self):
         module = loader()
