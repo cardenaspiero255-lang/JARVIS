@@ -33,6 +33,23 @@ class VoicePcmE2eContract(unittest.TestCase):
             ROOT / "apps/android/run_android14_qwen_benchmark.sh"
         ).read_text())
         self.assertNotIn('assertTrue("ASR missed target question content"', kt)
+        self.assertIn("TTS_OFFLINE_PREFLIGHT_PASS", kt)
+        self.assertIn("synthesizesRealOfflineSpanishWavBeforeModelLoad", kt)
+        self.assertIn("synth.defaultEngine", kt)
+        self.assertIn("isNotInstalled", kt)
+        self.assertIn("RIFF", kt)
+        self.assertIn("WAVE", kt)
+        self.assertIn("com.reecedunn.espeak", kt)
+        self.assertIn("com.reecedunn.espeak_22.apk", workflow)
+        self.assertIn("0a7822fec54d7f7ae759ffedc9afeaa77f809587b171fb2101998787821ec790", workflow)
+        runner = (ROOT / "apps/android/run_android14_qwen_benchmark.sh").read_text()
+        self.assertIn("adb install", runner)
+        self.assertIn("INSTALL_TTS_DATA", runner)
+        self.assertIn("synthesizesRealOfflineSpanishWavBeforeModelLoad", runner)
+        self.assertIn("adb shell svc wifi disable", runner)
+        self.assertLess(runner.index("adb shell svc wifi disable"),
+                        runner.index("synthesizesRealOfflineSpanishWavBeforeModelLoad"))
+
 
 if __name__ == "__main__":
     unittest.main()
