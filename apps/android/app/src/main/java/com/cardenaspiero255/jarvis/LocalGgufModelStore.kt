@@ -110,7 +110,7 @@ class LocalGgufModelStore(private val context: Context) {
             }
         }
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        return if (expected == actual) file else null
+        if (expected == actual) file else null
     }
 
     @Synchronized fun deleteModel(): Boolean = synchronized(processModelLock) {
