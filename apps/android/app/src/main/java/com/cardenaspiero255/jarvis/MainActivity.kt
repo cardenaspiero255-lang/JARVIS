@@ -210,6 +210,24 @@ class MainActivity : Activity() {
         handsFreePreviewButton = primaryButton("PROBAR MANOS LIBRES · 60 S") {
             toggleHandsFreePreviewByTap()
         }.also { layout.addView(it) }
+        layout.addView(primaryButton("ACTIVAR ESCUCHA LOCAL · 30 MIN") {
+            if (HandsFreePreviewService.isRunning) {
+                stopHandsFreePreview()
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Escucha local de hasta 30 minutos")
+                    .setMessage("El micrófono se indica mediante una notificación " +
+                        "que permite DETENER la sesión. Puede continuar al bloquear " +
+                        "pantalla mientras Android/Funtouch no interrumpa el servicio. " +
+                        "Solo órdenes públicas: la identidad no está calibrada. " +
+                        "No es una activación automática tras reiniciar.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("ACTIVAR") { _, _ ->
+                        toggleHandsFreePreviewByTap(extended = true)
+                    }
+                    .show()
+            }
+        })
         layout.addView(primaryButton("REGISTRAR MI VOZ · 3 MUESTRAS") {
             // Biometric enrollment is optional and requires a separate consent.
             startActivity(Intent(this, OwnerVoiceEnrollmentActivity::class.java))
@@ -240,7 +258,9 @@ class MainActivity : Activity() {
             12f, Color.rgb(211, 213, 220))
         layout.addView(handsFreePreviewStatus)
         layout.addView(label(
-            "MANOS LIBRES 60 S usa ahora Vosk español local integrado en esta APK, " +
+            "La escucha de 30 min requiere activación explícita y puede continuar " +
+                "con pantalla bloqueada, sin garantía 24/7 ni activación al reiniciar. " +
+                "MANOS LIBRES 60 S usa ahora Vosk español local integrado en esta APK, " +
                 "sin depender de SpeechRecognizer, Funtouch ni Internet. " +
                 "Al primer uso puede tardar en preparar el modelo. Di " +
                 "«Jarvis, dime la hora». Esta prueba no identifica al propietario " +
@@ -750,7 +770,7 @@ class MainActivity : Activity() {
     }
 
     private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false,
-        systemMode: Boolean = false) {
+        systemMode: Boolean = false, extended: Boolean = false) {
         if (HandsFreePreviewService.isRunning) {
             stopHandsFreePreview()
             statusText.text = "Prueba manos libres detenida. Micrófono liberado."
@@ -802,6 +822,7 @@ class MainActivity : Activity() {
                     action = when {
                         diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
                         systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
+                        extended -> HandsFreePreviewService.ACTION_START_LONG_NATIVE
                         else -> HandsFreePreviewService.ACTION_START_NATIVE
                     }
                     putExtra(HandsFreePreviewService.EXTRA_TAPPED, true)
@@ -812,6 +833,8 @@ class MainActivity : Activity() {
                     systemMode -> "Prueba del proveedor normal de Android solicitada. " +
                         "Puede usar Internet. Di «Jarvis, dime la hora»; " +
                         "después revisa el diagnóstico. No envía órdenes externas."
+                    extended -> "EXTENDED_LISTENING: 30 minutos de escucha local " +
+                        "con control DETENER visible. No requiere Internet ni identifica propietario."
                     else -> "Preparando reconocimiento Vosk español dentro de la APK. " +
                         "Cuando esté listo, di «Jarvis, dime la hora» durante 60 s. " +
                         "No requiere Internet ni reconocedor de Android."
