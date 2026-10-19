@@ -16,7 +16,7 @@ class LocalGgufModelStore(private val context: Context) {
     private val directory get() = File(context.filesDir, "private_gguf")
     private val file get() = File(directory, "selected.gguf")
 
-    fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
+    @Synchronized fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
 
     /** Caller must run on a worker, never the UI thread. Returns a private SHA. */
     @Synchronized fun import(uri: Uri): String {
@@ -61,6 +61,15 @@ class LocalGgufModelStore(private val context: Context) {
             tmp.delete()
         }
     }
+
+    /**
+     * Lease a model from verification through the complete synchronous native
+     * inference. A competing import/delete waits on the SAME monitor, preventing
+     * replacing the filename while llama.cpp is mapping/decoding its bytes.
+     * Call only from a worker; the block must return after native model_free.
+     */
+    @Synchronized fun <T> withVerifiedModel(block: (File?) -> T): T =
+        block(verifiedFile())
 
     /** Check hash on every inference. Never trust name/extension alone. */
     @Synchronized fun verifiedFile(): File? {
