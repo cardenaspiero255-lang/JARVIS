@@ -6,13 +6,17 @@ out="app/build/diagnostics/gguf-e2e"
 mkdir -p "$out"
 echo "=== Genuine GGUF JNI generation; SHA=${GITHUB_SHA:-unknown} ==="
 test -s "app/build/generated/ggufE2eAssets/e2e-smollm.gguf"
-# The production APK has no INTERNET permission. The model was fetched and
-# hashed earlier, on the build host, before Android instrumentation starts.
-# Build APKs while Gradle still has network access, then run tests offline.
+# Production JARVIS has no INTERNET permission. Model weights were fetched
+# and SHA-checked on the CI host, NOT the Android device.
+# We disable device connectivity for the test, but Gradle on the build host
+# MUST still resolve its UTP test runner plugins if not cached.
+# A previous --offline here failed BEFORE running any instrumentation because
+# com.android.tools.utp:android-test-plugin-host-additional-test-output
+# was not cached. Host network is not an app/mobile network.
 gradle --no-daemon -PggufE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
 adb shell svc wifi disable
 adb shell svc data disable
-gradle --offline --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
+gradle --no-daemon -PggufE2e=true :app:connectedDebugAndroidTest
 python3 - <<'PY'
 from pathlib import Path
 import xml.etree.ElementTree as ET
