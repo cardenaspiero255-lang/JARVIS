@@ -38,8 +38,8 @@ class WarmModelContract(unittest.TestCase):
         e2e = (ROOT / "apps/android/app/src/ggufE2e/java/com/cardenaspiero255/jarvis/"
                "LocalGgufRealModelInstrumentedTest.kt").read_text()
         self.assertIn("nativeCacheCounters()", e2e)
-        self.assertIn("assertEquals(\"One verified native load",", e2e)
-        self.assertIn("assertTrue(\"Repeated authentic queries hit the warm model",", e2e)
+        self.assertIn('assertEquals("One verified native load",', e2e)
+        self.assertIn('assertTrue("Repeated authentic queries hit the warm model",', e2e)
 
 
 if __name__ == "__main__":
