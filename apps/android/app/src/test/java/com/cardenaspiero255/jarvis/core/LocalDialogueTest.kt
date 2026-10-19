@@ -109,7 +109,7 @@ class LocalDialogueTest {
 
     @Test fun recoveredPlanTextIsNotReplayedAsDeviceAuthorization() {
         val dialogue = LocalDialogue()
-        dialogue.restore("Tú: planifica Jarvis revisa Shizuku y abre ajustes\\n" +
+        dialogue.restore("Tú: planifica Jarvis revisa Shizuku y abre ajustes\n" +
             "JARVIS: Plan local: peligro al restaurar")
         val answer = dialogue.reply("repite")
         assertTrue(answer.contains("Plan local"))
