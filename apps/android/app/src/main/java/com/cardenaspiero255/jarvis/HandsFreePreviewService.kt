@@ -803,10 +803,7 @@ class HandsFreePreviewService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (extendedListening && isRunning && !closed) {
-            showStatus("EXTENDED_LISTENING: sesión solicitada continúa; " +
-                "DETENER disponible en notificación.")
-        } else finish("JARVIS fue retirado de aplicaciones recientes. Micrófono liberado.")
+        finish("JARVIS fue retirado de aplicaciones recientes. Micrófono liberado.")
         super.onTaskRemoved(rootIntent)
     }
 
