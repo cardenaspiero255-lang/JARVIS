@@ -40,6 +40,16 @@ class OfflineRoutinePlannerTest {
         rejected.forEach { assertNull("Unexpected unsafe plan for $it", planner.plan(it)) }
     }
 
+    @Test fun ownerCanPreviewReadOnlyTermuxIdentityProbeButNotAFreeformScript() {
+        val plan = planner.plan("Jarvis comprueba Termux")!!
+        assertEquals(SafeRoutine.TERMUX_ID_DIAGNOSTIC, plan.routine)
+        assertEquals(listOf(SafeAutomationStep.REQUEST_TERMUX_ID), plan.steps)
+        assertTrue(plan.requiresExplicitTap)
+        assertFalse(plan.externalOutcomeVerified)
+        assertNull(planner.plan("jarvis ejecuta en termux rm -rf"))
+        assertNull(planner.plan("jarvis comprueba termux y corre un script"))
+    }
+
     @Test fun rollbackAndExternalEffectsRemainExplicitlyUnverified() {
         val plan = planner.plan("jarvis revisa shizuku y abre ajustes")!!
         assertFalse(plan.rollbackGuaranteed)
