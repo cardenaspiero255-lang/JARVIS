@@ -203,6 +203,25 @@ class LocalGgufRealModelInstrumentedTest {
                 "first_ms=${durations.first()} " +
                 "peak_pss_kib=$pssPeak report=gguf-qa-raw.json"
             )
+            // User-selected deletion is ordered AFTER native inference and
+            // MUST release retained weights before removing the GGUF bytes.
+            val deletionFinished = CountDownLatch(1)
+            val deletedResult = AtomicReference<Boolean?>()
+            assertTrue("Delete must be scheduled on the JNI executor",
+                inference.deleteModel { deleted ->
+                    deletedResult.set(deleted)
+                    deletionFinished.countDown()
+                })
+            assertTrue("Native eviction/deletion timed out",
+                deletionFinished.await(35L, TimeUnit.SECONDS))
+            assertEquals("Deletion must report actual result", true, deletedResult.get())
+            assertFalse("Deleted GGUF must not remain in private storage", privateFile.exists())
+            val postDeleteCache = inference.nativeCacheCounters()
+            assertTrue("Deleting model must unload native cached weights",
+                postDeleteCache[2] > nativeAfter[2])
+            println("GGUF_CACHE_EVICTION_VERIFIED deleted=true " +
+                "evictions=${postDeleteCache[2] - nativeAfter[2]}")
+
         } finally {
             sampling.set(false)
             if (sampler.isAlive) sampler.join(2_000L)
