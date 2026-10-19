@@ -9,7 +9,7 @@ import java.util.Locale
  * Wake words and speaker identity do not confer permission for Android actions.
  */
 object OfflineVoiceQuestionPolicy {
-    private val wake = Regex("""^jarvis\b[\s,¿?!.:-]*""", RegexOption.IGNORE_CASE)
+    private val wake = Regex("""^jarvis\b[\s,!.:-]*""", RegexOption.IGNORE_CASE)
     private val question = Regex(
         """^(que|quien|quienes|cual|cuales|como|cuando|donde|por que|cuanto|cuanta|cuantos|cuantas|explica|define)\b"""
     )
