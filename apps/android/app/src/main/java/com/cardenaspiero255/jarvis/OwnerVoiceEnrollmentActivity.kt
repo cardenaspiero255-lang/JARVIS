@@ -147,8 +147,12 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private fun startNextCapture() {
         if (running.get() || recordings.size >= rule.requiredSamples) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            val wasVerifying = verifyingOnly
+            verifyingOnly = false // Permission flow must not silently change the next tap mode.
             if (consent.isChecked && visible) {
-                status.text = "Autoriza el micrófono en Android; luego pulsa GRABAR otra vez."
+                status.text = if (wasVerifying)
+                    "Autoriza el micrófono y luego pulsa PROBAR MI VOZ otra vez."
+                else "Autoriza el micrófono en Android; luego pulsa GRABAR otra vez."
                 requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 902)
             }
             return
