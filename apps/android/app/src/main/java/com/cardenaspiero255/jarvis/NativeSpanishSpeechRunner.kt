@@ -9,6 +9,7 @@ import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
+import com.cardenaspiero255.jarvis.core.OfflineVoiceQuestionPolicy
 import com.cardenaspiero255.jarvis.core.PartialWakeSignalPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
@@ -35,6 +36,8 @@ class NativeSpanishSpeechRunner(
     private val onReady: () -> Unit,
     private val onWake: (PreviewWake) -> Unit,
     private val onFailure: (String) -> Unit,
+    private val onQuestion: (String) -> Unit = {},
+    private val allowLocalQuestions: Boolean = false,
     private val onAudioProgress: (Long, Long) -> Unit = { _, _ -> },
     private val continuous: Boolean = false,
     private val sessionDurationMillis: Long = 60_000L
@@ -72,6 +75,9 @@ class NativeSpanishSpeechRunner(
      * words or the native grammar constructor fails.
      */
     private fun createCommandRecognizer(model: Model, folder: File): Recognizer {
+        // Fixed-command vocabulary clips arbitrary facts. The optional
+        // question mode needs regular offline Vosk speech recognition.
+        if (allowLocalQuestions) return Recognizer(model, 16_000.0f)
         val grammar = OfflineCommandGrammarPolicy().fromVocabulary(
             File(folder, "graph/words.txt"))
         if (grammar != null) {
@@ -99,6 +105,7 @@ class NativeSpanishSpeechRunner(
         val earlyWake = PartialWakeSignalPolicy()
         var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
+        var questionWakeUntil = -1L
         try {
             onStatus("ASR_NATIVE_LOADING: cargando modelo español dentro de la APK…")
             val installer = NativeSpanishModelStore(context)
@@ -197,6 +204,9 @@ class NativeSpanishSpeechRunner(
                                     SpeakerEvidence.UNAVAILABLE
                                 )
                                 if (gateDecision == WakeTurnDecision.WAITING) {
+                                    if (allowLocalQuestions) {
+                                        questionWakeUntil = SystemClock.elapsedRealtime() + 8_000L
+                                    }
                                     onStatus("KWS_NATIVE_WAKE_WAITING: Jarvis detectado; " +
                                         "di «dime la hora» en 8 s (sin identidad verificada).")
                                 }
@@ -219,8 +229,23 @@ class NativeSpanishSpeechRunner(
                                 // Vosk emits completed segments at speech pauses.
                                 // Support "Jarvis" then "dime la hora" within 8 s,
                                 // but never treat wake or ASR as speaker identity.
+                                val now = SystemClock.elapsedRealtime()
+                                val freshQuestionWake = questionWakeUntil >= 0L &&
+                                    now <= questionWakeUntil
+                                // A completed Spanish question is DATA, never an action.
+                                // The already-authorized session may read it aloud via
+                                // the local GGUF + offline TTS path only.
+                                val question = if (allowLocalQuestions && continuous)
+                                    OfflineVoiceQuestionPolicy.extract(text, freshQuestionWake)
+                                    else null
+                                if (question != null) {
+                                    questionWakeUntil = -1L
+                                    responsePlayback.set(true)
+                                    onQuestion(question)
+                                    continue
+                                }
                                 val decision = turnGate.observe(
-                                    text, SystemClock.elapsedRealtime(), SpeakerEvidence.UNAVAILABLE)
+                                    text, now, SpeakerEvidence.UNAVAILABLE)
                                 when (decision) {
                                     WakeTurnDecision.STOP -> {
                                         result = PreviewWake.STOP
@@ -236,9 +261,13 @@ class NativeSpanishSpeechRunner(
                                             break
                                         }
                                     }
-                                    WakeTurnDecision.WAITING -> onStatus(
-                                        "ASR_NATIVE_WAKE_WAITING: Jarvis detectado. " +
-                                            "Di «dime la hora» en 8 s.")
+                                    WakeTurnDecision.WAITING -> {
+                                        if (allowLocalQuestions) questionWakeUntil = now + 8_000L
+                                        onStatus("ASR_NATIVE_WAKE_WAITING: Jarvis detectado. " +
+                                            if (allowLocalQuestions)
+                                                "Haz una pregunta general en 8 s."
+                                            else "Di «dime la hora» en 8 s.")
+                                    }
                                     WakeTurnDecision.BLOCKED_IDENTITY -> {
                                         failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
                                         break
@@ -264,6 +293,8 @@ class NativeSpanishSpeechRunner(
                         "AudioRecord returned code $received")
                 }
                 val now = SystemClock.elapsedRealtime()
+                if (questionWakeUntil >= 0L && now > questionWakeUntil)
+                    questionWakeUntil = -1L
                 if (turnGate.expiredAt(now)) {
                     if (continuous) {
                         onStatus("ASR_NATIVE_WAKE_EXPIRED: espera otra vez «Jarvis».")
