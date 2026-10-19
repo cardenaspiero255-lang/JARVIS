@@ -44,6 +44,10 @@ data class SafeAutomationReport(
     val outcome: SafeAutomationOutcome,
     val completedSteps: Int,
     val totalSteps: Int,
+    // A successful local intent dispatch cannot certify third-party completion.
+    val externalOutcomeVerified: Boolean = false,
+    // Emergency STOP halts *future* steps, not already executed side effects.
+    val rollbackVerified: Boolean = false,
 )
 
 /**
@@ -53,25 +57,34 @@ data class SafeAutomationReport(
 class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
     @Volatile private var emergencyStopped = true
     @Volatile private var pending: SafeRoutine? = null
+    // Guards the full execution lifetime, not just the approval transaction.
+    private var activeRun = false
 
     fun prepare(routine: SafeRoutine): String = synchronized(this) {
-        emergencyStopped = true
-        pending = routine
-        routine.summary
+        if (activeRun) {
+            // No silent cancellation or replacement of an in-flight action.
+            "Rutina en ejecución; detén o finaliza antes de preparar otra."
+        } else {
+            emergencyStopped = true
+            pending = routine
+            routine.summary
+        }
     }
 
-    fun stop() {
+    fun stop() = synchronized(this) {
         emergencyStopped = true
         pending = null
     }
 
     fun confirmAndRun(routine: SafeRoutine, explicitTap: Boolean): SafeAutomationReport {
         val approved = synchronized(this) {
-            if (!explicitTap || pending != routine || !emergencyStopped) {
+            if (activeRun || !explicitTap || pending != routine ||
+                !emergencyStopped) {
                 false
             } else {
                 pending = null
                 emergencyStopped = false
+                activeRun = true
                 true
             }
         }
@@ -98,7 +111,10 @@ class SafeAutomationEngine(private val gateway: SafeAutomationGateway) {
                 SafeAutomationOutcome.COMPLETED, done, routine.steps.size
             )
         } finally {
-            emergencyStopped = true
+            synchronized(this) {
+                emergencyStopped = true
+                activeRun = false
+            }
         }
     }
 }

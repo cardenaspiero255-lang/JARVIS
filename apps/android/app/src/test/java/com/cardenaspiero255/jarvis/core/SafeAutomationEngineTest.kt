@@ -79,6 +79,73 @@ class SafeAutomationEngineTest {
         assertEquals(listOf(SafeAutomationStep.CHECK_SHIZUKU), completed)
     }
 
+
+    @Test fun previewCannotReplaceActiveRunOrStopItImplicitly() {
+        val began = java.util.concurrent.CountDownLatch(1)
+        val resume = java.util.concurrent.CountDownLatch(1)
+        val finished = java.util.concurrent.atomic.AtomicReference<SafeAutomationReport>()
+        val gateway = object : SafeAutomationGateway {
+            override fun perform(step: SafeAutomationStep): Boolean {
+                began.countDown()
+                check(resume.await(4, java.util.concurrent.TimeUnit.SECONDS))
+                return true
+            }
+        }
+        val engine = SafeAutomationEngine(gateway)
+        engine.prepare(SafeRoutine.OPEN_SETTINGS)
+        val thread = Thread {
+            finished.set(engine.confirmAndRun(SafeRoutine.OPEN_SETTINGS, true))
+        }
+        thread.start()
+        try {
+            assertTrue(began.await(4, java.util.concurrent.TimeUnit.SECONDS))
+            val blocked = engine.prepare(SafeRoutine.OPEN_TERMUX)
+            assertTrue("Must reject preview substitution during a running routine",
+                blocked.contains("en ejecución"))
+        } finally {
+            resume.countDown()
+            thread.join(4_000L)
+        }
+        assertEquals(SafeAutomationOutcome.COMPLETED, finished.get()?.outcome)
+        assertEquals(SafeAutomationOutcome.DENIED,
+            engine.confirmAndRun(SafeRoutine.OPEN_TERMUX, true).outcome)
+    }
+
+    @Test fun concurrentReconfirmationCannotLaunchDuplicateRoutine() {
+        val began = java.util.concurrent.CountDownLatch(1)
+        val resume = java.util.concurrent.CountDownLatch(1)
+        val engine = SafeAutomationEngine(object : SafeAutomationGateway {
+            override fun perform(step: SafeAutomationStep): Boolean {
+                began.countDown()
+                check(resume.await(4, java.util.concurrent.TimeUnit.SECONDS))
+                return true
+            }
+        })
+        engine.prepare(SafeRoutine.OPEN_SETTINGS)
+        val thread = Thread { engine.confirmAndRun(SafeRoutine.OPEN_SETTINGS, true) }
+        thread.start()
+        try {
+            assertTrue(began.await(4, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(SafeAutomationOutcome.DENIED,
+                engine.confirmAndRun(SafeRoutine.OPEN_SETTINGS, true).outcome)
+        } finally {
+            resume.countDown()
+            thread.join(4_000L)
+        }
+    }
+
+    @Test fun localGatewayAcceptanceMustNotBeSoldAsExternalActionVerification() {
+        val gateway = FakeGateway()
+        val engine = SafeAutomationEngine(gateway)
+        engine.prepare(SafeRoutine.OPEN_TERMUX)
+        val report = engine.confirmAndRun(SafeRoutine.OPEN_TERMUX, true)
+        assertEquals(SafeAutomationOutcome.COMPLETED, report.outcome)
+        // COMPLETED currently means gateway accepted a local step, not that
+        // Termux executed a command or external tools confirmed their effects.
+        assertFalse(report.externalOutcomeVerified)
+        assertFalse(report.rollbackVerified)
+    }
+
     @Test fun spokenPunctuationCanPreviewButNotExecuteOrExpandCommands() {
         assertEquals(SafeRoutine.SHIZUKU_ASSIST,
             SafeAutomationVoiceRouter.parse("¡JARVIS, revisa Shizuku!"))
