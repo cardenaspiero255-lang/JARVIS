@@ -83,6 +83,15 @@ if (providers.gradleProperty("ggufInstructE2e").orNull == "true") {
     )
 }
 
+// An isolated, SHA-verified Qwen instrumented benchmark. The 491 MB model is
+// downloaded by CI into androidTest assets only; never into a shipping APK.
+if (providers.gradleProperty("ggufQwenE2e").orNull == "true") {
+    android.sourceSets.getByName("androidTest").java.srcDir("src/ggufQwenE2e/java")
+    android.sourceSets.getByName("androidTest").assets.srcDir(
+        layout.buildDirectory.dir("generated/ggufQwenE2eAssets")
+    )
+}
+
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     // Permission inspection only; privileged execution requires separate reviewed adapters.

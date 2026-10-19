@@ -6,6 +6,7 @@ on:
       - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/LocalGgufInference.kt"
       - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/core/LocalGguf*"
       - "apps/android/app/src/ggufInstructE2e/**"
+      - "apps/android/app/src/ggufQwenE2e/**"
       - "apps/android/app/build.gradle.kts"
       - "apps/android/run_android14_instruct_qa.sh"
       - "tools/prepare_gguf_instruct_e2e_fixture.py"

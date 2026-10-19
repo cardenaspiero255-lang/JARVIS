@@ -32,7 +32,10 @@ class LockedScreenBiometricsContract(unittest.TestCase):
         manifest = (MAIN / "AndroidManifest.xml").read_text()
         identity_policy = (SRC / "core/SpeakerEnrollmentPolicy.kt").read_text()
         self.assertNotIn("BOOT_COMPLETED", manifest)
-        self.assertIn('android:stopWithTask="true"', manifest)
+        self.assertIn('android:stopWithTask="false"', manifest)
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        self.assertIn("if (!extendedListening)", service)
+        self.assertIn("ACTION_STOP", service)
         self.assertIn("return SpeakerEvidence.UNCERTAIN", identity_policy)
         self.assertIn("calibrated = false",
                       (SRC / "SherpaSpeakerEnrollmentEngine.kt").read_text())
