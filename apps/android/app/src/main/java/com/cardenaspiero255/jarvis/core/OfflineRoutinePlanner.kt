@@ -37,6 +37,8 @@ class OfflineRoutinePlanner {
                 SafeRoutine.SHIZUKU_SETTINGS_DIAGNOSTIC
             "jarvis revisa dhizuku y abre ajustes" ->
                 SafeRoutine.DHIZUKU_SETTINGS_DIAGNOSTIC
+            "jarvis comprueba termux" ->
+                SafeRoutine.TERMUX_ID_DIAGNOSTIC
             else -> SafeAutomationVoiceRouter.parse(raw)
         }
         return routine?.let(::OfflineRoutinePlan)
