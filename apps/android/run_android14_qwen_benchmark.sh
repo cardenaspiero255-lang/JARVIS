@@ -4,9 +4,17 @@ set -euo pipefail
 out="app/build/diagnostics/qwen-quality"
 mkdir -p "$out"
 test -s app/build/generated/ggufQwenE2eAssets/instruct-qwen.gguf
+for i in $(seq 0 11); do
+  test -s "app/build/generated/ggufQwenE2eAssets/test-voice-16k-$i.pcm"
+done
 gradle --no-daemon -PggufQwenE2e=true :app:assembleDebug :app:assembleDebugAndroidTest
 adb shell svc wifi disable
 adb shell svc data disable
+# Fail early on genuine Vosk recognition before spending CPU on GGUF decoding.
+# This never substitutes the recognized transcript or weakens the exact gate.
+gradle --no-daemon -PggufQwenE2e=true \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.cardenaspiero255.jarvis.OfflineVoicePcmToTtsInstrumentedTest#syntheticSpanishPcmIsAccuratelyRecognizedOffline \
+  :app:connectedDebugAndroidTest
 gradle --no-daemon -PggufQwenE2e=true -Pandroid.testInstrumentationRunnerArguments.class=com.cardenaspiero255.jarvis.LocalQwenBenchmarkInstrumentedTest :app:connectedDebugAndroidTest
 python3 - "$out/quality.json" <<'PY'
 import json
