@@ -23,8 +23,12 @@ class LongListeningOwnerProbeContract(unittest.TestCase):
         self.assertIn("DETENER", service)
         self.assertIn("FOREGROUND_SERVICE_TYPE_MICROPHONE", service)
         self.assertNotIn("BOOT_COMPLETED", manifest)
-        # Swiping away the task must revoke the microphone (not a lockscreen event).
-        self.assertIn('android:stopWithTask="true"', manifest)
+        # Extended foreground sessions preserve explicit consent after task
+        # removal, but one-shot previews must still terminate.
+        self.assertIn('android:stopWithTask="false"', manifest)
+        self.assertIn("if (!extendedListening)", service)
+        self.assertIn("override fun onTaskRemoved", service)
+        self.assertIn("ACTION_STOP", service)
 
     def test_repeated_voice_turns_do_not_end_extended_session(self):
         runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
