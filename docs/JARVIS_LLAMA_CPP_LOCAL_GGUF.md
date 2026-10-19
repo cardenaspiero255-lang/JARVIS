@@ -69,3 +69,52 @@ gradle -p apps/android --no-daemon :app:testDebugUnitTest :app:assembleDebug
 ```
 
 Nunca subir pesos GGUF, archivos privados o grabaciones a GitHub.
+
+
+## Correcciones de concurrencia y validación auténtica (PR #84)
+
+**P1: reserva del motor nativo.** `LocalGgufRunState` impide comenzar otra
+generación hasta la salida definitiva del `finally` del trabajador. Cancelar
+ahora señaliza `AtomicBoolean` sin usar el estado potencialmente prematuro
+de `Future.cancel(true)`/`Future.isDone` como permiso para comenzar otro
+trabajo. Se mantiene la cancelación cooperativa del JNI, que no promete
+interrumpir instantáneamente un bloque de cómputo nativo.
+
+**P1: vida del archivo modelo.** `LocalGgufModelStore.withVerifiedModel`
+mantiene el monitor del modelo desde la validación SHA hasta que
+`llama_model_free` haya concluido. Importar o borrar desde otro trabajador
+espera a que ese lease termine. Es deliberadamente conservador: el botón
+para borrar puede tardar si una generación aún está desmontando el modelo.
+
+**Test de carreras:** `LocalGgufRunStateTest` comprueba que la cancelación
+no concede una segunda ranura antes del fin real; y
+`LocalGgufModelLeaseInstrumentedTest` verifica que un hilo que intenta
+eliminar un archivo modelo queda bloqueado hasta liberar la lectura.
+
+**Test E2E real, separado del APK de distribución:**
+`Android GGUF real generation E2E` descarga exclusivamente **en el runner
+de GitHub Actions** el GGUF `ggml-org/SmolLM2-135M-GGUF`
+(`SmolLM2-135M-Q4_K_M.gguf`, aprox. 101 MB; licencia Apache-2.0),
+comprueba SHA-256:
+`e3131339bf4e8065265593d4fd8f7bb7ff2d3abff1edb5618aa1197b89cad9f5`
+(publicado en https://huggingface.co/ggml-org/SmolLM2-135M-GGUF/blob/main/SmolLM2-135M-Q4_K_M.gguf).
+Incorpora el archivo solo en el **APK instrumental temporal** mediante
+`-PggufE2e=true`, y comprueba en el emulador Android 14:
+
+1. Que los bytes copiados a almacenamiento privado tengan ese hash.
+2. Que `LocalGgufModelStore` verifique de nuevo el archivo.
+3. Que la API real `LocalGgufInference.ask()` invoque JNI y devuelva
+   texto de tokens decodificados, no un mensaje de error o resultado fabricado.
+4. Que el resultado se recoja mediante callback y se registre la duración.
+5. Que falte cualquiera de esas condiciones, falle CI: el caso no puede ser
+   omitido o reemplazado por una prueba de ruta inexistente.
+
+No se guarda el GGUF en el repositorio, no se entrega a usuarios con JARVIS
+y el workflow no adjunta el APK instrumental que contiene el modelo. El
+origen del modelo se fija por checksum, pero el hash no es una garantía
+de ausencia de vulnerabilidades del parser nativo.
+
+**Alcance de la evidencia:** la prueba E2E confirma decodificación funcional,
+NO que SmolLM2-135M sea un asistente preciso en español, ni el rendimiento
+ni los falsos positivos de voz en el Vivo V25 Pro. Es una prueba de integración,
+no un benchmark cognitivo ni una certificación física.
