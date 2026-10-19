@@ -1,22 +1,27 @@
 package com.cardenaspiero255.jarvis
 
+import android.os.Build
+import android.os.Debug
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * This class is compiled ONLY with -PggufE2e=true and a verified genuine
- * Hugging Face GGUF in androidTest assets. It fails (never skips) if absent.
- *
- * Tests app store -> hash verification -> real llama.cpp JNI decoding ->
- * background callback, not just a missing-file smoke test.
+ * CI-only authentic GGUF generation + sample-based QA (not certification).
+ * No weights, raw prompts, generated replies, audio or owner identifiers
+ * are uploaded. Report contains only synthetic case IDs and measurements.
  */
 @RunWith(AndroidJUnit4::class)
 class LocalGgufRealModelInstrumentedTest {
@@ -25,7 +30,11 @@ class LocalGgufRealModelInstrumentedTest {
             "e3131339bf4e8065265593d4fd8f7bb7ff2d3abff1edb5618aa1197b89cad9f5"
     }
 
-    @Test(timeout = 240_000L)
+    private data class SpanishCase(
+        val id: String, val question: String, val lexicalAnswer: Regex
+    )
+
+    @Test(timeout = 900_000L)
     fun genuinePinnedGgufProducesTextOffline() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -36,8 +45,24 @@ class LocalGgufRealModelInstrumentedTest {
         val checksum = MessageDigest.getInstance("SHA-256")
         var copied = 0L
         val inference = LocalGgufInference(store)
+        // Process PSS includes native mmap allocations, unlike JVM heap alone.
+        val basePss = maxOf(1L, Debug.getPss())
+        val peakPss = AtomicLong(basePss)
+        val peakJava = AtomicLong(1L)
+        val sampling = AtomicBoolean(false)
+        val sampler = Thread {
+            while (sampling.get()) {
+                peakPss.updateAndGet { old -> maxOf(old, Debug.getPss()) }
+                val heap = (Runtime.getRuntime().totalMemory() -
+                    Runtime.getRuntime().freeMemory()) / 1024L
+                peakJava.updateAndGet { old -> maxOf(old, heap) }
+                try { Thread.sleep(125L) }
+                catch (_: InterruptedException) { break }
+            }
+        }.apply { isDaemon = true; name = "gguf-qa-pss-sampler" }
+
         try {
-            // Asset exists ONLY in the test APK of the dedicated workflow.
+            // Only the separate, licensed test APK contains these weights.
             instrumentation.context.assets.open("e2e-smollm.gguf").use { input ->
                 privateFile.outputStream().use { output ->
                     val buffer = ByteArray(128 * 1024)
@@ -54,14 +79,19 @@ class LocalGgufRealModelInstrumentedTest {
             }
             val actual = checksum.digest().joinToString("") { "%02x".format(it) }
             assertEquals("Byte-for-byte authentic GGUF", SHA256, actual)
-            assertTrue(copied > 40_000_000L)
+            assertEquals(101_016_128L, copied)
             assertTrue(context.getSharedPreferences("jarvis_gguf_v1", 0).edit()
                 .putString("sha256", actual).putLong("bytes", copied).commit())
             assertNotNull("App-private model hash validation", store.verifiedFile())
 
+            val answers = mutableListOf<String>()
+            val durations = mutableListOf<Long>()
+            sampling.set(true)
+            sampler.start()
+
             val answer = AtomicReference<String>()
             val completed = CountDownLatch(1)
-            val start = android.os.SystemClock.elapsedRealtime()
+            val start = SystemClock.elapsedRealtime()
             assertTrue("Model question must enter worker",
                 inference.ask("Escribe una frase corta sobre una estrella.") { text ->
                     answer.set(text)
@@ -69,29 +99,114 @@ class LocalGgufRealModelInstrumentedTest {
                 })
             assertTrue("Genuine inference did not finish within 210s",
                 completed.await(210L, TimeUnit.SECONDS))
-            val result = answer.get().orEmpty().trim()
-            assertTrue("Generated output must contain real decoded tokens: $result",
-                result.isNotBlank())
-            for (failure in listOf(
-                "No se pudo cargar el modelo",
-                "La inferencia local falló",
-                "La generación local se interrumpió",
-                "No se generó una respuesta",
-                "Error de tokenización",
-                "Memoria insuficiente",
-                "Motor nativo")) {
-                assertFalse("Model generated a failure instead of tokens: $result",
-                    result.contains(failure))
-            }
+            val result = checkedText(answer.get())
+            answers.add(result)
+            durations.add(maxOf(1L, SystemClock.elapsedRealtime() - start))
             println(
                 "GGUF_E2E_REAL_GENERATION_OK sha256=$actual bytes=$copied " +
-                "generated_chars=${result.length} elapsed_ms=" +
-                (android.os.SystemClock.elapsedRealtime() - start) +
-                " offline=true"
+                "generated_chars=${result.length} elapsed_ms=${durations[0]} offline=true"
+            )
+
+            // Tiny lexical rubric, not semantic/hallucination certification.
+            // The prompt set and matching criteria are frozen in this test.
+            val questions = listOf(
+                SpanishCase("chile_capital", "¿Cuál es la capital de Chile?",
+                    Regex("\\bsantiago\\b", RegexOption.IGNORE_CASE)),
+                SpanishCase("arithmetic", "¿Cuánto es dos más dos?",
+                    Regex("\\b(4|cuatro)\\b", RegexOption.IGNORE_CASE)),
+                SpanishCase("red_planet", "¿Qué planeta se conoce como el planeta rojo?",
+                    Regex("\\bmarte\\b", RegexOption.IGNORE_CASE)),
+                SpanishCase("computer_processor", "¿Qué es un procesador?",
+                    Regex("\\b(cpu|procesador|chip|instrucciones)\\b",
+                        RegexOption.IGNORE_CASE))
+            )
+            val quality = JSONArray()
+            for (item in questions) {
+                val response = AtomicReference<String>()
+                val done = CountDownLatch(1)
+                val tick = SystemClock.elapsedRealtime()
+                assertTrue("Prior inference must have released the JNI slot",
+                    inference.ask(item.question) { text ->
+                        response.set(text)
+                        done.countDown()
+                    })
+                assertTrue("Model question timed out: ${item.id}",
+                    done.await(210L, TimeUnit.SECONDS))
+                val output = checkedText(response.get())
+                answers.add(output)
+                durations.add(maxOf(1L, SystemClock.elapsedRealtime() - tick))
+                quality.put(JSONObject()
+                    .put("id", item.id)
+                    .put("keyword_matched", item.lexicalAnswer.containsMatchIn(output)))
+            }
+
+            sampling.set(false)
+            sampler.join(2_000L)
+            val pssPeak = maxOf(basePss, peakPss.get(), Debug.getPss())
+            val javaPeak = maxOf(1L, peakJava.get())
+            val isEmulator = Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+                Build.HARDWARE.contains("ranchu", ignoreCase = true) ||
+                Build.HARDWARE.contains("goldfish", ignoreCase = true)
+            val device = JSONObject()
+                .put("source", if (isEmulator) "emulator" else "physical_reported")
+                .put("manufacturer", Build.MANUFACTURER)
+                .put("model", Build.MODEL)
+                .put("sdk_int", Build.VERSION.SDK_INT)
+            val raw = JSONObject()
+                .put("schema_version", 1)
+                .put("device", device)
+                .put("model", JSONObject().put("sha256", actual).put("bytes", copied))
+                .put("inference", JSONObject()
+                    .put("cold_request_ms", durations.first())
+                    .put("subsequent_request_ms",
+                        JSONArray(durations.drop(1).map { it.toInt() }))
+                    .put("generated_characters",
+                        JSONArray(answers.map { it.length }))
+                    .put("baseline_pss_kib", basePss)
+                    .put("peak_pss_kib", pssPeak)
+                    .put("peak_java_heap_kib", javaPeak))
+                .put("quality", JSONObject()
+                    .put("method", "keyword_proxy_v1")
+                    .put("cases", quality))
+                .put("voice", JSONObject()
+                    .put("gguf_voice_pipeline", "NOT_IMPLEMENTED")
+                    .put("asr_audio_validated", false)
+                    .put("tts_audio_validated", false)
+                    .put("llm_tool_authority", false))
+            val reportFile = File(context.filesDir, "gguf-qa-raw.json")
+            reportFile.writeText(raw.toString(), Charsets.UTF_8)
+            assertTrue("Metrics report must be persisted for CI evidence",
+                reportFile.isFile && reportFile.length() > 200)
+            println(
+                "GGUF_QA_RAW_MEASUREMENTS_COLLECTED requests=${durations.size} " +
+                "first_ms=${durations.first()} " +
+                "peak_pss_kib=$pssPeak report=gguf-qa-raw.json"
             )
         } finally {
+            sampling.set(false)
+            if (sampler.isAlive) sampler.join(2_000L)
             inference.close()
             store.deleteModel()
         }
+    }
+
+    private fun checkedText(value: String?): String {
+        val text = value.orEmpty().trim()
+        assertTrue("Real GGUF must return nonempty decoded text", text.isNotBlank())
+        for (failure in listOf(
+            "No se pudo cargar el modelo",
+            "La inferencia local falló",
+            "La generación local se interrumpió",
+            "No se generó una respuesta",
+            "Error de tokenización",
+            "Memoria insuficiente",
+            "Motor nativo",
+            "La pregunta supera el contexto local máximo",
+            "Inferencia local cancelada o fallida"
+        )) {
+            assertFalse("Native failure is not generated text: $failure",
+                text.contains(failure))
+        }
+        return text
     }
 }
