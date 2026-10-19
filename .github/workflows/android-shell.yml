@@ -39,6 +39,8 @@ jobs:
           accept-android-sdk-licenses: true
       - name: Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install pinned NDK and CMake for offline llama.cpp JNI
+        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
         with:
