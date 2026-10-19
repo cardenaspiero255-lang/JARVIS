@@ -9,6 +9,7 @@ enum class SafeAutomationStep {
     OPEN_OWNDROID,
     OPEN_TERMUX,
     OPEN_ANDROID_SETTINGS,
+    REQUEST_TERMUX_ID,
 }
 
 enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String) {
@@ -31,6 +32,11 @@ enum class SafeRoutine(val steps: List<SafeAutomationStep>, val summary: String)
     OPEN_SETTINGS(
         listOf(SafeAutomationStep.OPEN_ANDROID_SETTINGS),
         "Abrir Ajustes de Android; no modificar la configuración."
+    ),
+    TERMUX_ID_DIAGNOSTIC(
+        listOf(SafeAutomationStep.REQUEST_TERMUX_ID),
+        "Solicitar únicamente el comando id sin argumentos mediante Termux; " +
+            "el resultado se consulta por callback. No ejecutar scripts."
     ),
     SHIZUKU_SETTINGS_DIAGNOSTIC(
         listOf(SafeAutomationStep.CHECK_SHIZUKU,
