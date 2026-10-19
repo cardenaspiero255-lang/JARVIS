@@ -34,7 +34,7 @@ class GgufRuntimeContract(unittest.TestCase):
     def test_loading_and_generation_never_run_on_ui_thread(self):
         kotlin = (SRC / "LocalGgufInference.kt").read_text()
         self.assertIn("Executors.newSingleThreadExecutor", kotlin)
-        self.assertIn("Looper.myLooper() == Looper.getMainLooper()", kotlin)
+        self.assertIn("check(Looper.myLooper() != Looper.getMainLooper())", kotlin)
         self.assertIn("finally", kotlin)
         self.assertIn("isCancelled", kotlin)
 
