@@ -14,6 +14,7 @@ class LocalDialogue {
     private var lastNumericResult: BigDecimal? = null
     private val topicDialogue = LocalTopicDialogue()
     private val knowledgeEngine = OfflineKnowledgeEngine()
+    private val routinePlanner = OfflineRoutinePlanner()
 
     fun reply(input: String): String {
         // Reject rather than silently truncate an expression or mixed instruction.
@@ -39,7 +40,11 @@ class LocalDialogue {
         val topicHelp = if (math == null && offlineHelp == null && knowledgeHelp == null)
             topicDialogue.answer(sanitized) else null
         if (topicHelp != null) knowledgeEngine.clear()
+        val routinePreview = if (normalized.startsWith("planifica ")) {
+            routinePlanner.plan(sanitized.substringAfter(' ', ""))
+        } else null
         val answer = when {
+            routinePreview != null -> routinePreview.summary
             sanitized.isBlank() -> "Escribe una pregunta para conversar."
             normalized == "repitelo" || normalized == "repite" ->
                 lastAnswer ?: "No hay una respuesta anterior todavía."
