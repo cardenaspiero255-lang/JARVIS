@@ -69,6 +69,19 @@ def evaluate(raw):
     if peak < base:
         raise ValueError("Peak PSS cannot be below baseline PSS")
 
+    cache = metrics.get("warm_cache")
+    if not isinstance(cache, dict):
+        raise ValueError("Genuine native cache counters are mandatory")
+    loads = _positive_int(cache.get("native_model_loads"), "native_model_loads")
+    hits = cache.get("native_cache_hits")
+    evictions = cache.get("native_cache_evictions")
+    if type(hits) is not int or hits < len(others):
+        raise ValueError("All subsequent requests must hit the verified native cache")
+    if type(evictions) is not int or evictions < 0:
+        raise ValueError("Native cache eviction count must be nonnegative")
+    if cache.get("verified_sha_revision") is not True or loads != 1:
+        raise ValueError("Must use exactly one SHA-verified native model load")
+
     quality = raw["quality"]
     cases = quality.get("cases")
     if quality.get("method") != "keyword_proxy_v1" or not isinstance(cases, list) or len(cases) < 4:
@@ -113,6 +126,13 @@ def evaluate(raw):
             "peak_pss_increase": peak - base,
             "peak_java_heap": java,
         },
+        "warm_model": {
+            "native_model_loads": loads,
+            "native_cache_hits": hits,
+            "native_cache_evictions": evictions,
+            "verified_sha_revision": True,
+            "first_is_cold": True,
+        },
         "output_characters": lengths,
         "quality_proxy": {
             "method": "keyword_proxy_v1",
@@ -142,6 +162,7 @@ def as_markdown(report):
     l = report["latency_ms"]
     m = report["memory_kib"]
     q = report["quality_proxy"]
+    cache = report["warm_model"]
     return (
         "# JARVIS — GGUF: métricas medidas (no certificación)\n\n"
         f"- Dispositivo: {report['device']['manufacturer']} "
@@ -151,7 +172,9 @@ def as_markdown(report):
         f"P50={l['subsequent_p50']} ms, P95={l['subsequent_p95']} ms\n"
         f"- PSS base/pico: {m['baseline_pss']}/{m['peak_pss']} KiB "
         f"(incremento medido: {m['peak_pss_increase']} KiB)\n"
-        f"- Heap Java pico: {m['peak_java_heap']} KiB\n"
+        f"- Heap Java pico: {m['peak_java_heap']} KiB\n"        f"- Modelos nativos cargados: {cache['native_model_loads']}; "
+        f"reutilizaciones SHA-verificadas: {cache['native_cache_hits']}; "
+        f"evicciones: {cache['native_cache_evictions']}\n"
         f"- Respuestas con palabra clave esperada: "
         f"{q['matched']}/{q['count']} ({q['percent']}%) — indicador léxico, "
         "NO precisión semántica.\n"
@@ -159,8 +182,10 @@ def as_markdown(report):
         "Prueba acústica del propietario: **NO EJECUTADA**.\n"
         "- Energía, temperatura real y Vivo V25 Pro: **NO MEDIDOS**.\n"
         "- Certificación: **NOT_CERTIFIED**.\n"
-        "\nLas consultas vuelven a cargar el modelo; «subsecuentes» no "
-        "equivale a caché/prefill caliente. PSS es del proceso, no la RAM "
+        "\nLos pesos GGUF se reutilizan en RAM con el mismo SHA, pero cada "
+        "consulta crea un contexto nuevo: «subsecuentes» no significa KV-cache "
+        "conversacional ni que el modelo esté necesariamente optimizado. "
+        "PSS es del proceso, no la RAM "
         "total del teléfono. Los valores del emulador NO predicen el Vivo.\n"
     )
 
