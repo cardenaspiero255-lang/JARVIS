@@ -28,6 +28,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private val recordings = ArrayList<LocalVoiceEnrollmentRecording>(3)
     private val running = AtomicBoolean(false)
+    private var verifyingOnly = false
     @Volatile private var visible = false
     @Volatile private var stopped = false
     private val enrollmentAllowed = AtomicBoolean(false)
@@ -78,6 +79,18 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             setOnClickListener { startNextCapture() }
         }
         root.addView(record)
+        root.addView(Button(this).apply {
+            text = "PROBAR MI VOZ · DIAGNÓSTICO"
+            setOnClickListener {
+                if (running.get() || recordings.isNotEmpty() || !visible || !consent.isChecked) {
+                    status.text = "Finaliza o cancela el registro y acepta el consentimiento " +
+                        "antes de probar la voz."
+                } else {
+                    verifyingOnly = true
+                    startNextCapture()
+                }
+            }
+        })
         root.addView(Button(this).apply {
             text = "BORRAR PERFIL Y REVOCAR"
             setOnClickListener {
@@ -190,6 +203,19 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                     finalCaptured?.fill(0)
                     return@post
                 }
+                if (verifyingOnly) {
+                    verifyingOnly = false
+                    if (finalCaptured != null) {
+                        status.text = "Analizando similitud con tu plantilla cifrada. " +
+                            "No concede identidad ni permisos."
+                        runLocalVerification(finalCaptured)
+                    } else {
+                        running.set(false)
+                        status.text = finalProblem ?: "No se pudo capturar la voz."
+                        updateState()
+                    }
+                    return@post
+                }
                 if (finalCaptured != null) {
                     recordings.add(LocalVoiceEnrollmentRecording("capture-$sampleNumber", finalCaptured))
                 }
@@ -241,12 +267,50 @@ class OwnerVoiceEnrollmentActivity : Activity() {
         thread.start()
     }
 
+    /** Independent spoken sample: no reusing enrollment audio or granting MATCHED. */
+    private fun runLocalVerification(pcm: ShortArray) {
+        val thread = Thread({
+            val result = try {
+                SherpaOwnerVoiceProbeEngine(applicationContext).probe(
+                    pcm, isActive = { running.get() && enrollmentAllowed.get() &&
+                        !stopped && visible && !Thread.currentThread().isInterrupted }
+                )
+            } catch (_: Exception) {
+                OwnerVoiceProbeResult(OwnerVoiceProbeStatus.NATIVE_UNAVAILABLE)
+            } finally {
+                pcm.fill(0)
+            }
+            main.post {
+                if (!stopped && visible && consent.isChecked) {
+                    status.text = when (result.status) {
+                        OwnerVoiceProbeStatus.NO_ENROLLMENT ->
+                            "No hay plantilla inscrita. Registra primero tres muestras."
+                        OwnerVoiceProbeStatus.BAD_AUDIO ->
+                            "Muestra insuficiente o inválida. Intenta de nuevo."
+                        OwnerVoiceProbeStatus.NATIVE_UNAVAILABLE ->
+                            "No se pudo ejecutar la comparación de voz en este dispositivo."
+                        OwnerVoiceProbeStatus.SIMILARITY_UNCALIBRATED ->
+                            "Similitud local: " +
+                                "%.3f".format(java.util.Locale.ROOT, result.cosineSimilarity ?: 0.0) +
+                                ". NO identifica ni autentica al propietario; " +
+                                "pendiente calibración y anti-replay."
+                    }
+                }
+                running.set(false)
+                updateState()
+            }
+        }, "jarvis-owner-voice-probe")
+        worker = thread
+        thread.start()
+    }
+
     private fun clearRecordings() {
         recordings.forEach { it.samples16kPcm.fill(0) }
         recordings.clear()
     }
 
     private fun cancelCapture(message: String) {
+        verifyingOnly = false
         stopped = true
         running.set(false)
         enrollmentAllowed.set(false)
