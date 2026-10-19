@@ -53,7 +53,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq espeak-ng ffmpeg
-          espeak-ng -v es -s 130 -w /tmp/jarvis-voice-ci.wav "jarvis cual es la capital de chile"
+          # KWS Sherpa is evaluated separately. For the real PCM->Vosk
+          # question leg, speak only the post-wake Spanish question.
+          espeak-ng -v es -s 130 -w /tmp/jarvis-voice-ci.wav "cual es la capital de chile"
           ffmpeg -nostdin -v error -y -i /tmp/jarvis-voice-ci.wav \
             -ar 16000 -ac 1 -f s16le \
             apps/android/app/build/generated/ggufQwenE2eAssets/test-voice-16k.pcm
