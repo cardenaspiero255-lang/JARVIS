@@ -688,7 +688,12 @@ class HandsFreePreviewService : Service() {
 
     private fun finishOrResume(reason: String) {
         if (extendedListening && isRunning && !closed && !endedNormally) {
-            nativeRunner?.setResponsePlayback(false)
+            // Keep a short post-TTS echo guard before analyzing microphone PCM.
+            main.postDelayed({
+                if (isRunning && !closed && extendedListening) {
+                    nativeRunner?.setResponsePlayback(false)
+                }
+            }, 350L)
             showStatus("EXTENDED_LISTENING: $reason. Micrófono sigue disponible; DETENER en aviso.")
         } else finish(reason)
     }
@@ -707,6 +712,17 @@ class HandsFreePreviewService : Service() {
             else -> {
                 pendingSpeech = text
                 showStatus("Respuesta preparada · esperando inicialización TTS offline")
+                if (extendedListening) {
+                    val guard = Runnable {
+                        if (pendingSpeech != null && isRunning && !closed) {
+                            pendingSpeech = null
+                            finishOrResume("TTS_INIT_TIMEOUT: el motor local no respondió.")
+                        }
+                    }
+                    ttsWatchdog?.let { main.removeCallbacks(it) }
+                    ttsWatchdog = guard
+                    main.postDelayed(guard, 7_000L)
+                }
             }
         }
     }
