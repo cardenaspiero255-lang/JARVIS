@@ -742,7 +742,8 @@ class HandsFreePreviewService : Service() {
                         val engine = tts
                         val voice = try {
                             engine?.voices?.firstOrNull {
-                                it.locale.language == "es" && !it.isNetworkConnectionRequired
+                                it.locale.language == "es" && !it.isNetworkConnectionRequired &&
+                                    !it.isNotInstalled
                             }
                         } catch (_: RuntimeException) { null }
                         if (voice != null) {
