@@ -177,6 +177,10 @@ class LocalGgufRealModelInstrumentedTest {
             reportFile.writeText(raw.toString(), Charsets.UTF_8)
             assertTrue("Metrics report must be persisted for CI evidence",
                 reportFile.isFile && reportFile.length() > 200)
+            // Android Gradle Test Runner can remove the app after success.
+            // Its case-specific logcat preserves this compact, data-only JSON.
+            // No raw user prompts, responses, audio or device serial are emitted.
+            println("GGUF_QA_JSON_V1=" + raw.toString())
             println(
                 "GGUF_QA_RAW_MEASUREMENTS_COLLECTED requests=${durations.size} " +
                 "first_ms=${durations.first()} " +
