@@ -28,6 +28,7 @@ import com.cardenaspiero255.jarvis.core.CompanionKind
 import com.cardenaspiero255.jarvis.core.CompanionState
 import com.cardenaspiero255.jarvis.core.SafeAutomationEngine
 import com.cardenaspiero255.jarvis.core.SafeAutomationOutcome
+import com.cardenaspiero255.jarvis.core.SafeRecoveryAdvice
 import com.cardenaspiero255.jarvis.core.SafeRoutine
 import com.cardenaspiero255.jarvis.core.OwnDroidLockEvidence
 import com.cardenaspiero255.jarvis.core.OwnDroidLockState
@@ -203,8 +204,18 @@ class CompanionCenterActivity : Activity() {
                 val evidence = if (!report.externalOutcomeVerified)
                     " Resultado externo sin verificar; rollback no acreditado."
                 else ""
+                val recovery = when (report.recoveryAdvice) {
+                    SafeRecoveryAdvice.REAUTHORIZE ->
+                        "Necesitas una confirmación nueva."
+                    SafeRecoveryAdvice.RETRY_REQUIRES_FRESH_CONSENT ->
+                        "Puede repetirse tras revisar el permiso y confirmar otra vez."
+                    SafeRecoveryAdvice.MANUAL_RECONCILIATION_REQUIRED ->
+                        "Verifica los efectos externos antes de intentar otra acción."
+                    SafeRecoveryAdvice.CHECK_EXTERNAL_RESULT ->
+                        "Confirma el resultado en la aplicación externa."
+                }
                 message("$status: ${report.completedSteps}/${report.totalSteps}." +
-                    failed + evidence)
+                    failed + evidence + " " + recovery)
             }
             .show()
     }
