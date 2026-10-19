@@ -36,7 +36,7 @@ class VoicePcmE2eContract(unittest.TestCase):
         self.assertIn("TTS_OFFLINE_PREFLIGHT_PASS", kt)
         self.assertIn("synthesizesRealOfflineSpanishWavBeforeModelLoad", kt)
         self.assertIn("synth.defaultEngine", kt)
-        self.assertIn("isNotInstalled", kt)
+        self.assertIn("TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED", kt)
         self.assertIn("RIFF", kt)
         self.assertIn("WAVE", kt)
         self.assertIn("com.reecedunn.espeak", kt)
