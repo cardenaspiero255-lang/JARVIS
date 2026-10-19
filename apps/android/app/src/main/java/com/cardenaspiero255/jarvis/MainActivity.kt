@@ -15,7 +15,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.net.Uri
-import java.util.concurrent.Executors
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import android.text.InputType
 import android.widget.EditText
@@ -123,7 +122,6 @@ class MainActivity : Activity() {
     private var lastChatReply: String? = null
     private lateinit var localGgufStore: LocalGgufModelStore
     private lateinit var localGgufInference: LocalGgufInference
-    private val modelImportWorker = Executors.newSingleThreadExecutor()
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -406,15 +404,14 @@ class MainActivity : Activity() {
                     "No se eliminará el archivo original que seleccionaste.")
                 .setNegativeButton("CANCELAR", null)
                 .setPositiveButton("ELIMINAR") { _, _ ->
-                    localGgufInference.cancelActive()
-                    modelImportWorker.submit {
-                        val deleted = localGgufStore.deleteModel()
-                        runOnUiThread {
-                            if (!isDestroyed) statusText.text =
-                                if (deleted) "Modelo privado eliminado."
-                                else "No se pudo eliminar completamente el modelo."
-                        }
+                    statusText.text = "Cancelando inferencia y liberando GGUF privado…"
+                    val accepted = localGgufInference.deleteModel { deleted ->
+                        if (!isDestroyed) statusText.text =
+                            if (deleted == true) "Modelo privado eliminado y liberado."
+                            else "No se pudo eliminar completamente el modelo."
                     }
+                    if (!accepted) statusText.text =
+                        "Hay otra importación o borrado en curso. Inténtalo luego."
                 }.show()
         })
         section.addView(primaryButton("LEER ÚLTIMA RESPUESTA DEL CHAT") {
@@ -812,7 +809,6 @@ class MainActivity : Activity() {
         if (::spokenReplyEngine.isInitialized) spokenReplyEngine.close()
         if (::visionRecognizer.isInitialized) visionRecognizer.close()
         if (::localGgufInference.isInitialized) localGgufInference.close()
-        modelImportWorker.shutdownNow()
         super.onDestroy()
     }
 
@@ -1242,18 +1238,15 @@ class MainActivity : Activity() {
             val selected: Uri? = if (resultCode == RESULT_OK) data?.data else null
             if (selected != null && foregroundGate.canAcceptRecognitionResult()) {
                 statusText.text = "Copiando y verificando modelo GGUF privado…"
-                modelImportWorker.submit {
-                    val outcome = try {
-                        localGgufStore.import(selected)
-                        "GGUF importado y SHA-256 registrado. " +
+                val accepted = localGgufInference.importModel(selected) { sha ->
+                    if (!isDestroyed) statusText.text =
+                        if (sha != null) "GGUF importado y SHA-256 registrado. " +
                             "Puedes hacer una pregunta sin Internet."
-                    } catch (_: Exception) {
-                        "Importación fallida: archivo incompatible, sin acceso o sin espacio."
-                    }
-                    runOnUiThread {
-                        if (!isDestroyed) statusText.text = outcome
-                    }
+                        else "Importación fallida: archivo incompatible, " +
+                            "sin acceso o sin espacio."
                 }
+                if (!accepted) statusText.text =
+                    "Otra operación GGUF está activa. Inténtalo de nuevo."
             } else {
                 statusText.text = "Modelo no seleccionado o sesión no autorizada."
             }
