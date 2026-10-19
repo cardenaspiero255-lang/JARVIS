@@ -65,7 +65,7 @@ class OfflineVoicePcmToTtsInstrumentedTest {
         val normalized = java.text.Normalizer.normalize(
             question!!.lowercase(java.util.Locale.ROOT),
             java.text.Normalizer.Form.NFD
-        ).replace(Regex("""\\p{M}+"""), "")
+        ).replace(Regex("""\p{M}+"""), "")
         assertTrue("ASR missed target question content", normalized.contains("capital") &&
             normalized.contains("chile"))
         // Copy only test-verified weights into app-private storage for JNI.
