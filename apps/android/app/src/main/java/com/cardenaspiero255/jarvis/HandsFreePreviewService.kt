@@ -43,9 +43,9 @@ import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import java.time.LocalTime
 
 /**
- * Explicit 60-second / one-utterance experiment, NOT always-on hotwording or
- * speaker verification. Uses on-device Android recognition only; NEVER cloud
- * speech fallback, stored transcripts, or external actions.
+ * Explicit bounded listening: legacy 60-second preview or user-approved
+ * 30-minute native offline session that can continue after screen lock.
+ * Not boot-autostart, permanent listening or speaker authentication.
  */
 class HandsFreePreviewService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -60,7 +60,7 @@ class HandsFreePreviewService : Service() {
     private val diagnostics by lazy {
         getSharedPreferences("jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
     }
-    private val timeGate = PreviewTimeGate(60_000L)
+    private var timeGate = PreviewTimeGate(60_000L)
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -76,6 +76,12 @@ class HandsFreePreviewService : Service() {
     private var diagnosticMode = false
     private var systemRecognizerRequested = false
     private var nativeModeRequested = false
+    private var extendedListening = false
+    private val wakeLockRefresh = object : Runnable {
+        override fun run() {
+            if (isRunning && !closed && extendedListening) acquireShortWakeLock()
+        }
+    }
     private var nativeRunner: NativeSpanishSpeechRunner? = null
     private val nativeStartupTimeout = Runnable {
         finish("ASR_NATIVE_INIT_TIMEOUT: el modelo tardó demasiado en inicializarse. " +
@@ -85,7 +91,7 @@ class HandsFreePreviewService : Service() {
     private var diagnosticWorker: Thread? = null
     private var ttsWatchdog: Runnable? = null
     private val timeout = Runnable {
-        finish("La prueba de 60 segundos terminó. Micrófono liberado.")
+        finish(if (extendedListening) "EXTENDED_LISTENING: sesión de 30 minutos terminada." else "La prueba de 60 segundos terminó. Micrófono liberado.")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -105,7 +111,8 @@ class HandsFreePreviewService : Service() {
         }
         val diagnostic = intent?.action == ACTION_DIAGNOSE
         val systemRequested = intent?.action == ACTION_START_SYSTEM
-        val nativeRequested = intent?.action == ACTION_START_NATIVE
+        val extendedRequested = intent?.action == ACTION_START_LONG_NATIVE
+        val nativeRequested = intent?.action == ACTION_START_NATIVE || extendedRequested
         if ((intent?.action != ACTION_START && !diagnostic && !systemRequested &&
                 !nativeRequested) ||
             !intent.getBooleanExtra(EXTRA_TAPPED, false) || isRunning || closed) {
@@ -125,6 +132,8 @@ class HandsFreePreviewService : Service() {
         val systemAvailable = systemRequested && try {
             SpeechRecognizer.isRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
+        extendedListening = extendedRequested
+        timeGate = PreviewTimeGate(if (extendedListening) 30 * 60_000L else 60_000L)
         val result = policy.canStart(
             explicitUserTap = true,
             micGranted = mic,
@@ -281,25 +290,32 @@ class HandsFreePreviewService : Service() {
                         return@post
                     main.removeCallbacks(nativeStartupTimeout)
                     if (!timeGate.begin(SystemClock.elapsedRealtime())) {
-                        finish("ASR_NATIVE_CLOCK_ERROR: no se pudo iniciar ventana de 60 s.")
+                        finish("ASR_NATIVE_CLOCK_ERROR: no se pudo iniciar el temporizador.")
                         return@post
                     }
-                    // Restart the 60s CPU lock only after model initialization.
+                    // Renew bounded CPU lock after native initialization.
                     try { if (wakeLock?.isHeld == true) wakeLock?.release() }
                     catch (_: RuntimeException) {}
                     wakeLock = null
                     acquireShortWakeLock()
-                    main.postDelayed(timeout, 60_000L)
-                    showStatus("ASR_NATIVE_READY: escucha local 60 s activa. " +
-                        "Di «Jarvis, dime la hora» con pantalla encendida o apagada.")
+                    val duration = if (extendedListening) 30 * 60_000L else 60_000L
+                    main.postDelayed(timeout, duration)
+                    showStatus(if (extendedListening)
+                        "EXTENDED_LISTENING: micrófono local activo hasta 30 min; " +
+                            "aviso visible con DETENER. Di «Jarvis, dime la hora»." else
+                        "ASR_NATIVE_READY: escucha local 60 s activa. " +
+                            "Di «Jarvis, dime la hora» con pantalla encendida o apagada.")
                 }
             },
             onWake = { wake ->
                 main.post {
-                    if (!isRunning || closed || !nativeModeRequested || consumed ||
+                    if (!isRunning || closed || !nativeModeRequested ||
+                        (!extendedListening && consumed) ||
                         !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
-                    consumed = true
-                    nativeRunner?.stop()
+                    if (!extendedListening) {
+                        consumed = true
+                        nativeRunner?.stop()
+                    }
                     when (wake) {
                         PreviewWake.STOP -> finish("ASR_NATIVE_STOP_BY_VOICE: micrófono detenido por orden de voz.")
                         PreviewWake.LOCAL_TIME -> {
@@ -312,9 +328,14 @@ class HandsFreePreviewService : Service() {
                             speakThenStop(answer)
                         }
                         PreviewWake.WAKE_ONLY -> {
-                            record("ASR_NATIVE_WAKE_ONLY: palabra Jarvis reconocida, " +
-                                "prueba todavía de una sola frase.", active = true)
-                            speakThenStop("Te escuché. Di: Jarvis, dime la hora.")
+                            if (extendedListening) {
+                                showStatus("EXTENDED_LISTENING: Jarvis reconocido; " +
+                                    "esperando la orden pública sin verificar identidad.")
+                            } else {
+                                record("ASR_NATIVE_WAKE_ONLY: palabra Jarvis reconocida, " +
+                                    "prueba todavía de una sola frase.", active = true)
+                                speakThenStop("Te escuché. Di: Jarvis, dime la hora.")
+                            }
                         }
                         else -> finish("ASR_NATIVE_IGNORED: voz no autorizada por parser.")
                     }
@@ -325,7 +346,9 @@ class HandsFreePreviewService : Service() {
                     if (isRunning && !closed && nativeModeRequested && !consumed)
                         finish(message)
                 }
-            }
+            },
+            continuous = extendedListening,
+            sessionDurationMillis = if (extendedListening) 30 * 60_000L else 60_000L
         )
         nativeRunner = runner
         if (!runner.start()) {
@@ -613,8 +636,14 @@ class HandsFreePreviewService : Service() {
     private fun acquireShortWakeLock() {
         try {
             val pm = getSystemService(POWER_SERVICE) as? PowerManager ?: return
+            // Never overlap consecutive timed CPU locks during extended sessions.
+            if (wakeLock?.isHeld == true) wakeLock?.release()
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
                 "jarvis:HandsFreePreview").also { it.acquire(60_000L) }
+            if (extendedListening) {
+                main.removeCallbacks(wakeLockRefresh)
+                main.postDelayed(wakeLockRefresh, 45_000L)
+            }
         } catch (_: RuntimeException) {
             record("Prueba activa; Android no concedió bloqueo CPU temporal.", active = true)
         }
@@ -647,7 +676,7 @@ class HandsFreePreviewService : Service() {
                     if (pending != null) {
                         pendingSpeech = null
                         if (ttsReady) play(pending) else {
-                            finish("TTS_OFFLINE_UNAVAILABLE: respuesta reconocida, " +
+                            finishOrResume("TTS_OFFLINE_UNAVAILABLE: respuesta reconocida, " +
                                 "pero falta una voz española local instalada.")
                         }
                     }
@@ -659,27 +688,50 @@ class HandsFreePreviewService : Service() {
         }
     }
 
+    private fun finishOrResume(reason: String) {
+        if (extendedListening && isRunning && !closed && !endedNormally) {
+            // Keep a short post-TTS echo guard before analyzing microphone PCM.
+            main.postDelayed({
+                if (isRunning && !closed && extendedListening) {
+                    nativeRunner?.setResponsePlayback(false)
+                }
+            }, 350L)
+            showStatus("EXTENDED_LISTENING: $reason. Micrófono sigue disponible; DETENER en aviso.")
+        } else finish(reason)
+    }
+
     private fun speakThenStop(text: String) {
         if (!isRunning || !timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
-            stopSelf()
+            finish("Sesión terminada; micrófono liberado.")
             return
         }
-        closeRecognizer()
+        if (!extendedListening) closeRecognizer()
         when {
             ttsReady -> play(text)
-            ttsInitialized -> finish(
+            ttsInitialized -> finishOrResume(
                 "TTS_OFFLINE_UNAVAILABLE: Android no proporciona una voz " +
                     "española local. Instala datos de síntesis de voz en Android.")
             else -> {
                 pendingSpeech = text
                 showStatus("Respuesta preparada · esperando inicialización TTS offline")
+                if (extendedListening) {
+                    val guard = Runnable {
+                        if (pendingSpeech != null && isRunning && !closed) {
+                            pendingSpeech = null
+                            finishOrResume("TTS_INIT_TIMEOUT: el motor local no respondió.")
+                        }
+                    }
+                    ttsWatchdog?.let { main.removeCallbacks(it) }
+                    ttsWatchdog = guard
+                    main.postDelayed(guard, 7_000L)
+                }
             }
         }
     }
 
     private fun play(text: String) {
         val engine = tts ?: run {
-            finish("TTS_UNAVAILABLE: motor de voz local no inicializado.")
+            finishOrResume("TTS_UNAVAILABLE: motor de voz local no inicializado.")
             return
         }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -699,16 +751,16 @@ class HandsFreePreviewService : Service() {
                             ?.getStreamVolume(AudioManager.STREAM_MUSIC)
                     } catch (_: RuntimeException) { null }
                     val hint = if (volume == 0) " Volumen multimedia a cero." else ""
-                    finish("TTS_DONE: Android terminó la síntesis; " +
+                    finishOrResume("TTS_DONE: Android terminó la síntesis; " +
                         "comprueba si escuchaste el audio.$hint")
                 }
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
-                main.post { finish("Error TTS: no se pudo reproducir la voz local.") }
+                main.post { finishOrResume("Error TTS: no se pudo reproducir la voz local.") }
             }
             override fun onError(utteranceId: String?, errorCode: Int) {
-                main.post { finish("Error TTS ($errorCode): voz local no disponible.") }
+                main.post { finishOrResume("Error TTS ($errorCode): voz local no disponible.") }
             }
         })
         showStatus("JARVIS respondiendo localmente…")
@@ -716,12 +768,12 @@ class HandsFreePreviewService : Service() {
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview")
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
-            finish("TTS_REJECTED: Android rechazó la síntesis de voz local.")
+            finishOrResume("TTS_REJECTED: Android rechazó la síntesis de voz local.")
             return
         }
         val deadline = Runnable {
             if (isRunning && !closed && !endedNormally) {
-                finish("TTS_NO_PLAYBACK_CALLBACK: Android no confirmó " +
+                finishOrResume("TTS_NO_PLAYBACK_CALLBACK: Android no confirmó " +
                     "inicio/fin de reproducción en 10 segundos.")
             }
         }
@@ -749,7 +801,8 @@ class HandsFreePreviewService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
-            .setContentTitle("JARVIS · prueba manos libres")
+            .setContentTitle(if (extendedListening) "JARVIS · escucha 30 min" else
+                "JARVIS · prueba manos libres")
             .setContentText(summary)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
@@ -783,6 +836,7 @@ class HandsFreePreviewService : Service() {
         timeGate.stop()
         pendingSpeech = null
         main.removeCallbacks(timeout)
+        main.removeCallbacks(wakeLockRefresh)
         main.removeCallbacks(nativeStartupTimeout)
         nativeRunner?.stop()
         nativeRunner = null
@@ -808,6 +862,7 @@ class HandsFreePreviewService : Service() {
     companion object {
         const val ACTION_START = "com.cardenaspiero255.jarvis.HANDSFREE_START"
         const val ACTION_START_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_VOSK_NATIVE"
+        const val ACTION_START_LONG_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_LONG_NATIVE"
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
