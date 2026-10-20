@@ -34,7 +34,7 @@ object GuidedTutorialCatalog {
                     "Selecciona MANOS LIBRES 60 S con el motor español local. El primer arranque puede preparar archivos del modelo; espera el estado ASR_NATIVE_READY.",
                     "ASR_NATIVE_READY confirma que el motor se ha preparado, pero no garantiza reconocimiento acústico."),
                 GuidedStep("Probar escucha",
-                    "Di exactamente «Jarvis, dime la hora». Si falla, comprueba el estado de ASR y el nivel de micrófono. No concedas permisos adicionales a otras apps.",
+                    "Di «Jarvis, dime la hora» o «Jarvis, batería». Si falla, comprueba el estado de ASR y el nivel de micrófono. No concedas permisos adicionales a otras apps.",
                     "Una respuesta de hora verifica esta ruta limitada; no demuestra conversación libre."),
                 GuidedStep("Finalizar",
                     "Pulsa DETENER para liberar micrófono y servicio. Comprueba que desaparezca el estado de escucha.",
