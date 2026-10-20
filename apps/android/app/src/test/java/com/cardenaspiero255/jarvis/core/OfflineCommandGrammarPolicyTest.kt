@@ -52,7 +52,7 @@ class OfflineCommandGrammarPolicyTest {
     @Test fun omitsUnknownPhrasesButKeepsBatteryAndUnknownFallback() {
         val file = writeWords("jarvis", "dime", "la", "hora", "bateria", "unknown")
         assertEquals(
-            "[\"jarvis\",\"jarvis dime la hora\",\"dime la hora\",\"jarvis bateria\",\"bateria\",\"[unk]\"]",
+            "[\"jarvis\",\"jarvis dime la hora\",\"dime la hora\",\"jarvis bateria\",\"jarvis dime la bateria\",\"bateria\",\"dime la bateria\",\"[unk]\"]",
             OfflineCommandGrammarPolicy().fromVocabulary(file)
         )
     }
