@@ -86,6 +86,17 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn('NO contiene los 491 MB', screen)
         self.assertNotIn("android.permission.INTERNET", screen)
 
+    def test_short_mic_probe_must_not_erase_last_extended_session(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        self.assertIn("if (extendedRequested)", service)
+        self.assertIn('remove("lockscreen_off_samples")', service)
+        self.assertIn('remove("lockscreen_time_commands")', service)
+        self.assertIn('remove("lockscreen_stop_commands")', service)
+        self.assertIn('lockscreen_last_extended', service)
+        self.assertIn('LOCKSCREEN_NO_CORROBORADO', report)
+        self.assertIn('STOP_SIN_SESION_ACTIVA', report)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
