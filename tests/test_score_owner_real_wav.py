@@ -31,7 +31,7 @@ def wav(folder, name, *, duration=3.0, freq=440, silent=False):
 def manifest(folder):
     enroll = [wav(folder, f"enroll/{i}.wav", freq=300 + i * 70) for i in range(3)]
     probe = wav(folder, "probe/owner.wav", freq=380)
-    replay_audio = wav(folder, "probe/replay.wav", freq=300)
+    replay_audio = wav(folder, "probe/replay.wav", freq=510)
     source_audio = wav(folder, "replay/source.wav", freq=420)
     entries = [
         dict(probe, recording_sha256=probe["sha256"], trial_id="t001",
