@@ -492,7 +492,7 @@ class MainActivity : Activity() {
             "Opcional: habilita el servicio desde los ajustes de Android. " +
                 "El icono azul es un acceso directo del sistema: puedes " +
                 "desactivar ese acceso directo en Accesibilidad sin ocultar " +
-                "los avisos de seguridad. Después autoriza solo Inicio. " +
+                "los avisos de seguridad. Después autoriza solo Inicio y Atrás, mediante botones visibles. " +
                 "Detener Hands desactiva inmediatamente las órdenes de JARVIS, " +
                 "sin cambiar los permisos del sistema.",
             13f, Color.rgb(164, 166, 174)
@@ -500,7 +500,7 @@ class MainActivity : Activity() {
         section.addView(primaryButton("CONSULTAR ESTADO HANDS") {
             refreshHandsStatus()
         })
-        section.addView(primaryButton("AUTORIZAR HANDS — SOLO INICIO") {
+        section.addView(primaryButton("AUTORIZAR HANDS — INICIO Y ATRÁS") {
             if (!OmegaHandsService.isConnected()) {
                 statusText.text = "Primero habilita OMEGA Hands en los ajustes de accesibilidad."
             } else {
@@ -508,7 +508,7 @@ class MainActivity : Activity() {
                 statusText.text = if (OmegaHandsService.isStopped(this)) {
                     "No se pudo autorizar Hands. Comprueba el estado del servicio."
                 } else {
-                    "Autorizado en esta sesión: solo Inicio mediante pulsación visible."
+                    "Autorizado en esta sesión: Inicio y Atrás solo por pulsación visible."
                 }
             }
             refreshHandsStatus()
@@ -517,6 +517,13 @@ class MainActivity : Activity() {
             val result = OmegaHandsService.goHome(this, explicitTap = true)
             statusText.text = if (result) "Orden Inicio aceptada por Android." else
                 "No se ejecutó. Comprueba el servicio y la parada de emergencia."
+            refreshHandsStatus()
+        })
+        section.addView(primaryButton("VOLVER ATRÁS (PULSACIÓN EXPLÍCITA)") {
+            // Distinct typed local action. Never called by ASR, GGUF, or TTS.
+            val result = OmegaHandsService.goBack(this, explicitTap = true)
+            statusText.text = if (result) "Orden Atrás aceptada por Android." else
+                "No se ejecutó Atrás. Comprueba autorización y parada de emergencia."
             refreshHandsStatus()
         })
         section.addView(primaryButton("PARADA DE EMERGENCIA HANDS") {
