@@ -407,6 +407,7 @@ class VivoDiagnosticActivity : Activity() {
             ggufImported = LocalGgufModelStore(this).hasModel(),
             screenOffSamples = samples,
             screenOffObserved = confirmedScreenOff && samples > 0,
+            lockscreenLastExtended = audio.getBoolean("lockscreen_last_extended", false),
             lockscreenTimeCommandCount = audio.getInt("lockscreen_time_commands", 0),
             lockscreenStopCommandCount = audio.getInt("lockscreen_stop_commands", 0),
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
