@@ -190,10 +190,17 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
-        screenOffEvidence.reset()
-        diagnostics.edit().remove("lockscreen_off_samples")
-            .remove("lockscreen_off_reports").remove("lockscreen_result")
-            .remove("lockscreen_time_commands").remove("lockscreen_stop_commands").apply()
+        // Keep the LAST explicitly authorized extended-session evidence when
+        // a subsequent 4 s microphone, 60 s wake, or other short probe runs.
+        // Previous code silently reset these lockscreen measurements on EVERY
+        // service start, producing zeros in a later user-shared report.
+        if (extendedRequested) {
+            screenOffEvidence.reset()
+            diagnostics.edit().remove("lockscreen_off_samples")
+                .remove("lockscreen_off_reports").remove("lockscreen_result")
+                .remove("lockscreen_time_commands").remove("lockscreen_stop_commands")
+                .putBoolean("lockscreen_last_extended", true).commit()
+        }
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
