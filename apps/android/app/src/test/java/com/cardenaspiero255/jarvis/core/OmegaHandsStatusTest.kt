@@ -7,7 +7,7 @@ class OmegaHandsStatusTest {
     @Test fun showsActualPermissionVersusEmergencyStop() {
         assertEquals("Accesibilidad no conectada", HandsStatus.present(false, true))
         assertEquals("HANDS detenido", HandsStatus.present(true, true))
-        assertEquals("HANDS habilitado: solo ir al inicio", HandsStatus.present(true, false))
+        assertEquals("HANDS habilitado: Inicio y Atrás por pulsación", HandsStatus.present(true, false))
     }
 
     @Test fun pauseOverridesConnection() {
