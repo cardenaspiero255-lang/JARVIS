@@ -24,6 +24,12 @@ data class LocalVoiceEnrollmentDiagnostics(val minimumPairwiseCosine: Double)
  * NOT a voice login or liveness guarantee; neither PCM nor transcripts persist.
  */
 class SherpaSpeakerEnrollmentEngine(private val context: Context) {
+    companion object {
+        // Shared across every engine instance: cancellation and revoke must
+        // serialize with the last encrypted write, not merely pass a stale
+        // isActive check before the save.
+        private val ENROLLMENT_COMMIT_LOCK = Any()
+    }
     private val busy = AtomicBoolean(false)
 
     fun enroll(
@@ -93,14 +99,21 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
                 OwnerVoiceCosine.compare(embeddings[a].embedding, embeddings[b].embedding)
                     ?: return LocalVoiceEnrollmentOutcome.BAD_SAMPLES
             }
-            if (Thread.currentThread().isInterrupted || !isActive()) {
+            val committed = try {
+                synchronized(ENROLLMENT_COMMIT_LOCK) {
+                    if (Thread.currentThread().isInterrupted || !isActive()) {
+                        false
+                    } else {
+                        AndroidSpeakerTemplateVault(context).save(
+                            VerifiedSpeakerModelStore.MODEL_SHA256, template
+                        )
+                        true
+                    }
+                }
+            } finally {
                 template.fill(0f)
-                return LocalVoiceEnrollmentOutcome.DENIED
             }
-            AndroidSpeakerTemplateVault(context).save(
-                VerifiedSpeakerModelStore.MODEL_SHA256, template
-            )
-            template.fill(0f)
+            if (!committed) return LocalVoiceEnrollmentOutcome.DENIED
             try {
                 onDiagnostics(LocalVoiceEnrollmentDiagnostics(minimumPairwiseCosine))
             } catch (_: Exception) { /* Diagnostics never decide authorization. */ }
@@ -131,5 +144,7 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
         ) // Always SpeakerEvidence.UNAVAILABLE; never MATCHED.
     }
 
-    fun revoke(): Unit = AndroidSpeakerTemplateVault(context).revoke()
+    fun revoke(): Unit = synchronized(ENROLLMENT_COMMIT_LOCK) {
+        AndroidSpeakerTemplateVault(context).revoke()
+    }
 }
