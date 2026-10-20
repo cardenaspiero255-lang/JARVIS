@@ -50,7 +50,7 @@ class OwnerWavImportContract(unittest.TestCase):
         engine = (SRC/"SherpaSpeakerEnrollmentEngine.kt").read_text()
         self.assertIn("ENROLLMENT_COMMIT_LOCK", engine)
         self.assertGreaterEqual(engine.count("synchronized(ENROLLMENT_COMMIT_LOCK)"), 2)
-        self.assertIn("if (!isActive()", engine)
+        self.assertIn("Thread.currentThread().isInterrupted || !isActive()", engine)
         self.assertIn("AndroidSpeakerTemplateVault(context).revoke()", engine)
 
     def test_no_extra_storage_permission_or_internet_requested(self):
