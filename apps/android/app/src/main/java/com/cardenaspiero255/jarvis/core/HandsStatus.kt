@@ -6,6 +6,6 @@ object HandsStatus {
         when {
             !serviceConnected -> "Accesibilidad no conectada"
             emergencyStopped -> "HANDS detenido"
-            else -> "HANDS habilitado: solo ir al inicio"
+            else -> "HANDS habilitado: Inicio y Atrás por pulsación"
         }
 }
