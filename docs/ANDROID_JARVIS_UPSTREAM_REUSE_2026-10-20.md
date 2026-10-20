@@ -37,6 +37,31 @@ describen lo que el usuario debe verificar y no dan certificados.
 Prueba JVM:
 `gradle -p apps/android :app:testDebugUnitTest --tests com.cardenaspiero255.jarvis.core.GuidedTutorialTest`.
 
+## Segunda función implementada: consulta de batería por voz
+
+El motor Vosk y la ventana explícitamente autorizada de voz ya existían.
+Se amplía la clasificación de comandos **exactos**, no el conjunto de
+capacidades del teléfono:
+
+- `Jarvis, batería`;
+- `Jarvis, cuánta batería tengo`;
+- `Jarvis, dime la batería`;
+- tras `Jarvis`, seguimiento dentro de ocho segundos: `batería` o
+  `cuánta batería tengo`.
+
+Solo se consulta el broadcast local protegido
+`Intent.ACTION_BATTERY_CHANGED` mediante la API oficial Android. No requiere
+permisos Android nuevos, no navega por otras apps y no cambia ajustes.
+Si el porcentaje no es válido se comunica que no está disponible.
+Las negaciones y órdenes concatenadas se rechazan, y la identidad no se
+presume verificada. Las frases `Jarvis, para` y `Jarvis, detente` siguen
+deteniendo la sesión. Las pruebas locales verifican el parser y los límites
+del seguimiento, pero **no certifican precisión acústica real**.
+
+El reconocedor de gramática restringida exige ahora vocabulario de batería.
+Si el diccionario instalado no lo soporta, se usa Vosk offline no
+restringido en vez de aceptar un diccionario obsoleto que impida esta función.
+
 ## Prioridades posteriores — no implementadas en este PR
 
 1. **Pipeline ASR → GGUF → TTS con cancelación**: reutilizar motor local ya
