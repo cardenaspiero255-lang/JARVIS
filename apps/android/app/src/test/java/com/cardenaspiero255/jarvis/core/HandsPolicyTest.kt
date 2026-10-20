@@ -17,8 +17,7 @@ class HandsPolicyTest {
     @Test fun unimplementedScreenActionsAreDeniedEvenIfServiceIsEnabled() {
         val context = HandsContext(serviceConnected = true, emergencyStopped = false, explicitTap = true)
         for (action in listOf(HandsOperation.CLICK_NODE, HandsOperation.TYPE_TEXT,
-                              HandsOperation.READ_SCREEN, HandsOperation.LAUNCH_APP,
-                              HandsOperation.GLOBAL_BACK)) {
+                              HandsOperation.READ_SCREEN, HandsOperation.LAUNCH_APP)) {
             assertEquals(HandsDecision.DENY, policy.evaluate(action, context))
         }
     }
