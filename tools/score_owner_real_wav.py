@@ -8,6 +8,7 @@ Never authorizes voice identity or Android actions.
 """
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
@@ -67,9 +68,13 @@ def load_checked_pcm(root, relative, expected_sha, min_frames, max_frames=MAX_FR
     if f.stat().st_size > MAX_BYTES:
         raise ValueError("Oversized private WAV")
     raw = f.read_bytes()
+    if len(raw) > MAX_BYTES:
+        raise ValueError("Oversized private WAV")
     if _sha(raw) != expected_sha:
         raise ValueError("WAV hash mismatch")
-    with wave.open(str(f), "rb") as w:
+    # Parse the exact immutable bytes that were SHA-verified, not a second
+    # filesystem read that can race with an attacker-controlled replacement.
+    with wave.open(io.BytesIO(raw), "rb") as w:
         if (w.getnchannels() != 1 or w.getsampwidth() != 2 or
             w.getframerate() != 16_000 or w.getcomptype() != "NONE"):
             raise ValueError("Require 16 kHz 16-bit mono uncompressed PCM WAV")
