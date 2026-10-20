@@ -11,6 +11,7 @@ class VivoDiagnosticReportTest {
             thermalStatus = 0, availableRamMib = 1536L, pssKib = 94208,
             microphoneGranted = false, notificationsGranted = true, ggufImported = false,
             screenOffSamples = 0L, screenOffObserved = false,
+            lockscreenLastExtended = false,
             lockscreenTimeCommandCount = 0, lockscreenStopCommandCount = 0,
             qwenRun = "NO_PROBADO",
             qwenLatencyMs = null, stopRun = "NO_PROBADO", results = results
