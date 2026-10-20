@@ -68,6 +68,24 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn('CONTRADICCION_QWEN', report)
         self.assertIn('STOP_ejecución=', report)
 
+    def test_screenoff_recognized_commands_are_separate_from_pcm(self):
+        runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        screen = (SRC / "VivoDiagnosticActivity.kt").read_text()
+        self.assertIn("LockScreenCaptureAccumulator", runner)
+        self.assertIn("screenOffFrames.observe(received, interactiveAtCapture)", runner)
+        self.assertIn("onAudioProgress(capturedWhileScreenOff, progressNow)", runner)
+        self.assertIn("screenOffAtRecognition", service)
+        self.assertIn("lockscreen_time_commands", service)
+        self.assertIn("lockscreen_stop_commands", service)
+        self.assertIn("Comandos_HORA_recibidos_pantalla_apagada=", report)
+        self.assertIn("Comandos_STOP_recibidos_pantalla_apagada=", report)
+        self.assertIn('lockscreenTimeCommandCount = audio.getInt', screen)
+        self.assertIn('IMPORTAR GGUF PRIVADO', screen)
+        self.assertIn('NO contiene los 491 MB', screen)
+        self.assertNotIn("android.permission.INTERNET", screen)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
