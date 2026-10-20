@@ -51,6 +51,23 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertNotIn("MODE_WORLD_READABLE", screen)
         self.assertNotIn("startForegroundService", screen.split("override fun onCreate")[0])
 
+    def test_real_stop_ack_and_qwen_evidence_preservation(self):
+        activity = (SRC / "VivoDiagnosticActivity.kt").read_text()
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        gate = (SRC / "core/VivoDiagnosticStopGate.kt").read_text()
+        self.assertIn('EXTRA_STOP_DIAGNOSTIC_REQUEST_ID', service)
+        self.assertIn('stop_ack_id', service)
+        self.assertIn('stop_ack_id', activity)
+        self.assertIn('STOP_SERVICIO_FINALIZADO', activity)
+        self.assertIn('STOP_NO_CONFIRMADO', activity)
+        self.assertIn('pollStopReceipt', activity)
+        self.assertIn('qwenWasActive', activity)
+        self.assertIn('if (qwenWasActive)', activity)
+        self.assertIn('!serviceRunning && !servicePersistedActive', gate)
+        self.assertIn('CONTRADICCION_QWEN', report)
+        self.assertIn('STOP_ejecución=', report)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
