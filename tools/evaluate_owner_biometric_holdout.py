@@ -41,6 +41,10 @@ def validate(rows):
         raise ValueError("No independently scored biometric trials")
     seen_trials, seen_recordings, session_splits = set(), set(), {}
     recording_splits = {}
+    # A replay source can be reused for repeated trials within a single
+    # partition, but NEVER between calibration and sealed holdout. It might
+    # not itself appear as a probe, so recording_splits alone is insufficient.
+    replay_source_splits = {}
     for idx, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ValueError("Invalid trial row")
@@ -90,6 +94,9 @@ def validate(rows):
                 raise ValueError("Invalid replay source provenance")
             if origin == row["enrollment_sha256"]:
                 raise ValueError("Replay source must not be enrollment recording")
+            previous_split = replay_source_splits.setdefault(origin, row["split"])
+            if previous_split != row["split"]:
+                raise ValueError("Replay source leaks across calibration and holdout splits")
     for row in rows:
         if row["kind"] == "replay":
             origin = row["replay_source_sha256"]
