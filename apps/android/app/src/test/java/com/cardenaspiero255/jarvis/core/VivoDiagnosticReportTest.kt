@@ -11,7 +11,7 @@ class VivoDiagnosticReportTest {
             thermalStatus = 0, availableRamMib = 1536L, pssKib = 94208,
             microphoneGranted = false, notificationsGranted = true, ggufImported = false,
             screenOffSamples = 0L, screenOffObserved = false, qwenRun = "NO_PROBADO",
-            qwenLatencyMs = null, results = results
+            qwenLatencyMs = null, stopRun = "NO_PROBADO", results = results
         ).toShareText()
 
     @Test fun untestedFeaturesNeverBecomeCertifiedByDefault() {
@@ -23,6 +23,18 @@ class VivoDiagnosticReportTest {
         assertFalse(out.contains("serial="))
         assertFalse(out.contains("raw_pcm"))
         assertFalse(out.contains("USER_REPORTED_OWNER=FUNCIONA"))
+    }
+
+    @Test fun contradictoryPhysicalReportMustNotClaimQwenOrOwnerAreCertified() {
+        val out = report(mapOf(
+            VivoCheck.QWEN to VivoReportedResult.FUNCIONA,
+            VivoCheck.OWNER to VivoReportedResult.FUNCIONA,
+            VivoCheck.STOP to VivoReportedResult.FUNCIONA
+        ))
+        assertTrue(out.contains("CONTRADICCION_QWEN"))
+        assertTrue(out.contains("OWNER_NO_CERTIFICADO"))
+        assertTrue(out.contains("STOP_NO_CONFIRMADO"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
     }
 
     @Test fun reportSeparatesManualObservationFromSystemMeasurement() {
