@@ -315,11 +315,11 @@ class HandsFreePreviewService : Service() {
             onAudioProgress = { sampleCount, elapsed ->
                 main.post {
                     if (!isRunning || closed || !extendedListening || endedNormally) return@post
-                    val awake = try {
-                        (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive ?: true
-                    } catch (_: RuntimeException) { true }
+                    // sampleCount contains ONLY PCM observed with display off
+                    // on AudioRecord's worker. The UI must not reclassify it
+                    // using the screen state at delayed callback delivery.
                     val previousState = screenOffEvidence.snapshot().state
-                    screenOffEvidence.observe(elapsed, sampleCount, awake)
+                    screenOffEvidence.observe(elapsed, sampleCount, interactive = false)
                     val snapshot = screenOffEvidence.snapshot()
                     diagnostics.edit()
                         .putLong("lockscreen_off_samples", snapshot.screenOffSamples)
