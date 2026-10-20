@@ -217,6 +217,7 @@ class VivoDiagnosticActivity : Activity() {
 
     private fun stopAllByTap() {
         val qwenWasActive = localInference != null
+        val micWasActive = HandsFreePreviewService.isRunning
         qwenGeneration++
         inferenceTimeout?.let(ui::removeCallbacks)
         inferenceTimeout = null
@@ -233,10 +234,20 @@ class VivoDiagnosticActivity : Activity() {
 
         stopReceiptPoll?.let(ui::removeCallbacks)
         stopReceiptPoll = null
+        if (!micWasActive) {
+            val outcome = if (qwenWasActive) "QWEN_SOLO_CANCELADO" else "SIN_SESION_ACTIVA"
+            prefs.edit().putString("stop_status", outcome)
+                .putBoolean("stop_was_active", false).commit()
+            stopOutcome.text = "$outcome: no había micrófono activo que detener."
+            status.text = if (qwenWasActive) "Cancelación de Qwen solicitada." else
+                "No había una sesión en ejecución; no se acredita STOP."
+            return
+        }
         val requestId = SystemClock.elapsedRealtimeNanos().coerceAtLeast(1L)
         val start = SystemClock.elapsedRealtime()
         prefs.edit().putLong("stop_request_id", requestId)
             .putLong("stop_request_elapsed", start)
+            .putBoolean("stop_was_active", micWasActive)
             .putString("stop_status", "STOP_PENDIENTE").commit()
         stopOutcome.text = "STOP_PENDIENTE: esperando recibo exacto y fin del servicio."
         try {
@@ -258,7 +269,8 @@ class VivoDiagnosticActivity : Activity() {
         val acknowledged = stopGate.confirmStop(requestId,
             service.getLong("stop_ack_id", -1L),
             HandsFreePreviewService.isRunning,
-            service.getBoolean("active", false))
+            service.getBoolean("active", false),
+            prefs.getBoolean("stop_was_active", false))
         if (acknowledged) {
             prefs.edit().putString("stop_status", "STOP_SERVICIO_FINALIZADO").commit()
             stopOutcome.text = "STOP_SERVICIO_FINALIZADO: recibo y servicio inactivo. " +
