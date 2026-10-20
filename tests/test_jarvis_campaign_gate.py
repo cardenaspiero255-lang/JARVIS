@@ -117,5 +117,37 @@ class JarvisCampaignGateTest(unittest.TestCase):
         self.assertEqual("NOT_CERTIFIED", report["certification"])
 
 
+    def test_unmeasured_gguf_voice_cannot_be_falsely_declared_validated(self):
+        altered = gguf()
+        altered["voice"]["gguf_voice_pipeline"] = "FULLY_VALIDATED"
+        with self.assertRaises(ValueError):
+            summarize(gguf_report=altered)
+
+    def test_gguf_rejects_inverted_latency_and_memory(self):
+        impossible = gguf()
+        impossible["latency_ms"]["subsequent_p50"] = 500
+        impossible["latency_ms"]["subsequent_p95"] = 400
+        with self.assertRaises(ValueError):
+            summarize(gguf_report=impossible)
+        impossible = gguf()
+        impossible["memory_kib"]["baseline_pss"] = 200000
+        impossible["memory_kib"]["peak_pss"] = 180000
+        with self.assertRaises(ValueError):
+            summarize(gguf_report=impossible)
+
+    def test_owner_claiming_sufficient_trials_must_have_calibration_genuines(self):
+        forged = owner(sealed=True, enough=True)
+        forged["calibration"]["genuine"] = {"trials": 1, "false_rejects": 0}
+        with self.assertRaises(ValueError):
+            summarize(owner_report=forged)
+
+    def test_owner_rejects_impossible_forged_zero_error_rates(self):
+        forged = owner(sealed=True, enough=True)
+        forged["holdout"]["impostor"]["false_accepts"] = 301
+        with self.assertRaises(ValueError):
+            summarize(owner_report=forged)
+
+
+
 if __name__ == "__main__":
     unittest.main()
