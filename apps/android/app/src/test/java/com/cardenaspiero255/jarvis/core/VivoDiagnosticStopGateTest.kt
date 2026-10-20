@@ -22,11 +22,16 @@ class VivoDiagnosticStopGateTest {
     }
 
     @Test fun aStaleStopReceiptOrStillActiveRecorderIsNotAnAcknowledgment() {
-        assertFalse(gate.confirmStop(101L, 100L, false, false))
-        assertFalse(gate.confirmStop(101L, 101L, true, false))
-        assertFalse(gate.confirmStop(101L, 101L, false, true))
-        assertFalse(gate.confirmStop(101L, -1L, false, false))
-        assertFalse(gate.confirmStop(0L, 0L, false, false))
-        assertTrue(gate.confirmStop(101L, 101L, false, false))
+        assertFalse(gate.confirmStop(101L, 100L, false, false, true))
+        assertFalse(gate.confirmStop(101L, 101L, true, false, true))
+        assertFalse(gate.confirmStop(101L, 101L, false, true, true))
+        assertFalse(gate.confirmStop(101L, -1L, false, false, true))
+        assertFalse(gate.confirmStop(0L, 0L, false, false, true))
+        assertTrue(gate.confirmStop(101L, 101L, false, false, true))
+    }
+
+    @Test fun stopWithoutAnActiveMicCannotBeCalledSuccessful() {
+        // The old implementation started an ephemeral service just to STOP it.
+        assertFalse(gate.confirmStop(101L, 101L, false, false, false))
     }
 }
