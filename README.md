@@ -8,7 +8,7 @@ La compilación de un APK y los tests de CI **no** demuestran que funcione de ex
 
 - **Omega Chat / Memory:** chat local determinista en español, cálculo offline y continuaciones numéricas; memoria privada AES-GCM con activación explícita y borrado.
 - **Omega Voice:** voz instalada en Android para respuestas predefinidas y del chat local, con activación manual, parada y reconocimiento iniciado por pulsación. El servicio de reconocimiento del sistema puede depender de un tercero. Después de iniciar el reconocimiento con el botón, la orden exacta «JARVIS, detente» bloquea y revoca las funciones locales de la sesión igual que el botón de privacidad; no habilita escucha continua ni borra la memoria cifrada en disco.
-- **Omega Hands:** servicio de accesibilidad opcional para la acción HOME, con botón de autorización y parada de emergencia; no navegación universal.
+- **Omega Hands:** servicio de accesibilidad opcional para las acciones HOME y BACK, cada una por pulsación visible, con autorización local y parada de emergencia; no navegación universal.
 - **Omega Vision:** OCR local de imágenes elegidas por el usuario y sugerencias heurísticas de botones, sin pulsarlos. **PR #16 de MediaProjection sigue en borrador**, no está integrado a `main`.
 - **GameHub Ultra:** botón para abrir el paquete exacto y solicitud por voz que necesita una confirmación táctil independiente de un solo uso. No hay conexión autenticada al motor interno.
 - **Omega Performance:** botón de lectura instantánea del porcentaje de batería, estado térmico del sistema y RAM disponible; no almacena ni transmite telemetría.
