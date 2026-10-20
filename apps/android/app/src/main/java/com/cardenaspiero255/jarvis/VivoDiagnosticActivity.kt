@@ -19,6 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.cardenaspiero255.jarvis.core.VivoCheck
 import com.cardenaspiero255.jarvis.core.VivoDiagnosticReport
+import com.cardenaspiero255.jarvis.core.VivoDiagnosticStopGate
 import com.cardenaspiero255.jarvis.core.VivoReportedResult
 
 /**
@@ -32,6 +33,9 @@ class VivoDiagnosticActivity : Activity() {
         getSharedPreferences("jarvis_vivo_one_install_diag_v1", MODE_PRIVATE)
     }
     private lateinit var status: TextView
+    private lateinit var stopOutcome: TextView
+    private val stopGate = VivoDiagnosticStopGate()
+    private var stopReceiptPoll: Runnable? = null
     private lateinit var snapshot: TextView
     private lateinit var resultColumn: LinearLayout
     private var localInference: LocalGgufInference? = null
@@ -120,6 +124,8 @@ class VivoDiagnosticActivity : Activity() {
         root.addView(button("DETENER MICRÓFONO Y CANCELAR QWEN") { stopAllByTap() })
         status = label(HandsFreePreviewService.readDiagnostic(this), 13f)
         root.addView(status)
+        stopOutcome = label("STOP_ejecución: NO_PROBADO (sin confirmación del servicio)", 13f)
+        root.addView(stopOutcome)
 
         root.addView(label("RESULTADOS QUE TÚ OBSERVASTE (NO son certificaciones)", 18f))
         resultColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -193,20 +199,66 @@ class VivoDiagnosticActivity : Activity() {
     }
 
     private fun stopAllByTap() {
+        val qwenWasActive = localInference != null
         qwenGeneration++
         inferenceTimeout?.let(ui::removeCallbacks)
         inferenceTimeout = null
         localInference?.cancelActive()
         localInference?.close()
         localInference = null
-        prefs.edit().putString("qwen", "CANCELADO_POR_USUARIO")
-            .remove("qwen_ms").apply()
+        // The previous diagnostics silently replaced even a successful Qwen
+        // measurement when only the MIC STOP button was pressed.
+        if (qwenWasActive) {
+            val previous = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO"
+            prefs.edit().putString("qwen",
+                stopGate.qwenStatusAfterStop(true, previous)).remove("qwen_ms").apply()
+        }
+
+        stopReceiptPoll?.let(ui::removeCallbacks)
+        stopReceiptPoll = null
+        val requestId = SystemClock.elapsedRealtimeNanos().coerceAtLeast(1L)
+        val start = SystemClock.elapsedRealtime()
+        prefs.edit().putLong("stop_request_id", requestId)
+            .putLong("stop_request_elapsed", start)
+            .putString("stop_status", "STOP_PENDIENTE").commit()
+        stopOutcome.text = "STOP_PENDIENTE: esperando recibo exacto y fin del servicio."
         try {
             startService(Intent(this, HandsFreePreviewService::class.java).apply {
                 action = HandsFreePreviewService.ACTION_STOP
+                putExtra(HandsFreePreviewService.EXTRA_STOP_DIAGNOSTIC_REQUEST_ID, requestId)
             })
-        } catch (_: RuntimeException) { /* Already stopped. */ }
-        status.text = "DETENER solicitado. Ningún resultado marcado como aprobado."
+            pollStopReceipt(requestId, start)
+        } catch (_: RuntimeException) {
+            prefs.edit().putString("stop_status", "STOP_SOLICITUD_RECHAZADA").commit()
+            stopOutcome.text = "STOP_SOLICITUD_RECHAZADA: Android no entregó la orden."
+        }
+        status.text = "DETENER solicitado; la liberación aún requiere confirmación."
+    }
+
+    private fun pollStopReceipt(requestId: Long, began: Long) {
+        if (isFinishing || isDestroyed) return
+        val service = getSharedPreferences("jarvis_handsfree_diag_v1", MODE_PRIVATE)
+        val acknowledged = stopGate.confirmStop(requestId,
+            service.getLong("stop_ack_id", -1L),
+            HandsFreePreviewService.isRunning,
+            service.getBoolean("active", false))
+        if (acknowledged) {
+            prefs.edit().putString("stop_status", "STOP_SERVICIO_FINALIZADO").commit()
+            stopOutcome.text = "STOP_SERVICIO_FINALIZADO: recibo y servicio inactivo. " +
+                "Marca STOP=FUNCIONA solo si realmente dejó de escuchar o hablar."
+            stopReceiptPoll = null
+            return
+        }
+        if (SystemClock.elapsedRealtime() - began >= 5_000L) {
+            prefs.edit().putString("stop_status", "STOP_NO_CONFIRMADO").commit()
+            stopOutcome.text = "STOP_NO_CONFIRMADO: sin recibo nuevo + servicio inactivo. " +
+                "Marca STOP=FALLA si el micrófono o voz continuaron."
+            stopReceiptPoll = null
+            return
+        }
+        val task = Runnable { pollStopReceipt(requestId, began) }
+        stopReceiptPoll = task
+        ui.postDelayed(task, 250L)
     }
 
     private fun testLocalQwenByTap() {
@@ -329,6 +381,7 @@ class VivoDiagnosticActivity : Activity() {
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
             qwenLatencyMs = if (prefs.contains("qwen_ms")) prefs.getLong("qwen_ms", 0L)
                 else null,
+            stopRun = prefs.getString("stop_status", "NO_PROBADO") ?: "NO_PROBADO",
             results = VivoCheck.entries.associateWith(::readReportedResult)
         )
     }
@@ -336,6 +389,8 @@ class VivoDiagnosticActivity : Activity() {
     private fun updateSnapshot() {
         val report = collectReport().toShareText()
         snapshot.text = report
+        stopOutcome.text = "STOP_ejecución: " +
+            (prefs.getString("stop_status", "NO_PROBADO") ?: "NO_PROBADO")
         status.text = HandsFreePreviewService.readDiagnostic(this)
     }
 
@@ -344,10 +399,17 @@ class VivoDiagnosticActivity : Activity() {
         ui.removeCallbacks(refresh)
         ui.post(refresh)
         if (::snapshot.isInitialized) updateSnapshot()
+        val pending = prefs.getString("stop_status", "") == "STOP_PENDIENTE"
+        if (pending) {
+            pollStopReceipt(prefs.getLong("stop_request_id", -1L),
+                prefs.getLong("stop_request_elapsed", SystemClock.elapsedRealtime()))
+        }
     }
 
     override fun onPause() {
         ui.removeCallbacks(refresh)
+        stopReceiptPoll?.let(ui::removeCallbacks)
+        stopReceiptPoll = null
         // An explicitly started foreground voice service may remain active
         // while the user locks the display; Qwen direct probe does not.
         if (localInference != null) {
@@ -365,6 +427,8 @@ class VivoDiagnosticActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacks(refresh)
+        stopReceiptPoll?.let(ui::removeCallbacks)
+        stopReceiptPoll = null
         inferenceTimeout?.let(ui::removeCallbacks)
         localInference?.cancelActive()
         localInference?.close()
