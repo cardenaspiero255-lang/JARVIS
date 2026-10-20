@@ -16,7 +16,13 @@ class LockedScreenBiometricsContract(unittest.TestCase):
         evidence = (SRC / "core/LockScreenAudioEvidence.kt").read_text()
         instrumentation = (ANDROID_TEST /
             "LockScreenAudioContinuityInstrumentedTest.kt").read_text()
-        self.assertIn("PowerManager)?.isInteractive", service)
+        self.assertIn("power?.isInteractive", runner)
+        self.assertIn("screenOffFrames.observe(received, interactiveAtCapture)", runner)
+        self.assertIn("screenOffFrames.drainScreenOff()", runner)
+        self.assertIn("screenOffEvidence.observe(elapsed, sampleCount, interactive = false)", service)
+        self.assertNotIn("val awake = try", service)
+        # Do not reclassify blocks using the late UI screen state.
+        self.assertNotIn("screenOffEvidence.observe(elapsed, sampleCount, awake)", service)
         self.assertIn("lockscreen_off_samples", service)
         self.assertIn("LOCKSCREEN_PCM_OBSERVED", service)
         self.assertIn("onAudioProgress", service)
