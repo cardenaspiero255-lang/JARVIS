@@ -11,7 +11,10 @@ import statistics
 from pathlib import Path
 
 PINNED_SHA256 = "e3131339bf4e8065265593d4fd8f7bb7ff2d3abff1edb5618aa1197b89cad9f5"
+# Legacy marker in the raw GGUF-only fixture; it never exercised ASR/TTS.
 KNOWN_VOICE_STATUS = "NOT_IMPLEMENTED"
+# PR #91 introduced a one-turn local voice path, not evaluated by this suite.
+REPORT_VOICE_STATUS = "NOT_MEASURED_IN_GGUF_E2E"
 
 
 def nearest_rank(data, quantile):
@@ -143,7 +146,7 @@ def evaluate(raw):
             "semantic_certification": False,
         },
         "voice": {
-            "gguf_voice_pipeline": KNOWN_VOICE_STATUS,
+            "gguf_voice_pipeline": REPORT_VOICE_STATUS,
             "asr_audio_validated": False,
             "tts_audio_validated": False,
             "llm_tool_authority": False,
@@ -178,7 +181,7 @@ def as_markdown(report):
         f"- Respuestas con palabra clave esperada: "
         f"{q['matched']}/{q['count']} ({q['percent']}%) — indicador léxico, "
         "NO precisión semántica.\n"
-        "- Voz → GGUF → TTS: **NO IMPLEMENTADO**. "
+        "- Voz → GGUF → TTS: **NO MEDIDO POR ESTA SUITE**. "
         "Prueba acústica del propietario: **NO EJECUTADA**.\n"
         "- Energía, temperatura real y Vivo V25 Pro: **NO MEDIDOS**.\n"
         "- Certificación: **NOT_CERTIFIED**.\n"
