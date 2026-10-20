@@ -34,7 +34,9 @@ def owner(sealed=False, enough=False):
         "model_sha256": SPEAKER_SHA, "holdout_precommitted": sealed,
         "sufficient_for_1pct_far": enough,
         "baseline_non_regression_verified": False,
-        "calibration": {"impostor": counts(300), "replay": counts(300)},
+        "calibration": {"impostor": counts(300), "replay": counts(300),
+                        "genuine": {"trials": 30, "false_rejects": 1,
+                                    "error_rate": 1/30}},
         "holdout": {"impostor": counts(300), "replay": counts(300),
                     "genuine": {"trials": 30, "false_rejects": 1,
                                 "error_rate": 1/30}}
