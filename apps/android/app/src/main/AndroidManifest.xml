@@ -51,6 +51,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- User-initiated, non-exported physical-session report; no background capture. -->
+        <activity
+            android:name=".VivoDiagnosticActivity"
+            android:exported="false" />
         <activity
             android:name=".OwnerVoiceEnrollmentActivity"
             android:exported="false" />
