@@ -8,7 +8,7 @@ import java.util.Locale
  * plugs in here, independently of hotword detection and ASR.
  */
 enum class SpeakerEvidence { UNAVAILABLE, MATCHED, MISMATCH, UNCERTAIN, REPLAY_SUSPECTED }
-enum class PreviewWake { IGNORED, WAKE_ONLY, LOCAL_TIME, STOP, BLOCKED_IDENTITY }
+enum class PreviewWake { IGNORED, WAKE_ONLY, LOCAL_TIME, LOCAL_BATTERY, STOP, BLOCKED_IDENTITY }
 enum class PreviewStart { ALLOWED, DENIED, OFFLINE_ENGINE_MISSING }
 
 /**
@@ -41,6 +41,8 @@ class HandsFreePreviewPolicy {
         val action = when (phrase) {
             "jarvis" -> PreviewWake.WAKE_ONLY
             "jarvis dime la hora", "jarvis que hora es" -> PreviewWake.LOCAL_TIME
+            "jarvis bateria", "jarvis cuanta bateria tengo",
+            "jarvis dime la bateria" -> PreviewWake.LOCAL_BATTERY
             "jarvis para", "jarvis detente" -> PreviewWake.STOP
             else -> PreviewWake.IGNORED
         }
