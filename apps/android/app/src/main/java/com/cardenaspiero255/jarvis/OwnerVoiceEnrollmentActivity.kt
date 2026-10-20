@@ -34,6 +34,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private var verifyingOnly = false
     private var filePickerOpen = false
     private var pendingWavs: List<Uri>? = null
+    @Volatile private var minimumPairwiseCosine: Double? = null
     @Volatile private var visible = false
     @Volatile private var stopped = false
     private val enrollmentAllowed = AtomicBoolean(false)
@@ -370,6 +371,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     }
 
     private fun runLocalEnrollment() {
+        minimumPairwiseCosine = null
         val batch = recordings.toList()
         val thread = Thread({
             val result = try {
@@ -378,14 +380,24 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                         consentGranted = enrollmentAllowed.get(),
                         recordings = batch,
                         isActive = { running.get() && enrollmentAllowed.get() &&
-                            !stopped && visible && !Thread.currentThread().isInterrupted }
+                            !stopped && visible && !Thread.currentThread().isInterrupted },
+                        onDiagnostics = { minimumPairwiseCosine = it.minimumPairwiseCosine }
                     )
             } catch (_: Exception) { LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE }
             main.post {
                 if (!stopped && visible) {
                     status.text = when (result) {
-                        LocalVoiceEnrollmentOutcome.SAVED ->
-                            "Perfil privado cifrado guardado. Reconocimiento de identidad no calibrado."
+                        LocalVoiceEnrollmentOutcome.SAVED -> {
+                            val measured = minimumPairwiseCosine
+                            if (measured == null) {
+                                "Perfil privado cifrado guardado. Sin métrica diagnóstica disponible."
+                            } else {
+                                "Similitud mínima real ERes2Net: " +
+                                    "%.3f".format(java.util.Locale.ROOT, measured) +
+                                    ". Perfil cifrado guardado. NO autentica tu identidad. " +
+                                    "Pendientes FAR/FRR, replay y calibración."
+                            }
+                        }
                         LocalVoiceEnrollmentOutcome.BAD_SAMPLES ->
                             "Muestras incompatibles; vuelve a comenzar el registro."
                         LocalVoiceEnrollmentOutcome.DENIED ->
@@ -395,6 +407,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                     }
                 }
                 clearRecordings()
+                minimumPairwiseCosine = null
                 running.set(false)
                 updateState()
             }
@@ -446,6 +459,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     }
 
     private fun cancelCapture(message: String) {
+        minimumPairwiseCosine = null
         pendingWavs = null
         filePickerOpen = false
         verifyingOnly = false
