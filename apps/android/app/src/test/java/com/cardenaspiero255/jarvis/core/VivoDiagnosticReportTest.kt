@@ -46,6 +46,18 @@ class VivoDiagnosticReportTest {
         assertTrue(out.contains("NO_CERTIFICADO"))
     }
 
+    @Test fun manuallyWorkingLockscreenWithoutAnyPcmOrCommandCannotBeCorroborated() {
+        val out = report(mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA))
+        assertTrue(out.contains("LOCKSCREEN_NO_CORROBORADO"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
+    @Test fun stopMarkedWorkingWhileNoSessionExistedIsExplicitlyInvalid() {
+        val out = report(mapOf(VivoCheck.STOP to VivoReportedResult.FUNCIONA))
+        assertTrue(out.contains("STOP_SIN_SESION_ACTIVA"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
     @Test fun reportSeparatesManualObservationFromSystemMeasurement() {
         val out = report(mapOf(
             VivoCheck.MICROPHONE to VivoReportedResult.FUNCIONA,
