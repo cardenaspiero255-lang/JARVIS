@@ -47,7 +47,7 @@ class NativeSpanishSpeechRunner(
     fun setResponsePlayback(playing: Boolean) { responsePlayback.set(playing) }
     @Volatile private var worker: Thread? = null
     @Volatile private var recorder: AudioRecord? = null
-    // Keep the voice policy unchanged; this preview authorizes ONLY public time.
+    // Only public read-only time and battery requests; never authority to act.
     // ownerOnly = false until independently verified biometric speaker evidence exists.
     private val turnGate = PreviewWakeTurnGate()
 
@@ -236,9 +236,18 @@ class NativeSpanishSpeechRunner(
                                             break
                                         }
                                     }
+                                    WakeTurnDecision.LOCAL_BATTERY -> {
+                                        if (continuous) {
+                                            responsePlayback.set(true)
+                                            onWake(PreviewWake.LOCAL_BATTERY)
+                                        } else {
+                                            result = PreviewWake.LOCAL_BATTERY
+                                            break
+                                        }
+                                    }
                                     WakeTurnDecision.WAITING -> onStatus(
                                         "ASR_NATIVE_WAKE_WAITING: Jarvis detectado. " +
-                                            "Di «dime la hora» en 8 s.")
+                                            "Di «dime la hora» o «batería» en 8 s.")
                                     WakeTurnDecision.BLOCKED_IDENTITY -> {
                                         failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
                                         break
@@ -276,7 +285,7 @@ class NativeSpanishSpeechRunner(
                     val reading = levels.reading()
                     onStatus("ASR_NATIVE_LISTENING: " +
                         "RMS ${reading.rms}; muestras ${reading.samples}. " +
-                        "Escuchando «Jarvis, dime la hora».")
+                        "Escuchando «Jarvis, dime la hora» o «Jarvis, batería».")
                     lastStatus = now
                 }
             }
@@ -291,6 +300,8 @@ class NativeSpanishSpeechRunner(
                     result = PreviewWake.STOP
                 else if (finalDecision == WakeTurnDecision.LOCAL_TIME)
                     result = PreviewWake.LOCAL_TIME
+                else if (finalDecision == WakeTurnDecision.LOCAL_BATTERY)
+                    result = PreviewWake.LOCAL_BATTERY
                 else if (finalDecision == WakeTurnDecision.WAITING || turnGate.waiting())
                     result = PreviewWake.WAKE_ONLY
                 else if (finalDecision == WakeTurnDecision.BLOCKED_IDENTITY)

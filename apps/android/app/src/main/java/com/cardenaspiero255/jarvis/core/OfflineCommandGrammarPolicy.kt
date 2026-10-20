@@ -33,7 +33,9 @@ class OfflineCommandGrammarPolicy {
         val supported = PHRASES.filter { phrase ->
             phrase.split(' ').all { it in present }
         }
-        if (supported.size < 2) return null
+        // Never silently suppress a new public intent by using a restrictive
+        // old grammar that lacks its words: use unconstrained offline Vosk.
+        if (supported.size < 2 || supported.none { "bateria" in it }) return null
         return (supported + "[unk]").joinToString(
             prefix = "[", postfix = "]", separator = ","
         ) { "\"$it\"" }
@@ -45,7 +47,10 @@ class OfflineCommandGrammarPolicy {
             "jarvis",
             "jarvis dime la hora", "jarvis que hora es",
             "jarvis para", "jarvis detente",
-            "dime la hora", "que hora es", "para", "detente"
+            "dime la hora", "que hora es", "para", "detente",
+            "jarvis bateria", "jarvis cuanta bateria tengo",
+            "jarvis dime la bateria", "bateria", "cuanta bateria tengo",
+            "dime la bateria"
         )
     }
 }

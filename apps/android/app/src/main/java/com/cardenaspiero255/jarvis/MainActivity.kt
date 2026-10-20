@@ -148,6 +148,11 @@ class MainActivity : Activity() {
         layout.addView(primaryButton("PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH") {
             startActivity(Intent(this, JarvisHomeActivity::class.java))
         })
+        // Offline walk-throughs inspired by open-source Android Jarvis projects.
+        // This is an explicit tap; tutorial content has no command executor.
+        layout.addView(primaryButton("GUÍAS JARVIS — VOZ, SHIZUKU, TERMUX") {
+            startActivity(Intent(this, GuidedTutorialActivity::class.java))
+        })
         omegaCore = OmegaPulseCore(this)
         layout.addView(omegaCore)
         layout.addView(label("NÚCLEO OMEGA  /  SISTEMA EN OBSERVACIÓN", 11f,

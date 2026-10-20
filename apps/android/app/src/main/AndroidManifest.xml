@@ -57,6 +57,10 @@
         <activity
             android:name=".CompanionCenterActivity"
             android:exported="false" />
+        <!-- Read-only tutorials, reachable only from inside JARVIS. -->
+        <activity
+            android:name=".GuidedTutorialActivity"
+            android:exported="false" />
         <!-- Receives Termux one-shot result only through an explicit PendingIntent. -->
         <receiver
             android:name=".TermuxResultReceiver"

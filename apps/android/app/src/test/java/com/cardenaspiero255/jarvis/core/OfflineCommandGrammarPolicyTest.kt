@@ -15,14 +15,29 @@ class OfflineCommandGrammarPolicyTest {
         return f
     }
 
-    @Test fun acceptedFixedWordsYieldOnlyReadOnlyClockAndSafeStop() {
+    @Test fun knownVocabularyIncludesTimeBatteryAndStopButNoActions() {
         val file = writeWords(
-            "jarvis", "dime", "la", "hora", "que", "es", "para", "detente", "otra"
+            "jarvis", "dime", "la", "hora", "que", "es", "para", "detente",
+            "bateria", "cuanta", "tengo", "otra"
         )
         assertEquals(
-            "[\"jarvis\",\"jarvis dime la hora\",\"jarvis que hora es\",\"jarvis para\",\"jarvis detente\",\"dime la hora\",\"que hora es\",\"para\",\"detente\",\"[unk]\"]",
+            listOf(
+                "jarvis", "jarvis dime la hora", "jarvis que hora es",
+                "jarvis para", "jarvis detente", "dime la hora",
+                "que hora es", "para", "detente",
+                "jarvis bateria", "jarvis cuanta bateria tengo",
+                "jarvis dime la bateria", "bateria",
+                "cuanta bateria tengo", "dime la bateria", "[unk]"
+            ).joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" },
             OfflineCommandGrammarPolicy().fromVocabulary(file)
         )
+    }
+
+    @Test fun oldGrammarMissingBatteryFallsBackToFreeOfflineVosk() {
+        val file = writeWords(
+            "jarvis", "dime", "la", "hora", "que", "es", "para", "detente"
+        )
+        assertNull(OfflineCommandGrammarPolicy().fromVocabulary(file))
     }
 
     @Test fun absentWakeWordNeverRestrictsGrammar() {
@@ -34,10 +49,10 @@ class OfflineCommandGrammarPolicyTest {
         assertNull(OfflineCommandGrammarPolicy().fromVocabulary(writeWords()))
     }
 
-    @Test fun omitsUnsupportedPhrasesAndAddsUnknownFallback() {
-        val file = writeWords("jarvis", "dime", "la", "hora", "unknown")
+    @Test fun omitsUnknownPhrasesButKeepsBatteryAndUnknownFallback() {
+        val file = writeWords("jarvis", "dime", "la", "hora", "bateria", "unknown")
         assertEquals(
-            "[\"jarvis\",\"jarvis dime la hora\",\"dime la hora\",\"[unk]\"]",
+            "[\"jarvis\",\"jarvis dime la hora\",\"dime la hora\",\"jarvis bateria\",\"jarvis dime la bateria\",\"bateria\",\"dime la bateria\",\"[unk]\"]",
             OfflineCommandGrammarPolicy().fromVocabulary(file)
         )
     }
@@ -49,10 +64,14 @@ class OfflineCommandGrammarPolicyTest {
     }
 
     @Test fun noExecutableOrNetworkCommandsInGrammar() {
-        val file = writeWords("jarvis", "dime", "la", "hora", "abre", "shizuku", "shell", "borra")
+        val file = writeWords(
+            "jarvis", "dime", "la", "hora", "bateria",
+            "abre", "shizuku", "shell", "borra"
+        )
         val grammar = OfflineCommandGrammarPolicy().fromVocabulary(file)!!
         for (unsafe in listOf("abre", "shizuku", "shell", "borra")) {
             assertFalse(grammar.contains(unsafe))
         }
+        assertTrue(grammar.contains("jarvis bateria"))
     }
 }
