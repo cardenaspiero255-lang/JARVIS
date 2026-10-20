@@ -13,7 +13,7 @@ enum class HandsOperation {
     GLOBAL_BACK
 }
 
-enum class HandsDecision { ALLOW_HOME, DENY }
+enum class HandsDecision { ALLOW_HOME, ALLOW_BACK, DENY }
 
 data class HandsContext(
     val serviceConnected: Boolean = false,
@@ -22,10 +22,13 @@ data class HandsContext(
 )
 
 class HandsPolicy {
-    fun evaluate(operation: HandsOperation, context: HandsContext): HandsDecision =
-        if (operation == HandsOperation.GO_HOME &&
-            context.serviceConnected &&
-            !context.emergencyStopped &&
-            context.explicitTap
-        ) HandsDecision.ALLOW_HOME else HandsDecision.DENY
+    fun evaluate(operation: HandsOperation, context: HandsContext): HandsDecision {
+        if (!context.serviceConnected || context.emergencyStopped || !context.explicitTap)
+            return HandsDecision.DENY
+        return when (operation) {
+            HandsOperation.GO_HOME -> HandsDecision.ALLOW_HOME
+            HandsOperation.GLOBAL_BACK -> HandsDecision.ALLOW_BACK
+            else -> HandsDecision.DENY
+        }
+    }
 }

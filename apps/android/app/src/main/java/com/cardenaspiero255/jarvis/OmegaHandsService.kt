@@ -10,7 +10,7 @@ import com.cardenaspiero255.jarvis.core.HandsPolicy
 import com.cardenaspiero255.jarvis.core.HandsSessionGate
 
 /**
- * Smallest usable Omega Hands service: user-triggered HOME only.
+ * Narrow Omega Hands service: explicit HOME or BACK only.
  *
  * It never reads accessibility content, records events, performs gestures,
  * sends text, or accepts background requests from external apps.
@@ -91,5 +91,27 @@ class OmegaHandsService : AccessibilityService() {
                 false
             }
         }
+
+        /** One explicit Android Back per visible tap. No gesture or screen content. */
+        fun goBack(context: Context, explicitTap: Boolean): Boolean {
+            val service = attached
+            val decision = HandsPolicy().evaluate(
+                HandsOperation.GLOBAL_BACK,
+                HandsContext(
+                    serviceConnected = service != null,
+                    emergencyStopped = isStopped(context),
+                    explicitTap = explicitTap,
+                )
+            )
+            if (decision != HandsDecision.ALLOW_BACK || service == null) return false
+            return try {
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            } catch (_: SecurityException) {
+                false
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
+
     }
 }

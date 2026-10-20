@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="omega_hands_label">JARVIS OMEGA Hands (control limitado)</string>
-    <string name="omega_hands_description">Servicio opcional de JARVIS. Solo permite volver a Inicio cuando el usuario pulsa el botón visible, ha habilitado el servicio en Android y no ha activado la parada de emergencia. No lee textos, contraseñas ni capturas; no ejecuta gestos.</string>
+    <string name="omega_hands_description">Servicio opcional de JARVIS. Solo permite Inicio o Atrás cuando el usuario pulsa un botón visible, ha habilitado el servicio en Android y no ha activado la parada de emergencia. No lee textos, contraseñas ni capturas; no ejecuta gestos.</string>
 </resources>
