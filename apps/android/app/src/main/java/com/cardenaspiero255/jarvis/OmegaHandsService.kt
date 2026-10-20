@@ -92,4 +92,26 @@ class OmegaHandsService : AccessibilityService() {
             }
         }
     }
+        /** One explicit Android Back per visible tap. No gesture or screen content. */
+        fun goBack(context: Context, explicitTap: Boolean): Boolean {
+            val service = attached
+            val decision = HandsPolicy().evaluate(
+                HandsOperation.GLOBAL_BACK,
+                HandsContext(
+                    serviceConnected = service != null,
+                    emergencyStopped = isStopped(context),
+                    explicitTap = explicitTap,
+                )
+            )
+            if (decision != HandsDecision.ALLOW_BACK || service == null) return false
+            return try {
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            } catch (_: SecurityException) {
+                false
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
+
+    }
 }
