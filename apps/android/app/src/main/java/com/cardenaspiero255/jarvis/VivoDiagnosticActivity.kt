@@ -97,11 +97,28 @@ class VivoDiagnosticActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("Continuidad al bloquear pantalla")
                 .setMessage("Abre un servicio visible de micrófono durante un máximo de " +
-                    "30 minutos. Bloquea la pantalla unos segundos y vuelve para " +
-                    "leer el contador de muestras. Android puede interrumpir la sesión.")
+                    "30 minutos. Cuando aparezca ASR_NATIVE_READY, bloquea la pantalla " +
+                    "y di «Jarvis, dime la hora». Vuelve a la app para revisar por separado " +
+                    "PCM y COMANDOS_HORA reconocidos mientras estaba apagada; " +
+                    "marca si realmente escuchaste la respuesta. Di «Jarvis, para» " +
+                    "para intentar STOP por voz. Android puede interrumpir la sesión.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("ACTIVAR") { _, _ ->
                     startLocalSession(HandsFreePreviewService.ACTION_START_LONG_NATIVE)
+                }.show()
+        })
+        root.addView(button("IMPORTAR GGUF PRIVADO · INSTRUCCIONES") {
+            AlertDialog.Builder(this)
+                .setTitle("Qwen offline necesita un modelo GGUF")
+                .setMessage("Esta APK NO contiene los 491 MB usados en CI. Para medir " +
+                    "una respuesta real: vuelve a la pantalla principal de JARVIS, " +
+                    "busca IA GENERATIVA LOCAL y pulsa IMPORTAR MODELO GGUF. " +
+                    "Selecciona un archivo compatible que tengas derecho a usar. " +
+                    "JARVIS verificará su SHA-256 y lo copiará al almacenamiento privado. " +
+                    "No se descarga automáticamente ningún modelo ni se usa la nube.")
+                .setNegativeButton("CERRAR", null)
+                .setPositiveButton("IR A JARVIS") { _, _ ->
+                    startActivity(Intent(this, MainActivity::class.java))
                 }.show()
         })
         root.addView(button("5 · Qwen local: respuesta + latencia (sin nube)") {
@@ -378,6 +395,8 @@ class VivoDiagnosticActivity : Activity() {
             ggufImported = LocalGgufModelStore(this).hasModel(),
             screenOffSamples = samples,
             screenOffObserved = confirmedScreenOff && samples > 0,
+            lockscreenTimeCommandCount = audio.getInt("lockscreen_time_commands", 0),
+            lockscreenStopCommandCount = audio.getInt("lockscreen_stop_commands", 0),
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
             qwenLatencyMs = if (prefs.contains("qwen_ms")) prefs.getLong("qwen_ms", 0L)
                 else null,
