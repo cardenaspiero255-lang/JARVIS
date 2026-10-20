@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.gguf_qa_report import evaluate, nearest_rank
+from tools.gguf_qa_report import evaluate, nearest_rank, as_markdown
 
 
 def payload():
@@ -61,6 +61,10 @@ class GgufReportTest(unittest.TestCase):
         self.assertFalse(record["certification"]["voice_e2e_verified"])
         self.assertFalse(record["certification"]["semantic_quality_certified"])
         self.assertEqual("NOT_CERTIFIED", record["certification"]["overall"])
+        # The one-turn voice code exists; this GGUF-only fixture does NOT test it.
+        self.assertEqual("NOT_MEASURED_IN_GGUF_E2E",
+                         record["voice"]["gguf_voice_pipeline"])
+        self.assertIn("NO MEDIDO POR ESTA SUITE", as_markdown(record))
 
     def test_rejects_forged_missing_or_inconsistent_warm_cache_counters(self):
         missing = payload()
