@@ -5,7 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VivoDiagnosticReportTest {
-    private fun report(results: Map<VivoCheck, VivoReportedResult> = emptyMap()) =
+    private fun report(
+        results: Map<VivoCheck, VivoReportedResult> = emptyMap(),
+        stopRun: String = "NO_PROBADO"
+    ) =
         VivoDiagnosticReport(
             model = "V2158\nprivate:key", sdk = 34, batteryPercent = 55,
             thermalStatus = 0, availableRamMib = 1536L, pssKib = 94208,
@@ -14,7 +17,7 @@ class VivoDiagnosticReportTest {
             lockscreenLastExtended = false,
             lockscreenTimeCommandCount = 0, lockscreenStopCommandCount = 0,
             qwenRun = "NO_PROBADO",
-            qwenLatencyMs = null, stopRun = "NO_PROBADO", results = results
+            qwenLatencyMs = null, stopRun = stopRun, results = results
         ).toShareText()
 
     @Test fun untestedFeaturesNeverBecomeCertifiedByDefault() {
@@ -54,7 +57,10 @@ class VivoDiagnosticReportTest {
     }
 
     @Test fun stopMarkedWorkingWhileNoSessionExistedIsExplicitlyInvalid() {
-        val out = report(mapOf(VivoCheck.STOP to VivoReportedResult.FUNCIONA))
+        val out = report(
+            mapOf(VivoCheck.STOP to VivoReportedResult.FUNCIONA),
+            stopRun = "SIN_SESION_ACTIVA"
+        )
         assertTrue(out.contains("STOP_SIN_SESION_ACTIVA"))
         assertTrue(out.contains("NO_CERTIFICADO"))
     }
