@@ -192,7 +192,8 @@ class HandsFreePreviewService : Service() {
         isRunning = true
         screenOffEvidence.reset()
         diagnostics.edit().remove("lockscreen_off_samples")
-            .remove("lockscreen_off_reports").remove("lockscreen_result").apply()
+            .remove("lockscreen_off_reports").remove("lockscreen_result")
+            .remove("lockscreen_time_commands").remove("lockscreen_stop_commands").apply()
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
@@ -359,10 +360,26 @@ class HandsFreePreviewService : Service() {
                 }
             },
             onWake = { wake ->
+                // This callback originates from the Vosk worker. Sample display
+                // state before posting to Android's potentially delayed UI.
+                val screenOffAtRecognition = if (extendedListening) try {
+                    (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
+                } catch (_: RuntimeException) { false } else false
                 main.post {
                     if (!isRunning || closed || !nativeModeRequested ||
                         (!extendedListening && consumed) ||
                         !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    if (screenOffAtRecognition) {
+                        val key = when (wake) {
+                            PreviewWake.LOCAL_TIME -> "lockscreen_time_commands"
+                            PreviewWake.STOP -> "lockscreen_stop_commands"
+                            else -> null
+                        }
+                        if (key != null) {
+                            diagnostics.edit().putInt(key,
+                                (diagnostics.getInt(key, 0) + 1).coerceAtMost(999)).apply()
+                        }
+                    }
                     if (!extendedListening) {
                         consumed = true
                         nativeRunner?.stop()
