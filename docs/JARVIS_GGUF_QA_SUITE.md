@@ -2,7 +2,8 @@
 
 **Estado de esta batería:** resultados de emulador automatizados por CI.
 **No certifica:** Vivo V25 Pro, temperatura/batería reales, FAR/FRR del propietario
-ni conversación micrófono → GGUF → voz (todavía no conectada).
+ni conversación micrófono → GGUF → voz real (la ruta opcional de una pregunta
+ya existe desde el PR #91, pero **esta batería GGUF no mide su audio**).
 
 ## Qué mide realmente sin instalar otra APK en el teléfono
 
@@ -35,8 +36,10 @@ Workflow: `.github/workflows/android-gguf-e2e.yml` (Android 14).
    esto como exactitud factual ni precisión/recall/F1 de un asistente completo.
 7. Prueba rutas de seguridad: voz/LLM no puede otorgar permisos para comandos,
    TTS local no lee texto libre solo por una orden desconocida, y STOP se
-   mantiene. El flujo micrófono → GGUF → TTS sigue **NO IMPLEMENTADO**;
-   por ello el informe marca `voice_e2e_verified=false`.
+   mantiene. El flujo micrófono → GGUF → TTS no se ejecuta en **este test de
+   inferencia**; por ello el informe marca `voice_e2e_verified=false`.
+   El marcador `NOT_IMPLEMENTED` del fixture original es histórico; el
+   informe agregado lo interpreta como `NOT_MEASURED_IN_GGUF_E2E`.
 
 ## Reportes reales y condiciones para aprobar
 
@@ -88,9 +91,9 @@ reiteradas para terminar el desarrollo de las demás funciones.
 
 ## Pendiente para «probarlo todo» de forma real
 
-- **Voz natural:** integrar conscientemente ASR → LLM → TTS, evitando que
-  el texto del modelo o un ASR espurio active Shizuku/Termux/GameHub.
-  Solo después añadir una prueba E2E de audio con voz offline instalada.
+- **Voz natural:** ejecutar pruebas acústicas E2E reales de la ruta de una
+  pregunta ASR → GGUF → TTS integrada en el PR #91, con STOP y sin autorización
+  para Shizuku/Termux/GameHub; falta verificar una voz offline audible.
 - **Wake y propietario:** ensayos acústicos con voces consentidas reales,
   ruido/eco/replay, calibración FAR/FRR y holdout independiente.
 - **Vivo/Funtouch:** continuidad con pantalla bloqueada, latencia,
