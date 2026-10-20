@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.Context
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -354,6 +356,11 @@ class HandsFreePreviewService : Service() {
                                 "localmente; Voice Match del propietario pendiente.", active = true)
                             speakThenStop(answer)
                         }
+                        PreviewWake.LOCAL_BATTERY -> {
+                            record("ASR_NATIVE_BATTERY: consulta local de batería; " +
+                                "Voice Match no autoriza órdenes.", active = true)
+                            speakThenStop(batteryAnswer())
+                        }
                         PreviewWake.WAKE_ONLY -> {
                             if (extendedListening) {
                                 showStatus("EXTENDED_LISTENING: Jarvis reconocido; " +
@@ -446,6 +453,11 @@ class HandsFreePreviewService : Service() {
                             record("Se reconoció la petición de hora. " +
                                 "Voice Match pendiente.", active = true)
                             speakThenStop(answer)
+                        }
+                        PreviewWake.LOCAL_BATTERY -> {
+                            consumed = true
+                            record("ASR_LOCAL_BATTERY: consulta de batería sin acciones.", active = true)
+                            speakThenStop(batteryAnswer())
                         }
                         PreviewWake.WAKE_ONLY -> {
                             consumed = true
@@ -725,6 +737,20 @@ class HandsFreePreviewService : Service() {
             }, 350L)
             showStatus("EXTENDED_LISTENING: $reason. Micrófono sigue disponible; DETENER en aviso.")
         } else finish(reason)
+    }
+
+    /** System sticky battery broadcast; no permission or hardware mutation. */
+    private fun batteryAnswer(): String {
+        val state = try {
+            registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (_: RuntimeException) { null }
+        val level = state?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = state?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (scale <= 0 || level < 0 || level > scale) {
+            return "No pude obtener un nivel de batería válido."
+        }
+        val percent = ((level.toLong() * 100L) / scale).toInt()
+        return "La batería está al $percent por ciento."
     }
 
     private fun speakThenStop(text: String) {
