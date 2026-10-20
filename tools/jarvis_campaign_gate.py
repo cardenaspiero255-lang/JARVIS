@@ -53,9 +53,9 @@ def _gguf(report):
             cert.get("physical_vivo_verified") is not False or \
             not isinstance(voice, dict) or voice.get("llm_tool_authority") is not False or \
             voice.get("asr_audio_validated") is not False or \
-            voice.get("tts_audio_validated") is not False or
-            voice.get("gguf_voice_pipeline") not in
-            ("NOT_IMPLEMENTED", "NOT_MEASURED_IN_GGUF_E2E"):
+            voice.get("tts_audio_validated") is not False or \
+            voice.get("gguf_voice_pipeline") not in (
+                "NOT_IMPLEMENTED", "NOT_MEASURED_IN_GGUF_E2E"):
         raise ValueError("GGUF cannot assert voice, Vivo or tool authorization")
     metrics = report.get("latency_ms")
     memory = report.get("memory_kib")
