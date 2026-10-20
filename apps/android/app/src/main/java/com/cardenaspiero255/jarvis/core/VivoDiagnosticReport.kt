@@ -25,6 +25,8 @@ data class VivoDiagnosticReport(
     val ggufImported: Boolean,
     val screenOffSamples: Long,
     val screenOffObserved: Boolean,
+    val lockscreenTimeCommandCount: Int,
+    val lockscreenStopCommandCount: Int,
     val qwenRun: String,
     val qwenLatencyMs: Long?,
     val stopRun: String,
@@ -43,6 +45,11 @@ data class VivoDiagnosticReport(
             appendLine("GGUF_importado_indicio=$ggufImported (hash solo al ejecutar)")
             appendLine("Pantalla_apagada_PCM_muestras=${screenOffSamples.coerceAtLeast(0)} " +
                 "observado=$screenOffObserved (NO verifica identidad ni wake)")
+            appendLine("Comandos_HORA_recibidos_pantalla_apagada=" +
+                lockscreenTimeCommandCount.coerceAtLeast(0))
+            appendLine("Comandos_STOP_recibidos_pantalla_apagada=" +
+                lockscreenStopCommandCount.coerceAtLeast(0))
+            appendLine("Comandos recibidos no certifican audio audible ni identidad del hablante.")
             appendLine("Qwen_ejecución=$qwenRun latencia_ms=${qwenLatencyMs ?: "NO_MEDIDA"}")
             appendLine("STOP_ejecución=" + stopRun.filter { it.isLetterOrDigit() || it == '_' }.take(48))
             for (check in VivoCheck.entries) {
