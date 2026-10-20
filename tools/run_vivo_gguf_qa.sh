@@ -76,6 +76,11 @@ python3 "$root/tools/gguf_qa_report.py" \
   --input "$out/gguf-qa-raw.json" \
   --json "$out/gguf-qa-results.json" \
   --markdown "$out/gguf-qa-results.md"
+# Produce a sanitized readiness report from the SAME authenticated USB
+# test session. This does not mark real KWS, Voice Match or acoustic E2E as done.
+python3 "$root/tools/jarvis_campaign_gate.py" \
+  --gguf "$out/gguf-qa-results.json" \
+  --output "$out/physical-campaign-summary.json"
 echo "Measured physical-session results are in $out"
 echo "Voice acoustic reliability, temperature/power and independent approval"
 echo "remain unverified; do not call this Vivo physical certification."
