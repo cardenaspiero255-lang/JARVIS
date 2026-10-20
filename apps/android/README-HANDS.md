@@ -8,8 +8,8 @@ automatización general ni lectura de pantalla.
 1. Abre JARVIS Android y pulsa **Abrir ajustes de accesibilidad**.
 2. Busca **JARVIS OMEGA Hands (control limitado)** y habilítalo mediante Android.
 3. Regresa a JARVIS, pulsa **Consultar estado Hands** y después
-   **Autorizar Hands — solo Inicio**.
-4. Pulsa **Ir a Inicio** para solicitar una única acción global de Android.
+   **Autorizar Hands — Inicio y Atrás**.
+4. Pulsa **Ir a Inicio** o **Volver Atrás** para solicitar una única acción global de Android por pulsación.
 5. **Parada de emergencia Hands** detiene inmediatamente nuevas acciones
    desde JARVIS. El estado se escribe en preferencias y, de forma adicional,
    cualquier reinicio del proceso o del servicio exige volver a autorizar
@@ -22,7 +22,7 @@ automatización general ni lectura de pantalla.
 - El estado de ejecución está **detenido por defecto** aunque el servicio
   esté instalado y habilitado. La autorización activa es exclusiva de la sesión
   actual; se revoca cuando el proceso o servicio se reinicia.
-- Solo funciona el comando local **HOME** al pulsar un botón visible.
+- Solo funcionan las acciones globales **HOME** y **BACK** al pulsar cada botón visible. No hay navegación automática.
 - No se leen árboles de accesibilidad, texto, contraseñas ni capturas.
 - No se permiten clics automáticos, escrituras, envío de mensajes, órdenes
   de voz que ejecuten acciones, gestos, compras ni operaciones de GitHub.
