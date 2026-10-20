@@ -20,7 +20,7 @@ class OwnerWavImportContract(unittest.TestCase):
     def test_reuses_existing_encryption_enrollment_and_revoke_gates(self):
         activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
         engine = (SRC/"SherpaSpeakerEnrollmentEngine.kt").read_text()
-        for required in ("runLocalEnrollment()", "clearRecordings()",
+        for required in ("runLocalEnrollment(epoch)", "clearRecordings()",
                          "enrollmentAllowed.get()", "isActive",
                          "cancelCapture(", "FLAG_SECURE", "BORRAR PERFIL Y REVOCAR"):
             self.assertIn(required, activity)
