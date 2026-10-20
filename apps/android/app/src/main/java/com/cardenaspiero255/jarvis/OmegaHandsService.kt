@@ -10,7 +10,7 @@ import com.cardenaspiero255.jarvis.core.HandsPolicy
 import com.cardenaspiero255.jarvis.core.HandsSessionGate
 
 /**
- * Smallest usable Omega Hands service: user-triggered HOME only.
+ * Narrow Omega Hands service: explicit HOME or BACK only.
  *
  * It never reads accessibility content, records events, performs gestures,
  * sends text, or accepts background requests from external apps.
