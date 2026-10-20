@@ -91,7 +91,7 @@ class OmegaHandsService : AccessibilityService() {
                 false
             }
         }
-    }
+
         /** One explicit Android Back per visible tap. No gesture or screen content. */
         fun goBack(context: Context, explicitTap: Boolean): Boolean {
             val service = attached
