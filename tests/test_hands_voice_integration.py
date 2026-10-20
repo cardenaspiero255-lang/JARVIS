@@ -10,7 +10,7 @@ class HandsVoiceIntegrationTests(unittest.TestCase):
         text = (ROOT / "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/MainActivity.kt").read_text()
         for expected in (
             "PARADA DE EMERGENCIA HANDS",
-            "AUTORIZAR HANDS — SOLO INICIO",
+            "AUTORIZAR HANDS — INICIO Y ATRÁS",
             "OmegaHandsService.goHome(",
             "VoiceStyle.BRITISH_ASSISTANT",
             "CONFIRMAR AJUSTES SOLICITADOS POR VOZ",
