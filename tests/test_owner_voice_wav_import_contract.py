@@ -46,6 +46,13 @@ class OwnerWavImportContract(unittest.TestCase):
         self.assertIn("runLocalVerification(finalCaptured, epoch)", activity)
         self.assertIn("AtomicLong", activity)
 
+    def test_last_enrollment_commit_is_serialized_with_revocation(self):
+        engine = (SRC/"SherpaSpeakerEnrollmentEngine.kt").read_text()
+        self.assertIn("ENROLLMENT_COMMIT_LOCK", engine)
+        self.assertGreaterEqual(engine.count("synchronized(ENROLLMENT_COMMIT_LOCK)"), 2)
+        self.assertIn("if (!isActive()", engine)
+        self.assertIn("AndroidSpeakerTemplateVault(context).revoke()", engine)
+
     def test_no_extra_storage_permission_or_internet_requested(self):
         manifest = (ROOT/"apps/android/app/src/main/AndroidManifest.xml").read_text()
         activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
