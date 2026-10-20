@@ -15,7 +15,8 @@ class VivoDiagnosticStopGate {
         requestedId: Long,
         receivedId: Long,
         serviceRunning: Boolean,
-        servicePersistedActive: Boolean
-    ): Boolean = requestedId > 0L && requestedId == receivedId &&
-        !serviceRunning && !servicePersistedActive
+        servicePersistedActive: Boolean,
+        sessionWasActive: Boolean
+    ): Boolean = sessionWasActive && requestedId > 0L &&
+        requestedId == receivedId && !serviceRunning && !servicePersistedActive
 }
