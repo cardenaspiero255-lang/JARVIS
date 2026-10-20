@@ -13,6 +13,8 @@ import com.cardenaspiero255.jarvis.core.PartialWakeSignalPolicy
 import com.cardenaspiero255.jarvis.core.PreviewWakeTurnGate
 import com.cardenaspiero255.jarvis.core.WakeTurnDecision
 import com.cardenaspiero255.jarvis.core.PreviewWake
+import com.cardenaspiero255.jarvis.core.OfflineVoiceQuestionGate
+import com.cardenaspiero255.jarvis.core.OfflineVoiceDecision
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import org.json.JSONObject
 import org.vosk.Model
@@ -37,7 +39,9 @@ class NativeSpanishSpeechRunner(
     private val onFailure: (String) -> Unit,
     private val onAudioProgress: (Long, Long) -> Unit = { _, _ -> },
     private val continuous: Boolean = false,
-    private val sessionDurationMillis: Long = 60_000L
+    private val sessionDurationMillis: Long = 60_000L,
+    private val conversationMode: Boolean = false,
+    private val onQuestion: (String) -> Unit = {}
 ) {
     init { require(sessionDurationMillis in 60_000L..30 * 60_000L) }
     private val active = AtomicBoolean(false)
@@ -50,6 +54,7 @@ class NativeSpanishSpeechRunner(
     // Only public read-only time and battery requests; never authority to act.
     // ownerOnly = false until independently verified biometric speaker evidence exists.
     private val turnGate = PreviewWakeTurnGate()
+    private val questionGate = OfflineVoiceQuestionGate()
 
     fun start(): Boolean {
         if (!active.compareAndSet(false, true)) return false
@@ -94,6 +99,7 @@ class NativeSpanishSpeechRunner(
         var recognizer: Recognizer? = null
         var wakeBridge: SherpaNativeWakeBridge? = null
         var result: PreviewWake? = null
+        var question: String? = null
         var failure: String? = null
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
@@ -112,7 +118,8 @@ class NativeSpanishSpeechRunner(
             val retry = NativeDecoderRetryPolicy()
             try {
                 model = Model(folder.absolutePath)
-                recognizer = createCommandRecognizer(model, folder)
+                recognizer = if (conversationMode) Recognizer(model, 16_000.0f)
+                    else createCommandRecognizer(model, folder)
             } catch (initial: IOException) {
                 if (!retry.shouldRebuild(initial, modelReady())) throw initial
                 // A cache receipt only certifies initial extraction. The native
@@ -129,11 +136,13 @@ class NativeSpanishSpeechRunner(
                 if (!modelReady()) return
                 onStatus("ASR_NATIVE_DECODER_RETRY")
                 model = Model(fresh.absolutePath)
-                recognizer = createCommandRecognizer(model, fresh)
+                recognizer = if (conversationMode) Recognizer(model, 16_000.0f)
+                    else createCommandRecognizer(model, fresh)
             }
             if (!modelReady()) return
             // Optional second decoder on the same worker; never opens a second microphone.
-            wakeBridge = SherpaNativeWakeBridge.tryOpen(context, onStatus)
+            wakeBridge = if (conversationMode) null
+                else SherpaNativeWakeBridge.tryOpen(context, onStatus)
             onStatus("ASR_NATIVE_AUDIO_OPEN")
 
             val minimum = AudioRecord.getMinBufferSize(
@@ -216,6 +225,26 @@ class NativeSpanishSpeechRunner(
                             earlyWake.onUtteranceCompleted()
                             val text = JSONObject(recognizer.result).optString("text", "")
                             if (text.isNotBlank()) {
+                                if (conversationMode) {
+                                    // The unrestricted offline Vosk decoder produces untrusted
+                                    // text; ONLY the explicit read-only GGUF session can use it.
+                                    val event = questionGate.observe(text,
+                                        SystemClock.elapsedRealtime())
+                                    when (event.decision) {
+                                        OfflineVoiceDecision.STOP -> {
+                                            result = PreviewWake.STOP
+                                            break
+                                        }
+                                        OfflineVoiceDecision.QUESTION -> {
+                                            question = event.question
+                                            break
+                                        }
+                                        OfflineVoiceDecision.WAITING -> onStatus(
+                                            "LOCAL_VOICE_WAKE_WAITING: pregunta en 8 segundos.")
+                                        OfflineVoiceDecision.IGNORED -> hadUnmatchedSpeech = true
+                                    }
+                                    continue
+                                }
                                 // Vosk emits completed segments at speech pauses.
                                 // Support "Jarvis" then "dime la hora" within 8 s,
                                 // but never treat wake or ASR as speaker identity.
@@ -273,8 +302,12 @@ class NativeSpanishSpeechRunner(
                         "AudioRecord returned code $received")
                 }
                 val now = SystemClock.elapsedRealtime()
-                if (turnGate.expiredAt(now)) {
-                    if (continuous) {
+                val wakeExpired = if (conversationMode) questionGate.expiredAt(now)
+                    else turnGate.expiredAt(now)
+                if (wakeExpired) {
+                    if (conversationMode) {
+                        onStatus("LOCAL_VOICE_WAKE_EXPIRED: di Jarvis otra vez.")
+                    } else if (continuous) {
                         onStatus("ASR_NATIVE_WAKE_EXPIRED: espera otra vez «Jarvis».")
                     } else {
                         result = PreviewWake.WAKE_ONLY
@@ -289,7 +322,19 @@ class NativeSpanishSpeechRunner(
                     lastStatus = now
                 }
             }
-            if (result == null && active.get() && !continuous) {
+            if (conversationMode && result == null && question == null && active.get()) {
+                val finalText = JSONObject(recognizer.finalResult).optString("text", "")
+                if (finalText.isNotBlank()) {
+                    val event = questionGate.observe(finalText,
+                        SystemClock.elapsedRealtime())
+                    when (event.decision) {
+                        OfflineVoiceDecision.STOP -> result = PreviewWake.STOP
+                        OfflineVoiceDecision.QUESTION -> question = event.question
+                        else -> Unit
+                    }
+                }
+            }
+            if (!conversationMode && result == null && active.get() && !continuous) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
                 // Flush last segment without granting extra privileges.
                 // Pending standalone wake can still be acknowledged.
@@ -310,7 +355,7 @@ class NativeSpanishSpeechRunner(
             if (result == null && active.get() && continuous) {
                 failure = "ASR_NATIVE_SESSION_WINDOW_ENDED: fin de la sesión autorizada."
             }
-            if (result == null && active.get() && !continuous) {
+            if (result == null && question == null && active.get() && !continuous) {
                 val signal = levels.reading()
                 failure = if (signal.samples == 0L) {
                     "ASR_NATIVE_NO_MIC_SAMPLES: Android no entregó audio al motor Vosk."
@@ -334,6 +379,7 @@ class NativeSpanishSpeechRunner(
             if (active.get()) failure = "ASR_NATIVE_ABI_UNAVAILABLE: " +
                 "la biblioteca Vosk no funciona con el procesador de este dispositivo."
         } finally {
+            val deliverQuestion = active.get() && !Thread.currentThread().isInterrupted
             active.set(false)
             recorder = null
             try { microphone?.stop() } catch (_: RuntimeException) {}
@@ -342,8 +388,10 @@ class NativeSpanishSpeechRunner(
             try { wakeBridge?.close() } catch (_: Exception) {}
             try { model?.close() } catch (_: RuntimeException) {}
             worker = null
-            // Never carry raw PCM or the ASR transcript into the UI.
-            if (result != null) onWake(result)
+            // Only an expressly authorized one-turn conversation may receive
+            // a transient question; microphone and decoder are already closed.
+            if (deliverQuestion && question != null) onQuestion(question)
+            else if (result != null) onWake(result)
             else if (failure != null) onFailure(failure)
         }
     }
