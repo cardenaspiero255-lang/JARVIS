@@ -28,6 +28,16 @@ class OwnerWavImportContract(unittest.TestCase):
         self.assertIn("calibrated = false", engine)
         self.assertNotIn("SpeakerEvidence.MATCHED", activity)
 
+    def test_real_pairwise_cosine_is_diagnostic_not_owner_permission(self):
+        activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
+        engine = (SRC/"SherpaSpeakerEnrollmentEngine.kt").read_text()
+        self.assertIn("minimumPairwiseCosine", engine)
+        self.assertIn("onDiagnostics", engine)
+        self.assertIn("OwnerVoiceCosine.compare", engine)
+        self.assertIn("minimumPairwiseCosine", activity)
+        self.assertIn("NO autentica", activity)
+        self.assertIn("calibrated = false", engine)
+
     def test_no_extra_storage_permission_or_internet_requested(self):
         manifest = (ROOT/"apps/android/app/src/main/AndroidManifest.xml").read_text()
         activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
