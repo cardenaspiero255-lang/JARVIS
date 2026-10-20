@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.cardenaspiero255.jarvis.core.OwnerVoiceCapturePolicy
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Optional foreground-only enrollment. Three explicit taps capture 2.5s of
@@ -31,6 +32,8 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private val recordings = ArrayList<LocalVoiceEnrollmentRecording>(3)
     private val running = AtomicBoolean(false)
+    // Cancellation tokens cannot be revived by a new consent/session.
+    private val sessionEpoch = AtomicLong(0)
     private var verifyingOnly = false
     private var filePickerOpen = false
     private var pendingWavs: List<Uri>? = null
@@ -227,6 +230,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             return
         }
         updateState()
+        val epoch = sessionEpoch.get()
         status.text = "Validando los tres WAV en memoria; no cierres la pantalla."
         val thread = Thread({
             val decoded = ArrayList<LocalVoiceEnrollmentRecording>(3)
@@ -235,14 +239,16 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             try {
                 for ((index, uri) in selected.withIndex()) {
                     check(running.get() && enrollmentAllowed.get() && visible &&
-                        !stopped && !Thread.currentThread().isInterrupted) {
+                        sessionEpoch.get() == epoch && !stopped &&
+                        !Thread.currentThread().isInterrupted) {
                         "Sesión de importación cancelada"
                     }
                     val stream = contentResolver.openInputStream(uri)
                         ?: throw IllegalArgumentException("WAV inaccesible")
                     val result = OwnerVoiceWavDecoder.decode(stream, isActive = {
                         running.get() && enrollmentAllowed.get() && visible &&
-                            !stopped && !Thread.currentThread().isInterrupted
+                            sessionEpoch.get() == epoch && !stopped &&
+                            !Thread.currentThread().isInterrupted
                     })
                     if (!seen.add(result.sha256)) {
                         result.samples.fill(0)
@@ -257,6 +263,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             }
             main.post {
                 if (!running.get() || !enrollmentAllowed.get() ||
+                    sessionEpoch.get() != epoch ||
                     stopped || !visible || !consent.isChecked) {
                     decoded.forEach { it.samples16kPcm.fill(0) }
                     return@post
@@ -269,7 +276,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                 } else {
                     recordings.addAll(decoded)
                     status.text = "Tres WAV comprobados; ejecutando ERes2Net local."
-                    runLocalEnrollment()
+                    runLocalEnrollment(epoch)
                 }
             }
         }, "jarvis-owner-wav-import")
@@ -292,6 +299,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
         }
         if (!rule.canCapture(consent.isChecked, true, visible, busy = false)) return
         if (!running.compareAndSet(false, true)) return
+        val epoch = sessionEpoch.get()
         updateState()
         val sampleNumber = recordings.size + 1
         status.text = "Grabando muestra $sampleNumber/3... Di «Jarvis, soy yo»."
@@ -315,7 +323,8 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                 check(mic.recordingState == AudioRecord.RECORDSTATE_RECORDING)
                 val pcm = ShortArray(rule.captureSamples)
                 var written = 0
-                while (written < pcm.size && running.get() && !Thread.currentThread().isInterrupted) {
+                while (written < pcm.size && running.get() &&
+                    sessionEpoch.get() == epoch && !Thread.currentThread().isInterrupted) {
                     val n = mic.read(pcm, written, pcm.size - written, AudioRecord.READ_BLOCKING)
                     if (n <= 0) throw IllegalStateException("Micrófono: lectura $n")
                     written += n
@@ -336,7 +345,8 @@ class OwnerVoiceEnrollmentActivity : Activity() {
             val finalCaptured = captured
             val finalProblem = problem
             main.post {
-                if (!running.get() || stopped || !visible || !consent.isChecked) {
+                if (!running.get() || sessionEpoch.get() != epoch ||
+                    stopped || !visible || !consent.isChecked) {
                     finalCaptured?.fill(0)
                     return@post
                 }
@@ -345,7 +355,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                     if (finalCaptured != null) {
                         status.text = "Analizando similitud con tu plantilla cifrada. " +
                             "No concede identidad ni permisos."
-                        runLocalVerification(finalCaptured)
+                        runLocalVerification(finalCaptured, epoch)
                     } else {
                         running.set(false)
                         status.text = finalProblem ?: "No se pudo capturar la voz."
@@ -358,7 +368,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                 }
                 if (recordings.size == rule.requiredSamples) {
                     status.text = "Analizando tres muestras en el dispositivo. No cierres esta pantalla."
-                    runLocalEnrollment()
+                    runLocalEnrollment(epoch)
                 } else {
                     running.set(false)
                     status.text = finalProblem ?: "Muestra $sampleNumber/3 guardada solo en RAM."
@@ -370,7 +380,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
         thread.start()
     }
 
-    private fun runLocalEnrollment() {
+    private fun runLocalEnrollment(epoch: Long) {
         minimumPairwiseCosine = null
         val batch = recordings.toList()
         val thread = Thread({
@@ -380,12 +390,16 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                         consentGranted = enrollmentAllowed.get(),
                         recordings = batch,
                         isActive = { running.get() && enrollmentAllowed.get() &&
-                            !stopped && visible && !Thread.currentThread().isInterrupted },
-                        onDiagnostics = { minimumPairwiseCosine = it.minimumPairwiseCosine }
+                            sessionEpoch.get() == epoch && !stopped && visible &&
+                            !Thread.currentThread().isInterrupted },
+                        onDiagnostics = {
+                            if (sessionEpoch.get() == epoch)
+                                minimumPairwiseCosine = it.minimumPairwiseCosine
+                        }
                     )
             } catch (_: Exception) { LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE }
             main.post {
-                if (!stopped && visible) {
+                if (!stopped && visible && sessionEpoch.get() == epoch) {
                     status.text = when (result) {
                         LocalVoiceEnrollmentOutcome.SAVED -> {
                             val measured = minimumPairwiseCosine
@@ -406,10 +420,12 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                             "Motor de identificación local no disponible."
                     }
                 }
-                clearRecordings()
-                minimumPairwiseCosine = null
-                running.set(false)
-                updateState()
+                if (sessionEpoch.get() == epoch) {
+                    clearRecordings()
+                    minimumPairwiseCosine = null
+                    running.set(false)
+                    updateState()
+                }
             }
         }, "jarvis-owner-voice-extractor")
         worker = thread
@@ -417,12 +433,13 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     }
 
     /** Independent spoken sample: no reusing enrollment audio or granting MATCHED. */
-    private fun runLocalVerification(pcm: ShortArray) {
+    private fun runLocalVerification(pcm: ShortArray, epoch: Long) {
         val thread = Thread({
             val result = try {
                 SherpaOwnerVoiceProbeEngine(applicationContext).probe(
                     pcm, isActive = { running.get() && enrollmentAllowed.get() &&
-                        !stopped && visible && !Thread.currentThread().isInterrupted }
+                        sessionEpoch.get() == epoch && !stopped && visible &&
+                        !Thread.currentThread().isInterrupted }
                 )
             } catch (_: Exception) {
                 OwnerVoiceProbeResult(OwnerVoiceProbeStatus.NATIVE_UNAVAILABLE)
@@ -430,7 +447,8 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                 pcm.fill(0)
             }
             main.post {
-                if (!stopped && visible && consent.isChecked) {
+                if (!stopped && visible && consent.isChecked &&
+                    sessionEpoch.get() == epoch) {
                     status.text = when (result.status) {
                         OwnerVoiceProbeStatus.NO_ENROLLMENT ->
                             "No hay plantilla inscrita. Registra primero tres muestras."
@@ -445,8 +463,10 @@ class OwnerVoiceEnrollmentActivity : Activity() {
                                 "pendiente calibración y anti-replay."
                     }
                 }
-                running.set(false)
-                updateState()
+                if (sessionEpoch.get() == epoch) {
+                    running.set(false)
+                    updateState()
+                }
             }
         }, "jarvis-owner-voice-probe")
         worker = thread
@@ -459,6 +479,7 @@ class OwnerVoiceEnrollmentActivity : Activity() {
     }
 
     private fun cancelCapture(message: String) {
+        sessionEpoch.incrementAndGet()
         minimumPairwiseCosine = null
         pendingWavs = null
         filePickerOpen = false
