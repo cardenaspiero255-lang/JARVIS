@@ -26,6 +26,19 @@ def _counts(value, name):
     n = value.get("trials")
     if type(n) is not int or n <= 0:
         raise ValueError(f"Invalid {name} trial count")
+    error_field = "false_rejects" if name.endswith("/genuine") else "false_accepts"
+    errors = value.get(error_field)
+    if type(errors) is not int or not 0 <= errors <= n:
+        raise ValueError(f"Impossible {name} error count")
+    rate = value.get("error_rate")
+    if type(rate) not in (int, float) or not math.isfinite(rate) or (
+        not math.isclose(rate, errors / n, rel_tol=1e-9, abs_tol=1e-9)
+    ):
+        raise ValueError(f"Inconsistent {name} error rate")
+    upper = value.get("error_rate_upper95")
+    if upper is not None and (type(upper) not in (int, float) or
+                              not math.isfinite(upper) or not rate <= upper <= 1):
+        raise ValueError(f"Impossible {name} uncertainty bound")
     return n
 
 
@@ -40,7 +53,9 @@ def _gguf(report):
             cert.get("physical_vivo_verified") is not False or \
             not isinstance(voice, dict) or voice.get("llm_tool_authority") is not False or \
             voice.get("asr_audio_validated") is not False or \
-            voice.get("tts_audio_validated") is not False:
+            voice.get("tts_audio_validated") is not False or
+            voice.get("gguf_voice_pipeline") not in
+            ("NOT_IMPLEMENTED", "NOT_MEASURED_IN_GGUF_E2E"):
         raise ValueError("GGUF cannot assert voice, Vivo or tool authorization")
     metrics = report.get("latency_ms")
     memory = report.get("memory_kib")
@@ -50,6 +65,10 @@ def _gguf(report):
     _positive(metrics.get("subsequent_p50"), "p50")
     _positive(metrics.get("subsequent_p95"), "p95")
     _positive(memory.get("peak_pss"), "pss")
+    if _positive(memory.get("baseline_pss"), "baseline_pss") > memory["peak_pss"]:
+        raise ValueError("Peak memory cannot be lower than baseline")
+    if metrics["subsequent_p50"] > metrics["subsequent_p95"]:
+        raise ValueError("GGUF p50 cannot exceed p95")
     samples = metrics.get("subsequent_samples")
     if type(samples) is not int or samples < 3:
         raise ValueError("Insufficient repeated GGUF observations")
@@ -83,9 +102,8 @@ def _owner(report):
         groups = report.get(split, {})
         if not isinstance(groups, dict):
             raise ValueError("Missing owner split")
-        for kind in ("impostor", "replay"):
+        for kind in ("impostor", "replay", "genuine"):
             _counts(groups.get(kind), f"{split}/{kind}")
-    _counts(report.get("holdout", {}).get("genuine"), "holdout/genuine")
     if not sealed:
         return "COUNTS_REPORTED_NOT_SEALED"
     if not enough:
@@ -94,8 +112,9 @@ def _owner(report):
            for split in ("calibration", "holdout")
            for kind in ("impostor", "replay")):
         raise ValueError("Owner report falsely claims enough independent trials")
-    if report["holdout"]["genuine"]["trials"] < 30:
-        raise ValueError("Insufficient independently reported genuine trials")
+    if any(report[split]["genuine"]["trials"] < 30 for split in
+           ("calibration", "holdout")):
+        raise ValueError("Insufficient genuine trials in each reported split")
     # A report is not evidence that recordings and consent were authentic.
     return "STATISTICS_REPORTED_AUDIT_REQUIRED"
 
