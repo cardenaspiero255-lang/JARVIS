@@ -131,6 +131,27 @@ class RealOwnerWavScoringTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 scoring.build_scored_rows(m, root, lambda pcm: [math.nan] * 64)
 
+    def test_wav_decoder_reads_only_the_verified_in_memory_bytes(self):
+        # The bytes whose SHA was checked must also be the bytes decoded,
+        # rather than re-opening a possibly replaced filesystem path.
+        import io
+        from unittest import mock
+        original = wave.open
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audio = wav(root, "stable.wav")
+            kinds = []
+            def guarded_open(src, mode="rb"):
+                kinds.append(type(src))
+                if not isinstance(src, io.BytesIO):
+                    raise ValueError("Unverified second WAV filesystem read")
+                return original(src, mode)
+            with mock.patch.object(scoring.wave, "open", side_effect=guarded_open):
+                pcm = scoring.load_checked_pcm(root, audio["file"], audio["sha256"],
+                                               40000, 160000)
+            self.assertEqual(48000, len(pcm))
+            self.assertEqual([io.BytesIO], kinds)
+
     def test_private_jsonl_output_is_exclusive_and_private(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)/"scored.jsonl"
