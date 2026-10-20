@@ -113,6 +113,12 @@ class HandsFreePreviewService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Exact receipt for user-initiated physical testing. Never mistake
+            // "stop requested" for "service released", nor reuse an older ACK.
+            val receiptId = intent.getLongExtra(EXTRA_STOP_DIAGNOSTIC_REQUEST_ID, -1L)
+            if (receiptId > 0L) {
+                diagnostics.edit().putLong("stop_ack_id", receiptId).commit()
+            }
             finish("Prueba detenida por el usuario. Micrófono liberado.")
             return START_NOT_STICKY
         }
@@ -962,6 +968,7 @@ class HandsFreePreviewService : Service() {
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
+        const val EXTRA_STOP_DIAGNOSTIC_REQUEST_ID = "jarvis.handsfree.stop_receipt_request_id"
         const val EXTRA_TAPPED = "jarvis.handsfree.explicit"
         private const val CHANNEL = "jarvis_handsfree_preview"
         private const val NOTIFICATION_ID = 4840
