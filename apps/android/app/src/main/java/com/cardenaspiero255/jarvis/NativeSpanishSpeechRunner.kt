@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.PowerManager
+import com.cardenaspiero255.jarvis.core.LockScreenCaptureAccumulator
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
@@ -109,6 +111,8 @@ class NativeSpanishSpeechRunner(
         var failure: String? = null
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
+        val screenOffFrames = LockScreenCaptureAccumulator()
+        val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
         var questionWakeUntil = -1L
@@ -174,7 +178,6 @@ class NativeSpanishSpeechRunner(
             val start = SystemClock.elapsedRealtime()
             var lastStatus = start
             var lastAudioReport = start
-            var audioSinceReport = 0L
             while (active.get() && !Thread.currentThread().isInterrupted &&
                 SystemClock.elapsedRealtime() - start < sessionDurationMillis) {
                 val received = microphone.read(
@@ -182,13 +185,22 @@ class NativeSpanishSpeechRunner(
                 )
                 when {
                     received > 0 -> {
-                        // AudioRecord bytes genuinely received, not a timer heartbeat.
-                        // Emit only counts + elapsedRealtime; never PCM or transcripts.
-                        audioSinceReport += received.toLong()
+                        // Observe screen state immediately after EACH AudioRecord
+                        // read, never on the delayed main-thread progress callback.
+                        // A lock/unlock during a 2.5 s window cannot attribute
+                        // old screen-on samples to the screen-off total.
+                        if (continuous) {
+                            val interactiveAtCapture = try {
+                                power?.isInteractive ?: true
+                            } catch (_: RuntimeException) { true }
+                            screenOffFrames.observe(received, interactiveAtCapture)
+                        }
                         val progressNow = SystemClock.elapsedRealtime()
                         if (progressNow - lastAudioReport >= 2_500L) {
-                            onAudioProgress(audioSinceReport, progressNow)
-                            audioSinceReport = 0L
+                            val capturedWhileScreenOff = screenOffFrames.drainScreenOff()
+                            if (capturedWhileScreenOff > 0L) {
+                                onAudioProgress(capturedWhileScreenOff, progressNow)
+                            }
                             lastAudioReport = progressNow
                         }
                         // Never analyze the assistant's own audio output as a command.

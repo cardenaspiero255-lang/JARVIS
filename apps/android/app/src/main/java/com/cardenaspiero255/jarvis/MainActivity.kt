@@ -145,6 +145,9 @@ class MainActivity : Activity() {
         }
         layout.addView(OmegaUiKit.hero(this))
         // Preview is an explicit user action. HOME selection remains controlled by Android.
+        layout.addView(primaryButton("DIAGNÓSTICO VIVO V25 PRO · 1 INSTALACIÓN") {
+            startActivity(Intent(this, VivoDiagnosticActivity::class.java))
+        })
         layout.addView(primaryButton("PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH") {
             startActivity(Intent(this, JarvisHomeActivity::class.java))
         })
