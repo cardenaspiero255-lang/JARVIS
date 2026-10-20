@@ -10,7 +10,9 @@ class VivoDiagnosticReportTest {
             model = "V2158\nprivate:key", sdk = 34, batteryPercent = 55,
             thermalStatus = 0, availableRamMib = 1536L, pssKib = 94208,
             microphoneGranted = false, notificationsGranted = true, ggufImported = false,
-            screenOffSamples = 0L, screenOffObserved = false, qwenRun = "NO_PROBADO",
+            screenOffSamples = 0L, screenOffObserved = false,
+            lockscreenTimeCommandCount = 0, lockscreenStopCommandCount = 0,
+            qwenRun = "NO_PROBADO",
             qwenLatencyMs = null, stopRun = "NO_PROBADO", results = results
         ).toShareText()
 
@@ -34,6 +36,13 @@ class VivoDiagnosticReportTest {
         assertTrue(out.contains("CONTRADICCION_QWEN"))
         assertTrue(out.contains("OWNER_NO_CERTIFICADO"))
         assertTrue(out.contains("STOP_NO_CONFIRMADO"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
+    @Test fun physicalReportDifferentiatesCapturedPcmAndRecognizedCommands() {
+        val out = report(mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FALLA))
+        assertTrue(out.contains("Comandos_HORA_recibidos_pantalla_apagada=0"))
+        assertTrue(out.contains("Comandos_STOP_recibidos_pantalla_apagada=0"))
         assertTrue(out.contains("NO_CERTIFICADO"))
     }
 
