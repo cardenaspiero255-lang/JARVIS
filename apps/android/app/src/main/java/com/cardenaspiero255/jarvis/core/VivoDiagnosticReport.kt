@@ -27,6 +27,7 @@ data class VivoDiagnosticReport(
     val screenOffObserved: Boolean,
     val qwenRun: String,
     val qwenLatencyMs: Long?,
+    val stopRun: String,
     val results: Map<VivoCheck, VivoReportedResult>
 ) {
     fun toShareText(): String {
@@ -43,8 +44,25 @@ data class VivoDiagnosticReport(
             appendLine("Pantalla_apagada_PCM_muestras=${screenOffSamples.coerceAtLeast(0)} " +
                 "observado=$screenOffObserved (NO verifica identidad ni wake)")
             appendLine("Qwen_ejecución=$qwenRun latencia_ms=${qwenLatencyMs ?: "NO_MEDIDA"}")
+            appendLine("STOP_ejecución=" + stopRun.filter { it.isLetterOrDigit() || it == '_' }.take(48))
             for (check in VivoCheck.entries) {
                 appendLine("USER_REPORTED_${check.name}=${results[check] ?: VivoReportedResult.NO_PROBADO}")
+            }
+            if (results[VivoCheck.QWEN] == VivoReportedResult.FUNCIONA &&
+                (!ggufImported || qwenRun != "TEXTO_NO_VACIO_NO_CERTIFICADO" ||
+                    qwenLatencyMs == null || qwenLatencyMs <= 0)) {
+                appendLine("CONTRADICCION_QWEN: marca manual sin medición local confirmada.")
+            }
+            if (results[VivoCheck.OWNER] == VivoReportedResult.FUNCIONA) {
+                appendLine("OWNER_NO_CERTIFICADO: prueba positiva sin FAR/FRR/replay.")
+            }
+            if (screenOffObserved && results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FALLA) {
+                appendLine("LOCKSCREEN_PARCIAL: hubo PCM con pantalla apagada, " +
+                    "pero no se acreditó respuesta o continuidad funcional.")
+            }
+            if (results[VivoCheck.STOP] == VivoReportedResult.FUNCIONA &&
+                stopRun != "STOP_SERVICIO_FINALIZADO") {
+                appendLine("STOP_NO_CONFIRMADO: falta recibo del servicio para esta prueba.")
             }
             appendLine("NO_CERTIFICADO: no asegura 24/7, autenticación del propietario, " +
                 "FAR/FRR ni semántica por pruebas no realizadas.")
