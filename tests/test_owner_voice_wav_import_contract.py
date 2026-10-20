@@ -38,6 +38,14 @@ class OwnerWavImportContract(unittest.TestCase):
         self.assertIn("NO autentica", activity)
         self.assertIn("calibrated = false", engine)
 
+    def test_revocation_epoch_invalidates_late_import_and_native_enrollment(self):
+        activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
+        self.assertIn("sessionEpoch.incrementAndGet()", activity)
+        self.assertIn("sessionEpoch.get() == epoch", activity)
+        self.assertIn("runLocalEnrollment(epoch)", activity)
+        self.assertIn("runLocalVerification(finalCaptured, epoch)", activity)
+        self.assertIn("AtomicLong", activity)
+
     def test_no_extra_storage_permission_or_internet_requested(self):
         manifest = (ROOT/"apps/android/app/src/main/AndroidManifest.xml").read_text()
         activity = (SRC/"OwnerVoiceEnrollmentActivity.kt").read_text()
