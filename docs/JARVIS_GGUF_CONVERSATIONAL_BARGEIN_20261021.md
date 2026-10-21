@@ -1,5 +1,16 @@
 # JARVIS — conversación GGUF interrumpible, fase experimental
 
+## Estado de distribución: solo pruebas de depuración
+
+**No habilitado en compilaciones de producción.** La opción y la acción
+de servicio que inicia esta conversación están condicionadas a
+`ApplicationInfo.FLAG_DEBUGGABLE`. La APK de prueba puede iniciar
+la sesión con consentimiento explícito; una APK de producción no muestra
+el botón y rechaza la acción aunque se invoque directamente.
+Este control no equivale a certificación acústica. Para retirar la
+restricción hacen falta mediciones físicas reales del Vivo, con
+falsos disparos, eco, ruido, revocación y STOP documentados.
+
 ## Comportamiento
 
 Implementación adicional a #97, sobre el mismo micrófono Vosk ya empaquetado y
