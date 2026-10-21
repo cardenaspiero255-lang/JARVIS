@@ -30,6 +30,12 @@ class BargeInStopReuseContract(unittest.TestCase):
         self.assertIn("nativeRunner?.setResponsePlayback(false)", service)
         self.assertIn("ACTION_STOP", service)
 
+    def test_stale_tts_completion_cannot_unmute_newer_playback(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        self.assertIn('"jarvis-preview-$ticket"', service)
+        self.assertIn('utteranceId != "jarvis-preview-$ticket"', service)
+        self.assertIn("ttsPlaybackTicket == ticket", service)
+
     def test_upstream_mit_notice_kept_and_scope_documented(self):
         notice=(APP/"assets/legal/JUDEJULIUS_JARVIS_MIT_NOTICE.txt").read_text()
         self.assertIn("Copyright (c) 2026 Mohammad Joud Julius", notice)
