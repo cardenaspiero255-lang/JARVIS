@@ -2,6 +2,7 @@ package com.cardenaspiero255.jarvis
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.media.projection.MediaProjectionManager
 import android.app.Activity
@@ -253,6 +254,10 @@ class MainActivity : Activity() {
                     }.show()
             }
         })
+        // Acoustic false-trigger/echo rates need real Vivo measurements.
+        // Do not expose the experimental multi-turn picker in release APKs.
+        val debugBuild = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debugBuild) {
         layout.addView(primaryButton("CONVERSACIÓN GGUF · INTERRUMPIBLE · 30 MIN") {
             if (HandsFreePreviewService.isRunning) {
                 stopHandsFreePreview()
@@ -277,6 +282,7 @@ class MainActivity : Activity() {
                     }.show()
             }
         })
+        }
         layout.addView(primaryButton("ACTIVAR ESCUCHA LOCAL · 30 MIN") {
             if (HandsFreePreviewService.isRunning) {
                 stopHandsFreePreview()
