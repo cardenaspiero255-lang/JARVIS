@@ -16,6 +16,16 @@ class ConversationalBargeInContract(unittest.TestCase):
         self.assertIn("ACTION_STOP",service)
         self.assertIn("MAX_CONVERSATION_TURNS",service)
 
+    def test_audio_fallback_and_single_native_inference_worker(self):
+        runner=(SRC/"NativeSpanishSpeechRunner.kt").read_text()
+        service=(SRC/"HandsFreePreviewService.kt").read_text()
+        policy=(SRC/"core/NativeAudioSourceFailoverPolicy.kt").read_text()
+        self.assertIn("NativeAudioSourceFailoverPolicy.open(possibleAec)",runner)
+        self.assertIn("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC",runner)
+        self.assertIn("catch (revoked: SecurityException)",policy)
+        self.assertIn("localConversationInference ?: LocalGgufInference(modelStore)",service)
+        self.assertIn("if (extendedListening)",service)
+
     def test_gguf_turn_remains_read_only_and_single_mic(self):
         runner=(SRC/"NativeSpanishSpeechRunner.kt").read_text()
         service=(SRC/"HandsFreePreviewService.kt").read_text()

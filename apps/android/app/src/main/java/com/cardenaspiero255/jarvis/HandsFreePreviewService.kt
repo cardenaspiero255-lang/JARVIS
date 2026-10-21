@@ -856,9 +856,17 @@ class HandsFreePreviewService : Service() {
             finish("LOCAL_VOICE_MODEL_MISSING: importa primero un GGUF privado.")
             return
         }
-        localConversationInference?.close()
-        val engine = LocalGgufInference(modelStore)
-        localConversationInference = engine
+        // A session keeps one worker and its verified model lease. The
+        // completed turn has already released its run slot before callback.
+        // Avoid creating overlapping JNI executors on every interruption.
+        val engine = if (extendedListening) {
+            localConversationInference ?: LocalGgufInference(modelStore).also {
+                localConversationInference = it
+            }
+        } else {
+            localConversationInference?.close()
+            LocalGgufInference(modelStore).also { localConversationInference = it }
+        }
         val ticket = ++conversationGeneration
         showStatus(if (extendedListening)
             "LOCAL_VOICE_LLM_THINKING: micrófono activo pero aislado " +

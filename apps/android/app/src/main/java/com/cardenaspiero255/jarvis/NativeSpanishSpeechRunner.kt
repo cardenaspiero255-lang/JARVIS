@@ -11,6 +11,8 @@ import com.cardenaspiero255.jarvis.core.BargeInStopDecision
 import com.cardenaspiero255.jarvis.core.BargeInStopPolicy
 import com.cardenaspiero255.jarvis.core.BargeInQuestionDecision
 import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
+import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -175,35 +177,59 @@ class NativeSpanishSpeechRunner(
                 16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
             check(minimum > 0) { "Invalid PCM buffer size" }
-            // Share ONE foreground microphone with Vosk and barge-in. When
-            // there is no hardware AEC, stay with MIC and mute all TTS echo.
-            val possibleAec = continuous &&
-                AcousticEchoCanceler.isAvailable()
-            microphone = AudioRecord(
-                if (possibleAec) MediaRecorder.AudioSource.VOICE_COMMUNICATION
-                else MediaRecorder.AudioSource.MIC, 16_000,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                maxOf(minimum * 2, 4096)
-            )
-            recorder = microphone
-            if (possibleAec) {
-                echoCanceller = try {
-                    AcousticEchoCanceler.create(microphone.audioSessionId)?.apply {
-                        enabled = true
+            // AEC availability does not guarantee that VOICE_COMMUNICATION
+            // can initialize or start capture on this particular device.
+            // Retry only that failed route with MIC; never retry a revoked
+            // permission, and never advertise barge-in without live AEC.
+            val possibleAec = continuous && AcousticEchoCanceler.isAvailable()
+            val capture = NativeAudioSourceFailoverPolicy.open(possibleAec) { source ->
+                var attempted: AudioRecord? = null
+                var effect: AcousticEchoCanceler? = null
+                var started = false
+                try {
+                    val input = AudioRecord(
+                        if (source == NativeAudioSourceChoice.VOICE_COMMUNICATION)
+                            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                        else MediaRecorder.AudioSource.MIC,
+                        16_000, AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum * 2, 4096)
+                    )
+                    attempted = input
+                    if (input.state != AudioRecord.STATE_INITIALIZED) null else {
+                        if (source == NativeAudioSourceChoice.VOICE_COMMUNICATION) {
+                            effect = try {
+                                AcousticEchoCanceler.create(input.audioSessionId)?.apply {
+                                    enabled = true
+                                }
+                            } catch (_: RuntimeException) { null }
+                        }
+                        input.startRecording()
+                        if (input.recordingState != AudioRecord.RECORDSTATE_RECORDING) null
+                        else {
+                            started = true
+                            input to effect
+                        }
                     }
-                } catch (_: RuntimeException) { null }
-                aecReady = try { echoCanceller?.enabled == true }
+                } finally {
+                    if (!started) {
+                        try { effect?.release() } catch (_: RuntimeException) {}
+                        try { attempted?.stop() } catch (_: RuntimeException) {}
+                        try { attempted?.release() } catch (_: RuntimeException) {}
+                    }
+                }
+            }
+            val opened = checkNotNull(capture) { "AudioRecord not capturing" }
+            microphone = opened.second.first
+            recorder = microphone
+            echoCanceller = opened.second.second
+            aecReady = try { echoCanceller?.enabled == true }
                 catch (_: RuntimeException) { false }
+            if (possibleAec && opened.first == NativeAudioSourceChoice.MICROPHONE) {
+                onStatus("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC: origen de voz " +
+                    "no disponible; Vosk continúa sin interrupción automática de TTS.")
             }
             if (continuous && !aecReady) {
                 onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
-            }
-            check(microphone.state == AudioRecord.STATE_INITIALIZED) {
-                "AudioRecord not initialized"
-            }
-            microphone.startRecording()
-            check(microphone.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                "AudioRecord not capturing"
             }
 
             onReady()
