@@ -9,6 +9,8 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.BargeInStopDecision
 import com.cardenaspiero255.jarvis.core.BargeInStopPolicy
+import com.cardenaspiero255.jarvis.core.BargeInQuestionDecision
+import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -46,7 +48,8 @@ class NativeSpanishSpeechRunner(
     private val sessionDurationMillis: Long = 60_000L,
     private val conversationMode: Boolean = false,
     private val onQuestion: (String) -> Unit = {},
-    private val onBargeInStop: () -> Unit = {}
+    private val onBargeInStop: () -> Unit = {},
+    private val onBargeInQuestion: (String) -> Unit = {}
 ) {
     init { require(sessionDurationMillis in 60_000L..30 * 60_000L) }
     private val active = AtomicBoolean(false)
@@ -57,6 +60,7 @@ class NativeSpanishSpeechRunner(
     private val playbackVersion = AtomicLong()
     @Volatile private var playbackReference: String? = null
     private val bargeStopPolicy = BargeInStopPolicy()
+    private val bargeQuestionPolicy = BargeInQuestionPolicy()
 
     /** Public voice commands remain muted during TTS; only an AEC-gated,
      * exact and completed STOP may interrupt current output. */
@@ -173,7 +177,7 @@ class NativeSpanishSpeechRunner(
             check(minimum > 0) { "Invalid PCM buffer size" }
             // Share ONE foreground microphone with Vosk and barge-in. When
             // there is no hardware AEC, stay with MIC and mute all TTS echo.
-            val possibleAec = continuous && !conversationMode &&
+            val possibleAec = continuous &&
                 AcousticEchoCanceler.isAvailable()
             microphone = AudioRecord(
                 if (possibleAec) MediaRecorder.AudioSource.VOICE_COMMUNICATION
@@ -191,7 +195,7 @@ class NativeSpanishSpeechRunner(
                 aecReady = try { echoCanceller?.enabled == true }
                 catch (_: RuntimeException) { false }
             }
-            if (continuous && !conversationMode && !aecReady) {
+            if (continuous && !aecReady) {
                 onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
             }
             check(microphone.state == AudioRecord.STATE_INITIALIZED) {
@@ -263,6 +267,24 @@ class NativeSpanishSpeechRunner(
                                             playbackVersion.get() == version) {
                                             bargeTriggered = true
                                             onBargeInStop()
+                                        } else if (conversationMode && continuous &&
+                                            active.get() && responsePlayback.get() &&
+                                            playbackVersion.get() == version) {
+                                            // Only the dedicated, opted-in local GGUF mode
+                                            // can turn a full wake-prefixed interruption
+                                            // into a new text question. Never tools/actions.
+                                            val followup = bargeQuestionPolicy.decide(
+                                                heard, spoken, playbackActive = true,
+                                                echoCancellationActive = aecReady,
+                                                finalUtterance = true
+                                            )
+                                            val next = followup.question
+                                            if (followup.decision == BargeInQuestionDecision.ASK &&
+                                                next != null) {
+                                                bargeTriggered = true
+                                                setResponsePlayback(true) // no TTS echo reference yet
+                                                onBargeInQuestion(next)
+                                            }
                                         }
                                     }
                                 } catch (_: Exception) {
@@ -326,7 +348,16 @@ class NativeSpanishSpeechRunner(
                                         }
                                         OfflineVoiceDecision.QUESTION -> {
                                             question = event.question
-                                            break
+                                            if (conversationMode && continuous) {
+                                                // Keep this *same microphone* alive during
+                                                // GGUF inference/TTS; mute every normal
+                                                // command until TTS finishes its echo guard.
+                                                responsePlayback.set(true)
+                                                if (question != null) onQuestion(question)
+                                                question = null
+                                            } else {
+                                                break
+                                            }
                                         }
                                         OfflineVoiceDecision.WAITING -> onStatus(
                                             "LOCAL_VOICE_WAKE_WAITING: pregunta en 8 segundos.")
