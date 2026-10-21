@@ -31,6 +31,18 @@ class BargeInQuestionPolicy {
         val normalizedHeard = normalize(heard)
         val normalizedSpoken = normalize(spoken)
         if (!normalizedHeard.startsWith("jarvis ")) return ignore()
+        // Reject any device-control verb *before* calling the general GGUF
+        // question validator. This also rejects compound phrases such as
+        // "Jarvis, para borrar todo", which can evade a prefix-only filter.
+        // Conceptual questions containing these terms may be rejected;
+        // that conservative false negative is intentional during TTS.
+        val deviceVerb = Regex(
+            """\b(?:abre|abrir|activa|activar|desactiva|desactivar|instala|instalar|""" +
+            """ejecuta|ejecutar|borra|borrar|elimina|eliminar|envia|enviar|""" +
+            """autoriza|autorizar|enciende|encender|apaga|apagar|fusiona|fusionar|""" +
+            """conecta|conectar|desbloquea|desbloquear)\b"""
+        )
+        if (deviceVerb.containsMatchIn(normalizedHeard)) return ignore()
         val spokenWords = normalizedSpoken.split(' ').toSet()
         // Hearing the synthesized wake is not evidence of an independent
         // human utterance, even with AEC enabled.
