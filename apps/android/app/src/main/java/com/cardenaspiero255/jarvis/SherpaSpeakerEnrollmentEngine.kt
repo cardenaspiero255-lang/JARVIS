@@ -15,6 +15,8 @@ data class LocalVoiceEnrollmentRecording(
     val samples16kPcm: ShortArray
 )
 enum class LocalVoiceEnrollmentOutcome { SAVED, DENIED, BAD_SAMPLES, NATIVE_UNAVAILABLE }
+/** Real model-derived consistency only. Never an identity decision. */
+data class LocalVoiceEnrollmentDiagnostics(val minimumPairwiseCosine: Double)
 
 /**
  * Connects real sherpa-onnx speaker embeddings to the existing AES-GCM
@@ -22,12 +24,19 @@ enum class LocalVoiceEnrollmentOutcome { SAVED, DENIED, BAD_SAMPLES, NATIVE_UNAV
  * NOT a voice login or liveness guarantee; neither PCM nor transcripts persist.
  */
 class SherpaSpeakerEnrollmentEngine(private val context: Context) {
+    companion object {
+        // Shared across every engine instance: cancellation and revoke must
+        // serialize with the last encrypted write, not merely pass a stale
+        // isActive check before the save.
+        private val ENROLLMENT_COMMIT_LOCK = Any()
+    }
     private val busy = AtomicBoolean(false)
 
     fun enroll(
         consentGranted: Boolean,
         recordings: List<LocalVoiceEnrollmentRecording>,
-        isActive: () -> Boolean = { true }
+        isActive: () -> Boolean = { true },
+        onDiagnostics: (LocalVoiceEnrollmentDiagnostics) -> Unit = {}
     ): LocalVoiceEnrollmentOutcome {
         if (!consentGranted || !isActive()) return LocalVoiceEnrollmentOutcome.DENIED
         // Native ONNX and first-install SHA verification must never block UI.
@@ -42,6 +51,7 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
             return LocalVoiceEnrollmentOutcome.DENIED
 
         var extractor: SpeakerEmbeddingExtractor? = null
+        val embeddings = mutableListOf<SpeakerEnrollmentSample>()
         return try {
             val file = VerifiedSpeakerModelStore(context).ensureInstalled()
                 ?: return LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE
@@ -52,7 +62,6 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
                 )
             )
             val native = extractor
-            val embeddings = mutableListOf<SpeakerEnrollmentSample>()
             for (recording in recordings) {
                 if (Thread.currentThread().isInterrupted || !isActive())
                     return LocalVoiceEnrollmentOutcome.DENIED
@@ -83,20 +92,38 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
             }
             val template = SpeakerEnrollmentPolicy().create(embeddings)
                 ?: return LocalVoiceEnrollmentOutcome.BAD_SAMPLES
-            if (Thread.currentThread().isInterrupted || !isActive()) {
-                template.fill(0f)
-                return LocalVoiceEnrollmentOutcome.DENIED
+            // Compare the THREE authentic embeddings before erasing the
+            // temporary vectors. Consistency is not FAR/FRR or liveness.
+            val pairs = listOf(0 to 1, 0 to 2, 1 to 2)
+            val minimumPairwiseCosine = pairs.minOf { (a, b) ->
+                OwnerVoiceCosine.compare(embeddings[a].embedding, embeddings[b].embedding)
+                    ?: return LocalVoiceEnrollmentOutcome.BAD_SAMPLES
             }
-            AndroidSpeakerTemplateVault(context).save(
-                VerifiedSpeakerModelStore.MODEL_SHA256, template
-            )
-            template.fill(0f)
+            val committed = try {
+                synchronized(ENROLLMENT_COMMIT_LOCK) {
+                    if (Thread.currentThread().isInterrupted || !isActive()) {
+                        false
+                    } else {
+                        AndroidSpeakerTemplateVault(context).save(
+                            VerifiedSpeakerModelStore.MODEL_SHA256, template
+                        )
+                        true
+                    }
+                }
+            } finally {
+                template.fill(0f)
+            }
+            if (!committed) return LocalVoiceEnrollmentOutcome.DENIED
+            try {
+                onDiagnostics(LocalVoiceEnrollmentDiagnostics(minimumPairwiseCosine))
+            } catch (_: Exception) { /* Diagnostics never decide authorization. */ }
             LocalVoiceEnrollmentOutcome.SAVED
         } catch (_: UnsatisfiedLinkError) {
             LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE
         } catch (_: Exception) {
             LocalVoiceEnrollmentOutcome.NATIVE_UNAVAILABLE
         } finally {
+            embeddings.forEach { it.embedding.fill(0f) }
             try { extractor?.release() } catch (_: Exception) {}
             busy.set(false)
         }
@@ -117,5 +144,7 @@ class SherpaSpeakerEnrollmentEngine(private val context: Context) {
         ) // Always SpeakerEvidence.UNAVAILABLE; never MATCHED.
     }
 
-    fun revoke(): Unit = AndroidSpeakerTemplateVault(context).revoke()
+    fun revoke(): Unit = synchronized(ENROLLMENT_COMMIT_LOCK) {
+        AndroidSpeakerTemplateVault(context).revoke()
+    }
 }
