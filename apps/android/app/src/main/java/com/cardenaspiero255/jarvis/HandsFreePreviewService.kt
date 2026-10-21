@@ -101,6 +101,7 @@ class HandsFreePreviewService : Service() {
     private var micDiagnosticSummary: String? = null
     private var diagnosticWorker: Thread? = null
     private var ttsWatchdog: Runnable? = null
+    private var ttsPlaybackTicket = 0L
     private val timeout = Runnable {
         finish(if (extendedListening) "EXTENDED_LISTENING: sesión de 30 minutos terminada." else "La prueba de 60 segundos terminó. Micrófono liberado.")
     }
@@ -397,6 +398,20 @@ class HandsFreePreviewService : Service() {
             conversationMode = conversationMode,
             onQuestion = { question ->
                 main.post { processOfflineQuestion(question) }
+            },
+            onBargeInStop = {
+                // The native worker supplies NO transcript, only the strictly
+                // filtered, completed STOP event. Never route into actions.
+                main.post {
+                    if (extendedListening && isRunning && !closed &&
+                        !endedNormally && nativeModeRequested &&
+                        timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                        try { tts?.stop() } catch (_: RuntimeException) {}
+                        nativeRunner?.stop()
+                        finish("ASR_NATIVE_BARGEIN_STOP: voz interrumpida; " +
+                            "sesión cerrada sin ejecutar comandos.")
+                    }
+                }
             },
             continuous = extendedListening,
             sessionDurationMillis = if (extendedListening) 30 * 60_000L else 60_000L
@@ -749,9 +764,12 @@ class HandsFreePreviewService : Service() {
 
     private fun finishOrResume(reason: String) {
         if (extendedListening && isRunning && !closed && !endedNormally) {
-            // Keep a short post-TTS echo guard before analyzing microphone PCM.
+            // Guard both speaker tail-echo and stale callbacks from a prior
+            // TTS turn; a new ticket may not be unmuted by an old timer.
+            val ticket = ttsPlaybackTicket
             main.postDelayed({
-                if (isRunning && !closed && extendedListening) {
+                if (isRunning && !closed && extendedListening &&
+                    !endedNormally && ttsPlaybackTicket == ticket) {
                     nativeRunner?.setResponsePlayback(false)
                 }
             }, 350L)
@@ -860,6 +878,12 @@ class HandsFreePreviewService : Service() {
         val engine = tts ?: run {
             finishOrResume("TTS_UNAVAILABLE: motor de voz local no inicializado.")
             return
+        }
+        // Native runner already muted normal commands before dispatch.
+        // TTS text is kept in memory only to suppress its own ASR echo.
+        ++ttsPlaybackTicket
+        if (extendedListening && nativeModeRequested) {
+            nativeRunner?.setResponsePlayback(true, text)
         }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
