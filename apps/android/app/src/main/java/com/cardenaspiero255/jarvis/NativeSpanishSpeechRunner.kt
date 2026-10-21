@@ -353,7 +353,7 @@ class NativeSpanishSpeechRunner(
                                                 // GGUF inference/TTS; mute every normal
                                                 // command until TTS finishes its echo guard.
                                                 responsePlayback.set(true)
-                                                if (question != null) onQuestion(question)
+                                                if (question != null) onQuestion.invoke(question)
                                                 question = null
                                             } else {
                                                 break
