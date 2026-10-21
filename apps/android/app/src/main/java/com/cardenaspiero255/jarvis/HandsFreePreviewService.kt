@@ -881,13 +881,15 @@ class HandsFreePreviewService : Service() {
         }
         // Native runner already muted normal commands before dispatch.
         // TTS text is kept in memory only to suppress its own ASR echo.
-        ++ttsPlaybackTicket
+        val ticket = ++ttsPlaybackTicket
         if (extendedListening && nativeModeRequested) {
             nativeRunner?.setResponsePlayback(true, text)
         }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 main.post {
+                    if (utteranceId != "jarvis-preview-$ticket" ||
+                        ttsPlaybackTicket != ticket || endedNormally) return@post
                     if (isRunning && !closed) showStatus(
                         "TTS_STARTED: Android inició la síntesis; " +
                             "comprobar si el altavoz realmente se escucha.")
@@ -895,6 +897,8 @@ class HandsFreePreviewService : Service() {
             }
             override fun onDone(utteranceId: String?) {
                 main.post {
+                    if (utteranceId != "jarvis-preview-$ticket" ||
+                        ttsPlaybackTicket != ticket || endedNormally) return@post
                     ttsWatchdog?.let { main.removeCallbacks(it) }
                     ttsWatchdog = null
                     val volume = try {
@@ -908,22 +912,33 @@ class HandsFreePreviewService : Service() {
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
-                main.post { finishOrResume("Error TTS: no se pudo reproducir la voz local.") }
+                main.post {
+                    if (utteranceId == "jarvis-preview-$ticket" &&
+                        ttsPlaybackTicket == ticket && !endedNormally) {
+                        finishOrResume("Error TTS: no se pudo reproducir la voz local.")
+                    }
+                }
             }
             override fun onError(utteranceId: String?, errorCode: Int) {
-                main.post { finishOrResume("Error TTS ($errorCode): voz local no disponible.") }
+                main.post {
+                    if (utteranceId == "jarvis-preview-$ticket" &&
+                        ttsPlaybackTicket == ticket && !endedNormally) {
+                        finishOrResume("Error TTS ($errorCode): voz local no disponible.")
+                    }
+                }
             }
         })
         showStatus("JARVIS respondiendo localmente…")
         val result = try {
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview")
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview-$ticket")
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
             finishOrResume("TTS_REJECTED: Android rechazó la síntesis de voz local.")
             return
         }
         val deadline = Runnable {
-            if (isRunning && !closed && !endedNormally) {
+            if (isRunning && !closed && !endedNormally &&
+                ttsPlaybackTicket == ticket) {
                 finishOrResume("TTS_NO_PLAYBACK_CALLBACK: Android no confirmó " +
                     "inicio/fin de reproducción en 10 segundos.")
             }
