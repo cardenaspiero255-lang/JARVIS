@@ -101,6 +101,7 @@ class HandsFreePreviewService : Service() {
     private var micDiagnosticSummary: String? = null
     private var diagnosticWorker: Thread? = null
     private var ttsWatchdog: Runnable? = null
+    private var ttsPlaybackTicket = 0L
     private val timeout = Runnable {
         finish(if (extendedListening) "EXTENDED_LISTENING: sesión de 30 minutos terminada." else "La prueba de 60 segundos terminó. Micrófono liberado.")
     }
@@ -397,6 +398,20 @@ class HandsFreePreviewService : Service() {
             conversationMode = conversationMode,
             onQuestion = { question ->
                 main.post { processOfflineQuestion(question) }
+            },
+            onBargeInStop = {
+                // The native worker supplies NO transcript, only the strictly
+                // filtered, completed STOP event. Never route into actions.
+                main.post {
+                    if (extendedListening && isRunning && !closed &&
+                        !endedNormally && nativeModeRequested &&
+                        timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                        try { tts?.stop() } catch (_: RuntimeException) {}
+                        nativeRunner?.stop()
+                        finish("ASR_NATIVE_BARGEIN_STOP: voz interrumpida; " +
+                            "sesión cerrada sin ejecutar comandos.")
+                    }
+                }
             },
             continuous = extendedListening,
             sessionDurationMillis = if (extendedListening) 30 * 60_000L else 60_000L
@@ -749,9 +764,12 @@ class HandsFreePreviewService : Service() {
 
     private fun finishOrResume(reason: String) {
         if (extendedListening && isRunning && !closed && !endedNormally) {
-            // Keep a short post-TTS echo guard before analyzing microphone PCM.
+            // Guard both speaker tail-echo and stale callbacks from a prior
+            // TTS turn; a new ticket may not be unmuted by an old timer.
+            val ticket = ttsPlaybackTicket
             main.postDelayed({
-                if (isRunning && !closed && extendedListening) {
+                if (isRunning && !closed && extendedListening &&
+                    !endedNormally && ttsPlaybackTicket == ticket) {
                     nativeRunner?.setResponsePlayback(false)
                 }
             }, 350L)
@@ -861,9 +879,17 @@ class HandsFreePreviewService : Service() {
             finishOrResume("TTS_UNAVAILABLE: motor de voz local no inicializado.")
             return
         }
+        // Native runner already muted normal commands before dispatch.
+        // TTS text is kept in memory only to suppress its own ASR echo.
+        val ticket = ++ttsPlaybackTicket
+        if (extendedListening && nativeModeRequested) {
+            nativeRunner?.setResponsePlayback(true, text)
+        }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 main.post {
+                    if (utteranceId != "jarvis-preview-$ticket" ||
+                        ttsPlaybackTicket != ticket || endedNormally) return@post
                     if (isRunning && !closed) showStatus(
                         "TTS_STARTED: Android inició la síntesis; " +
                             "comprobar si el altavoz realmente se escucha.")
@@ -871,6 +897,8 @@ class HandsFreePreviewService : Service() {
             }
             override fun onDone(utteranceId: String?) {
                 main.post {
+                    if (utteranceId != "jarvis-preview-$ticket" ||
+                        ttsPlaybackTicket != ticket || endedNormally) return@post
                     ttsWatchdog?.let { main.removeCallbacks(it) }
                     ttsWatchdog = null
                     val volume = try {
@@ -884,22 +912,33 @@ class HandsFreePreviewService : Service() {
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
-                main.post { finishOrResume("Error TTS: no se pudo reproducir la voz local.") }
+                main.post {
+                    if (utteranceId == "jarvis-preview-$ticket" &&
+                        ttsPlaybackTicket == ticket && !endedNormally) {
+                        finishOrResume("Error TTS: no se pudo reproducir la voz local.")
+                    }
+                }
             }
             override fun onError(utteranceId: String?, errorCode: Int) {
-                main.post { finishOrResume("Error TTS ($errorCode): voz local no disponible.") }
+                main.post {
+                    if (utteranceId == "jarvis-preview-$ticket" &&
+                        ttsPlaybackTicket == ticket && !endedNormally) {
+                        finishOrResume("Error TTS ($errorCode): voz local no disponible.")
+                    }
+                }
             }
         })
         showStatus("JARVIS respondiendo localmente…")
         val result = try {
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview")
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-preview-$ticket")
         } catch (_: RuntimeException) { TextToSpeech.ERROR }
         if (result != TextToSpeech.SUCCESS) {
             finishOrResume("TTS_REJECTED: Android rechazó la síntesis de voz local.")
             return
         }
         val deadline = Runnable {
-            if (isRunning && !closed && !endedNormally) {
+            if (isRunning && !closed && !endedNormally &&
+                ttsPlaybackTicket == ticket) {
                 finishOrResume("TTS_NO_PLAYBACK_CALLBACK: Android no confirmó " +
                     "inicio/fin de reproducción en 10 segundos.")
             }

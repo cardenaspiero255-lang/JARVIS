@@ -4,8 +4,11 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
+import com.cardenaspiero255.jarvis.core.BargeInStopDecision
+import com.cardenaspiero255.jarvis.core.BargeInStopPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -22,6 +25,7 @@ import org.vosk.Recognizer
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Dedicated OFFLINE Spanish recognizer: AudioRecord -> Vosk. Does not use
@@ -41,14 +45,26 @@ class NativeSpanishSpeechRunner(
     private val continuous: Boolean = false,
     private val sessionDurationMillis: Long = 60_000L,
     private val conversationMode: Boolean = false,
-    private val onQuestion: (String) -> Unit = {}
+    private val onQuestion: (String) -> Unit = {},
+    private val onBargeInStop: () -> Unit = {}
 ) {
     init { require(sessionDurationMillis in 60_000L..30 * 60_000L) }
     private val active = AtomicBoolean(false)
     private val responsePlayback = AtomicBoolean(false)
 
-    /** Block any echo of JARVIS TTS from becoming a new voice request. */
-    fun setResponsePlayback(playing: Boolean) { responsePlayback.set(playing) }
+    // A changing generation prevents old playback streams from being reused
+    // for a new TTS response or after revocation.
+    private val playbackVersion = AtomicLong()
+    @Volatile private var playbackReference: String? = null
+    private val bargeStopPolicy = BargeInStopPolicy()
+
+    /** Public voice commands remain muted during TTS; only an AEC-gated,
+     * exact and completed STOP may interrupt current output. */
+    fun setResponsePlayback(playing: Boolean, spoken: String? = null) {
+        playbackReference = if (playing) spoken?.take(1000) else null
+        playbackVersion.incrementAndGet()
+        responsePlayback.set(playing)
+    }
     @Volatile private var worker: Thread? = null
     @Volatile private var recorder: AudioRecord? = null
     // Only public read-only time and battery requests; never authority to act.
@@ -66,7 +82,7 @@ class NativeSpanishSpeechRunner(
 
     fun stop() {
         active.set(false)
-        responsePlayback.set(false)
+        setResponsePlayback(false)
         worker?.interrupt()
         try { recorder?.stop() } catch (_: RuntimeException) {}
     }
@@ -95,6 +111,12 @@ class NativeSpanishSpeechRunner(
 
     private fun runRecognition() {
         var microphone: AudioRecord? = null
+        var echoCanceller: AcousticEchoCanceler? = null
+        var bargeRecognizer: Recognizer? = null
+        var bargeVersion = -1L
+        var bargeTriggered = false
+        var bargeUnavailable = false
+        var aecReady = false
         var model: Model? = null
         var recognizer: Recognizer? = null
         var wakeBridge: SherpaNativeWakeBridge? = null
@@ -149,12 +171,29 @@ class NativeSpanishSpeechRunner(
                 16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
             check(minimum > 0) { "Invalid PCM buffer size" }
+            // Share ONE foreground microphone with Vosk and barge-in. When
+            // there is no hardware AEC, stay with MIC and mute all TTS echo.
+            val possibleAec = continuous && !conversationMode &&
+                AcousticEchoCanceler.isAvailable()
             microphone = AudioRecord(
-                MediaRecorder.AudioSource.MIC, 16_000,
+                if (possibleAec) MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                else MediaRecorder.AudioSource.MIC, 16_000,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minimum * 2, 4096)
             )
             recorder = microphone
+            if (possibleAec) {
+                echoCanceller = try {
+                    AcousticEchoCanceler.create(microphone.audioSessionId)?.apply {
+                        enabled = true
+                    }
+                } catch (_: RuntimeException) { null }
+                aecReady = try { echoCanceller?.enabled == true }
+                catch (_: RuntimeException) { false }
+            }
+            if (continuous && !conversationMode && !aecReady) {
+                onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
+            }
             check(microphone.state == AudioRecord.STATE_INITIALIZED) {
                 "AudioRecord not initialized"
             }
@@ -187,10 +226,60 @@ class NativeSpanishSpeechRunner(
                             audioSinceReport = 0L
                             lastAudioReport = progressNow
                         }
-                        // Never analyze the assistant's own audio output as a command.
+                        // Never route TTS echo into the normal wake/command
+                        // recognizer. On an explicitly authorized long session,
+                        // a *separate* temporary Vosk stream may detect only a
+                        // completed STOP, and only when Android AEC is active.
                         if (responsePlayback.get()) {
+                            val version = playbackVersion.get()
+                            if (bargeVersion != version) {
+                                try { bargeRecognizer?.close() }
+                                catch (_: RuntimeException) {}
+                                bargeRecognizer = null
+                                bargeVersion = version
+                                bargeTriggered = false
+                                bargeUnavailable = false
+                            }
+                            val spoken = playbackReference
+                            if (aecReady && spoken != null && !bargeTriggered &&
+                                !bargeUnavailable && active.get()) {
+                                try {
+                                    val stopAsr = bargeRecognizer ?: Recognizer(
+                                        checkNotNull(model), 16_000.0f
+                                    ).also { bargeRecognizer = it }
+                                    if (stopAsr.acceptWaveForm(audio, received)) {
+                                        val heard = JSONObject(stopAsr.result)
+                                            .optString("text", "")
+                                        val decision = bargeStopPolicy.decide(
+                                            heard, spoken, responsePlayback.get(),
+                                            aecReady, finalUtterance = true
+                                        )
+                                        // A completed Vosk utterance must not
+                                        // carry state into another segment.
+                                        stopAsr.close()
+                                        bargeRecognizer = null
+                                        if (decision == BargeInStopDecision.STOP_TTS &&
+                                            active.get() && responsePlayback.get() &&
+                                            playbackVersion.get() == version) {
+                                            bargeTriggered = true
+                                            onBargeInStop()
+                                        }
+                                    }
+                                } catch (_: Exception) {
+                                    try { bargeRecognizer?.close() }
+                                    catch (_: RuntimeException) {}
+                                    bargeRecognizer = null
+                                    bargeUnavailable = true
+                                    onStatus("ASR_NATIVE_BARGEIN_UNAVAILABLE: usa DETENER.")
+                                }
+                            }
                             audio.fill(0, 0, received)
                             continue
+                        }
+                        if (bargeRecognizer != null) {
+                            try { bargeRecognizer?.close() }
+                            catch (_: RuntimeException) {}
+                            bargeRecognizer = null
                         }
                         levels.observe(audio, received)
                         // Native KWS provides only a candidate; Vosk still decides
@@ -385,6 +474,8 @@ class NativeSpanishSpeechRunner(
             try { microphone?.stop() } catch (_: RuntimeException) {}
             try { microphone?.release() } catch (_: RuntimeException) {}
             try { recognizer?.close() } catch (_: RuntimeException) {}
+            try { bargeRecognizer?.close() } catch (_: RuntimeException) {}
+            try { echoCanceller?.release() } catch (_: RuntimeException) {}
             try { wakeBridge?.close() } catch (_: Exception) {}
             try { model?.close() } catch (_: RuntimeException) {}
             worker = null
