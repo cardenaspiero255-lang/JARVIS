@@ -20,7 +20,7 @@ class ConversationalBargeInContract(unittest.TestCase):
         runner=(SRC/"NativeSpanishSpeechRunner.kt").read_text()
         service=(SRC/"HandsFreePreviewService.kt").read_text()
         self.assertIn("BargeInQuestionPolicy()",runner)
-        self.assertIn("onBargeInQuestion(question)",runner)
+        self.assertIn("onBargeInQuestion(next)",runner)
         self.assertIn("questionGate.observe(",runner)
         self.assertIn("responsePlayback.set(true)",runner)
         self.assertIn("onQuestion(question)",runner)
