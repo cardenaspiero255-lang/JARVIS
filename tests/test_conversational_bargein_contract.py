@@ -39,6 +39,14 @@ class ConversationalBargeInContract(unittest.TestCase):
         self.assertIn("tts?.stop()",service)
         self.assertIn("ttsPlaybackTicket",service)
 
+    def test_experimental_bargein_is_debug_only_until_physical_audio_gate(self):
+        main=(SRC/"MainActivity.kt").read_text()
+        service=(SRC/"HandsFreePreviewService.kt").read_text()
+        self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE", main)
+        self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE", service)
+        self.assertIn("longConversationRequested && !debugBuild", service)
+        self.assertIn("if (debugBuild)", main)
+
     def test_unmodified_one_turn_conversation_and_no_new_permissions(self):
         service=(SRC/"HandsFreePreviewService.kt").read_text()
         self.assertIn("if (!extendedListening) {",service)
