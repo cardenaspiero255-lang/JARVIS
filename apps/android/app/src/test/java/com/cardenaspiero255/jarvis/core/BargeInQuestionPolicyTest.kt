@@ -14,7 +14,7 @@ class BargeInQuestionPolicyTest {
             echoCancellationActive = true, finalUtterance = true
         )
         assertEquals(BargeInQuestionDecision.ASK, result.decision)
-        assertEquals("qué distancia hay entre la Tierra y la Luna?", result.question)
+        assertEquals("¿qué distancia hay entre la Tierra y la Luna?", result.question)
     }
 
     @Test fun rejectsSelfEchoEvenIfSynthesizedResponseContainsWakeOrSimilarQuestion() {
