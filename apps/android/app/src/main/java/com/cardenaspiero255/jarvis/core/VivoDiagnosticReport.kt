@@ -32,7 +32,8 @@ data class VivoDiagnosticReport(
     val qwenRun: String,
     val qwenLatencyMs: Long?,
     val stopRun: String,
-    val results: Map<VivoCheck, VivoReportedResult>
+    val results: Map<VivoCheck, VivoReportedResult>,
+    val lockscreenQuestionCount: Int = 0
 ) {
     fun toShareText(): String {
         val safeModel = model.filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ' ' }
@@ -53,7 +54,12 @@ data class VivoDiagnosticReport(
                 lockscreenTimeCommandCount.coerceAtLeast(0))
             appendLine("Comandos_STOP_recibidos_pantalla_apagada=" +
                 lockscreenStopCommandCount.coerceAtLeast(0))
-            appendLine("Comandos recibidos no certifican audio audible ni identidad del hablante.")
+            appendLine("Preguntas_GGUF_recibidas_pantalla_apagada=" +
+                lockscreenQuestionCount.coerceAtLeast(0))
+            appendLine("Pantalla_apagada_respuesta_audible=" +
+                if (results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FUNCIONA)
+                    "SOLO_USER_REPORTED" else "NO_VERIFICADO")
+            appendLine("Comandos y preguntas reconocidos no certifican audio audible ni identidad del hablante.")
             appendLine("Qwen_ejecución=$qwenRun latencia_ms=${qwenLatencyMs ?: "NO_MEDIDA"}")
             appendLine("STOP_ejecución=" + stopRun.filter { it.isLetterOrDigit() || it == '_' }.take(48))
             for (check in VivoCheck.entries) {
@@ -67,12 +73,28 @@ data class VivoDiagnosticReport(
             if (results[VivoCheck.OWNER] == VivoReportedResult.FUNCIONA) {
                 appendLine("OWNER_NO_CERTIFICADO: prueba positiva sin FAR/FRR/replay.")
             }
-            if (results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FUNCIONA &&
-                (!lockscreenLastExtended || !screenOffObserved ||
-                    (lockscreenTimeCommandCount <= 0 && lockscreenStopCommandCount <= 0))) {
-                appendLine("LOCKSCREEN_NO_CORROBORADO: éxito manual sin " +
-                    "muestras y orden reconocida en la misma sesión extendida. " +
-                    "Revisar si se inició, se bloqueó y se habló durante la escucha.")
+            // Never describe observed PCM as absent. Separate capture,
+            // recognition and reported audibility; neither is a certification.
+            if (results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FUNCIONA) {
+                val recognized = lockscreenTimeCommandCount.coerceAtLeast(0) +
+                    lockscreenStopCommandCount.coerceAtLeast(0) +
+                    lockscreenQuestionCount.coerceAtLeast(0)
+                when {
+                    !lockscreenLastExtended ->
+                        appendLine("LOCKSCREEN_NO_CORROBORADO: LOCKSCREEN_SESION_NO_ACREDITADA: " +
+                            "no consta sesión extendida vinculada al informe.")
+                    !screenOffObserved ->
+                        appendLine("LOCKSCREEN_NO_CORROBORADO: LOCKSCREEN_PCM_NO_CORROBORADO: " +
+                            "no se alcanzó la evidencia mínima de captura con pantalla apagada.")
+                    recognized == 0 ->
+                        appendLine("LOCKSCREEN_NO_CORROBORADO: LOCKSCREEN_PCM_SIN_ORDEN: " +
+                            "hubo PCM con pantalla apagada, pero ningún comando ni pregunta " +
+                            "GGUF corroborados en la sesión extendida.")
+                    else ->
+                        appendLine("LOCKSCREEN_RECONOCIMIENTO_PARCIAL: PCM y $recognized " +
+                            "órdenes/preguntas contabilizadas; respuesta audible " +
+                            "NO_VERIFICADO_ACUSTICAMENTE y propietario no autenticado.")
+                }
             }
             if (screenOffObserved && results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FALLA) {
                 appendLine("LOCKSCREEN_PARCIAL: hubo PCM con pantalla apagada, " +

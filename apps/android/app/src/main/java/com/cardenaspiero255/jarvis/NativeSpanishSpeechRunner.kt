@@ -1,6 +1,8 @@
 package com.cardenaspiero255.jarvis
 
 import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -15,6 +17,7 @@ import com.cardenaspiero255.jarvis.core.BargeInQuestionDecision
 import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioReadFailurePolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -459,8 +462,18 @@ class NativeSpanishSpeechRunner(
                             }
                         }
                     }
-                    received < 0 -> throw IllegalStateException(
-                        "AudioRecord returned code $received")
+                    received < 0 -> {
+                        // Negative reads can mean a revoked microphone grant
+                        // OR a device/driver failure. Distinguish them using
+                        // current permission state, never claim revocation
+                        // merely because AudioRecord returned an error.
+                        val granted = try {
+                            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                                PackageManager.PERMISSION_GRANTED
+                        } catch (_: RuntimeException) { true }
+                        failure = NativeAudioReadFailurePolicy.classify(received, granted)
+                        break
+                    }
                 }
                 val now = SystemClock.elapsedRealtime()
                 val wakeExpired = if (conversationMode) questionGate.expiredAt(now)

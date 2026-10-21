@@ -214,6 +214,7 @@ class HandsFreePreviewService : Service() {
             diagnostics.edit().remove("lockscreen_off_samples")
                 .remove("lockscreen_off_reports").remove("lockscreen_result")
                 .remove("lockscreen_time_commands").remove("lockscreen_stop_commands")
+                .remove("lockscreen_question_commands")
                 .putBoolean("lockscreen_last_extended", true).commit()
         }
         diagnosticMode = diagnostic
@@ -445,7 +446,21 @@ class HandsFreePreviewService : Service() {
             },
             conversationMode = conversationMode,
             onQuestion = { question ->
-                main.post { processOfflineQuestion(question) }
+                // This callback arrives from the Vosk worker; sample the
+                // display before dispatch, never from a delayed UI callback.
+                val screenOffAtRecognition = if (extendedListening) try {
+                    (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
+                } catch (_: RuntimeException) { false } else false
+                main.post {
+                    if (screenOffAtRecognition && isRunning && !closed &&
+                        extendedListening && !endedNormally &&
+                        timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                        val previous = diagnostics.getInt("lockscreen_question_commands", 0)
+                        diagnostics.edit().putInt("lockscreen_question_commands",
+                            (previous + 1).coerceAtMost(999)).apply()
+                    }
+                    processOfflineQuestion(question)
+                }
             },
             onBargeInQuestion = { question ->
                 main.post {

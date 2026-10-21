@@ -426,6 +426,7 @@ class VivoDiagnosticActivity : Activity() {
             lockscreenLastExtended = audio.getBoolean("lockscreen_last_extended", false),
             lockscreenTimeCommandCount = audio.getInt("lockscreen_time_commands", 0),
             lockscreenStopCommandCount = audio.getInt("lockscreen_stop_commands", 0),
+            lockscreenQuestionCount = audio.getInt("lockscreen_question_commands", 0),
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
             qwenLatencyMs = if (prefs.contains("qwen_ms")) prefs.getLong("qwen_ms", 0L)
                 else null,
