@@ -8,6 +8,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.ContentResolver
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
+import com.cardenaspiero255.jarvis.core.PrivateKnowledgePack
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -74,6 +78,10 @@ class MainActivity : Activity() {
     private val policy = DeviceActionPolicy()
     private val parser = VoiceCommandParser()
     private val localDialogue = LocalDialogue()
+    private val noteImportEpoch = AtomicLong(0)
+    private val noteImportBusy = AtomicBoolean(false)
+    private var notePickerOpen = false
+    private var pendingPrivateNoteUri: Uri? = null
     private val offlineRoutinePlanner = OfflineRoutinePlanner()
     private val voiceConsent = VoiceConsentGate()
     private val voiceMathSession = VoiceMathSession()
@@ -333,6 +341,33 @@ class MainActivity : Activity() {
             maxLines = 3
         }
         section.addView(chatInput)
+        section.addView(primaryButton("IMPORTAR NOTA LOCAL · TXT") {
+            // User-selected short text only. No broad storage permissions,
+            // automatic indexing, networking or file access persistence.
+            if (notePickerOpen || noteImportBusy.get()) {
+                statusText.text = "Otra importación de nota sigue activa."
+            } else {
+                notePickerOpen = true
+                val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    startActivityForResult(picker, NOTE_PICKER_REQUEST)
+                } catch (_: ActivityNotFoundException) {
+                    notePickerOpen = false
+                    statusText.text = "Android no dispone de un selector para notas TXT."
+                }
+            }
+        })
+        section.addView(label(
+            "Notas TXT de hasta 64 KiB, solo en memoria mientras JARVIS está abierto. " +
+                "Escribe «busca en mis notas Shizuku» para consultar fragmentos " +
+                "no verificados. Nunca ejecuta instrucciones del archivo.",
+            12f, Color.rgb(164, 166, 174)
+        ))
         section.addView(primaryButton("ENVIAR MENSAJE") {
             val message = chatInput.text.toString()
             when {
@@ -799,6 +834,7 @@ class MainActivity : Activity() {
         if (::omegaCore.isInitialized) omegaCore.resumeMotion()
         enforceCapturePrivacy()
         foregroundGate.onStart()
+        consumePendingPrivateNote()
     }
 
     override fun onStop() {
@@ -810,6 +846,10 @@ class MainActivity : Activity() {
         }
         gameHubPreflight.cancel()
         revokeCaptureException()
+        // The document picker may briefly background this Activity without
+        // holding private bytes. Other transitions revoke pending workers.
+        if (!notePickerOpen) noteImportEpoch.incrementAndGet()
+        localDialogue.forgetLocalNote()
         foregroundGate.onStop()
         if (foregroundSpeech != null) {
             stopForegroundSpeech()
@@ -998,6 +1038,8 @@ class MainActivity : Activity() {
                 check(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             },
             SessionLockChannel.LOCAL_CHAT to {
+                noteImportEpoch.incrementAndGet()
+                pendingPrivateNoteUri = null
                 localDialogue.clear()
                 lastChatReply = null
                 chatInput.text.clear()
@@ -1272,6 +1314,15 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform Activity result API without additional dependencies")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == NOTE_PICKER_REQUEST) {
+            notePickerOpen = false
+            pendingPrivateNoteUri = if (resultCode == RESULT_OK &&
+                data?.data?.scheme == ContentResolver.SCHEME_CONTENT) data.data else null
+            if (pendingPrivateNoteUri == null) {
+                statusText.text = "Nota no seleccionada; no se importó ningún archivo."
+            } else consumePendingPrivateNote()
+            return
+        }
         if (requestCode == GGUF_PICKER_REQUEST) {
             val selected: Uri? = if (resultCode == RESULT_OK) data?.data else null
             if (selected != null && foregroundGate.canAcceptRecognitionResult()) {
@@ -1547,7 +1598,47 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    private fun consumePendingPrivateNote() {
+        val uri = pendingPrivateNoteUri ?: return
+        if (!foregroundGate.canAcceptRecognitionResult() ||
+            !noteImportBusy.compareAndSet(false, true)) return
+        pendingPrivateNoteUri = null
+        val epoch = noteImportEpoch.get()
+        statusText.text = "Leyendo nota local en memoria; sin Internet."
+        Thread({
+            val note = try {
+                val stream = contentResolver.openInputStream(uri)
+                    ?: throw IllegalArgumentException("Nota inaccesible")
+                PrivateKnowledgePack.readText(stream) {
+                    noteImportEpoch.get() == epoch && !Thread.currentThread().isInterrupted
+                }
+            } catch (_: Exception) { null }
+            runOnUiThread {
+                try {
+                    if (noteImportEpoch.get() == epoch &&
+                        foregroundGate.canAcceptRecognitionResult() &&
+                        !isFinishing && !isDestroyed) {
+                        statusText.text = if (note == null) {
+                            "No se importó: nota inválida, demasiado grande o cancelada."
+                        } else {
+                            try {
+                                val fragments = localDialogue.importLocalNote(note)
+                                "Nota local indexada: $fragments fragmentos. " +
+                                    "Pregunta: busca en mis notas..."
+                            } catch (_: IllegalArgumentException) {
+                                "Nota sin párrafos válidos o supera el límite de memoria."
+                            }
+                        }
+                    }
+                } finally {
+                    noteImportBusy.set(false)
+                }
+            }
+        }, "jarvis-optional-private-note-import").start()
+    }
+
     private companion object {
+        const val NOTE_PICKER_REQUEST = 9103
         const val SPEECH_REQUEST = 7001
         const val GGUF_PICKER_REQUEST = 9102
         private const val VISION_PICKER_COUNTER_KEY = "jarvis.vision.picker.issued"

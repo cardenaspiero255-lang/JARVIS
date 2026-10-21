@@ -14,7 +14,14 @@ class LocalDialogue {
     private var lastNumericResult: BigDecimal? = null
     private val topicDialogue = LocalTopicDialogue()
     private val knowledgeEngine = OfflineKnowledgeEngine()
+    private val privateKnowledge = PrivateKnowledgePack()
     private val routinePlanner = OfflineRoutinePlanner()
+
+    /** Explicit typed notes only; never synced or saved as a pack on disk. */
+    fun importLocalNote(text: String): Int = privateKnowledge.importText(text)
+
+    /** Erase only the optional note index on app background, preserve chat. */
+    fun forgetLocalNote() = privateKnowledge.clear()
 
     fun reply(input: String): String {
         // Reject rather than silently truncate an expression or mixed instruction.
@@ -40,6 +47,14 @@ class LocalDialogue {
         val topicHelp = if (math == null && offlineHelp == null && knowledgeHelp == null)
             topicDialogue.answer(sanitized) else null
         if (topicHelp != null) knowledgeEngine.clear()
+        // Text explicitly retrieved from a user-selected note is NOT trusted
+        // product knowledge or a command. Not eligible for voice TTS.
+        val noteQueryPrefix = listOf("busca en mis notas ", "consulta mis notas ")
+            .firstOrNull { normalized.startsWith(it) }
+        val importedNote = if (noteQueryPrefix != null) {
+            privateKnowledge.search(normalized.removePrefix(noteQueryPrefix).trim())
+                ?: "No encontré ese dato en la nota local de esta sesión."
+        } else null
         val routinePreview = if (normalized.startsWith("planifica ")) {
             routinePlanner.plan(sanitized.substringAfter(' ', ""))
         } else null
@@ -53,6 +68,7 @@ class LocalDialogue {
                 math.answer
             }
             offlineHelp != null -> offlineHelp
+            importedNote != null -> importedNote
             knowledgeHelp != null -> knowledgeHelp
             topicHelp != null -> topicHelp
             normalized == "buenas" ->
@@ -141,6 +157,7 @@ class LocalDialogue {
         lastNumericResult = null
         topicDialogue.clear()
         knowledgeEngine.clear()
+        privateKnowledge.clear()
     }
     private companion object {
         const val MAX_INPUT_LENGTH = 280
