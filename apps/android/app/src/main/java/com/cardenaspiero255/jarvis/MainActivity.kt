@@ -253,6 +253,30 @@ class MainActivity : Activity() {
                     }.show()
             }
         })
+        layout.addView(primaryButton("CONVERSACIÓN GGUF · INTERRUMPIBLE · 30 MIN") {
+            if (HandsFreePreviewService.isRunning) {
+                stopHandsFreePreview()
+            } else if (!localGgufStore.hasModel()) {
+                statusText.text = "Importa primero un GGUF privado verificado."
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Conversación interrumpible · prueba experimental")
+                    .setMessage("Solo tras pulsar INICIAR, JARVIS escuchará con Vosk " +
+                        "hasta 30 minutos y un máximo de seis preguntas. " +
+                        "Di «Jarvis, ¿qué es un satélite?» y, mientras responda, " +
+                        "puedes interrumpir con otra pregunta iniciada por «Jarvis». " +
+                        "Si Android no permite cancelación de eco (AEC), " +
+                        "no se habilitarán interrupciones automáticas durante la voz. " +
+                        "El micrófono y el modelo GGUF funcionan localmente; " +
+                        "ninguna pregunta ejecuta acciones en el teléfono. " +
+                        "Puedes detener toda la sesión desde la notificación. " +
+                        "No verifica tu identidad ni certifica resistencia a replay.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("INICIAR CONVERSACIÓN") { _, _ ->
+                        toggleHandsFreePreviewByTap(conversationExtended = true)
+                    }.show()
+            }
+        })
         layout.addView(primaryButton("ACTIVAR ESCUCHA LOCAL · 30 MIN") {
             if (HandsFreePreviewService.isRunning) {
                 stopHandsFreePreview()
@@ -920,7 +944,7 @@ class MainActivity : Activity() {
 
     private fun toggleHandsFreePreviewByTap(diagnostic: Boolean = false,
         systemMode: Boolean = false, extended: Boolean = false,
-        conversation: Boolean = false) {
+        conversation: Boolean = false, conversationExtended: Boolean = false) {
         if (HandsFreePreviewService.isRunning) {
             stopHandsFreePreview()
             statusText.text = "Prueba manos libres detenida. Micrófono liberado."
@@ -972,6 +996,8 @@ class MainActivity : Activity() {
                     action = when {
                         diagnostic -> HandsFreePreviewService.ACTION_DIAGNOSE
                         systemMode -> HandsFreePreviewService.ACTION_START_SYSTEM
+                        conversationExtended ->
+                            HandsFreePreviewService.ACTION_START_LONG_CONVERSATION
                         extended -> HandsFreePreviewService.ACTION_START_LONG_NATIVE
                         conversation -> HandsFreePreviewService.ACTION_START_CONVERSATION
                         else -> HandsFreePreviewService.ACTION_START_NATIVE
@@ -984,6 +1010,9 @@ class MainActivity : Activity() {
                     systemMode -> "Prueba del proveedor normal de Android solicitada. " +
                         "Puede usar Internet. Di «Jarvis, dime la hora»; " +
                         "después revisa el diagnóstico. No envía órdenes externas."
+                    conversationExtended -> "LOCAL_VOICE_MULTITURN_PREPARING: " +
+                        "GGUF local con un máximo de seis preguntas, control DETENER " +
+                        "y supresión de eco. Sin autorización biométrica."
                     conversation -> "LOCAL_VOICE_PREPARING: escucha Vosk local de una sola " +
                         "pregunta y GGUF privado. Modelo y voz sujetos a validación real."
                     extended -> "EXTENDED_LISTENING: 30 minutos de escucha local " +
