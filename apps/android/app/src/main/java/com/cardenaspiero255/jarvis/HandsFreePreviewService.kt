@@ -83,6 +83,8 @@ class HandsFreePreviewService : Service() {
     private var systemRecognizerRequested = false
     private var nativeModeRequested = false
     private var conversationMode = false
+    private var conversationTurns = 0
+    private var conversationGeneration = 0L
     private var localConversationInference: LocalGgufInference? = null
     private var conversationTimeout: Runnable? = null
     private var extendedListening = false
@@ -125,8 +127,10 @@ class HandsFreePreviewService : Service() {
         val systemRequested = intent?.action == ACTION_START_SYSTEM
         val extendedRequested = intent?.action == ACTION_START_LONG_NATIVE
         val conversationRequested = intent?.action == ACTION_START_CONVERSATION
+        val longConversationRequested =
+            intent?.action == ACTION_START_LONG_CONVERSATION
         val nativeRequested = intent?.action == ACTION_START_NATIVE || extendedRequested ||
-            conversationRequested
+            conversationRequested || longConversationRequested
         if ((intent?.action != ACTION_START && !diagnostic && !systemRequested &&
                 !nativeRequested) ||
             !intent.getBooleanExtra(EXTRA_TAPPED, false) || isRunning || closed) {
@@ -146,8 +150,15 @@ class HandsFreePreviewService : Service() {
         val systemAvailable = systemRequested && try {
             SpeechRecognizer.isRecognitionAvailable(this)
         } catch (_: RuntimeException) { false }
-        extendedListening = extendedRequested
-        conversationMode = conversationRequested
+        extendedListening = extendedRequested || longConversationRequested
+        conversationMode = conversationRequested || longConversationRequested
+        // Multi-turn local GGUF is a separate explicit UI action; no automatic
+        // upgrade of the previous one-shot voice request.
+        if (longConversationRequested &&
+            !LocalGgufModelStore(applicationContext).hasModel()) {
+            finish("LOCAL_VOICE_MODEL_MISSING: importa GGUF antes de conversación larga.")
+            return START_NOT_STICKY
+        }
         timeGate = PreviewTimeGate(if (extendedListening) 30 * 60_000L else 60_000L)
         val result = policy.canStart(
             explicitUserTap = true,
@@ -192,8 +203,11 @@ class HandsFreePreviewService : Service() {
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
         record(when {
-            conversationMode -> "LOCAL_VOICE_CONVERSATION: sesión explícita offline; " +
-                "una pregunta para un GGUF privado, sin autoridad Android."
+            conversationMode -> if (extendedListening)
+                "LOCAL_VOICE_MULTITURN: sesión local iniciada por pulsación, " +
+                    "máximo 6 preguntas en 30 minutos; STOP en aviso."
+                else "LOCAL_VOICE_CONVERSATION: sesión explícita offline; " +
+                    "una pregunta para un GGUF privado, sin autoridad Android."
             nativeModeRequested -> "ASR_NATIVE_PREPARING: preparando motor español " +
                 "Vosk incluido en la APK; no usa servicios de voz de Android."
             diagnostic -> "DIAGNOSTIC_START: micrófono y TTS sin usar reconocedor."
@@ -341,8 +355,12 @@ class HandsFreePreviewService : Service() {
                     val duration = if (extendedListening) 30 * 60_000L else 60_000L
                     main.postDelayed(timeout, duration)
                     showStatus(if (conversationMode)
-                        "LOCAL_VOICE_READY: di «Jarvis» y una pregunta en español. " +
-                            "Una respuesta por sesión; STOP disponible en aviso." else
+                        (if (extendedListening)
+                            "LOCAL_VOICE_MULTITURN_READY: pregunta con «Jarvis»; " +
+                                "interrumpe durante TTS con otra pregunta. " +
+                                "Hasta 6 turnos; DETENER en aviso."
+                         else "LOCAL_VOICE_READY: di «Jarvis» y una pregunta en español. " +
+                            "Una respuesta por sesión; STOP disponible en aviso.") else
                         if (extendedListening)
                         "EXTENDED_LISTENING: micrófono local activo hasta 30 min; " +
                             "aviso visible con DETENER. Di «Jarvis, dime la hora»." else
@@ -398,6 +416,24 @@ class HandsFreePreviewService : Service() {
             conversationMode = conversationMode,
             onQuestion = { question ->
                 main.post { processOfflineQuestion(question) }
+            },
+            onBargeInQuestion = { question ->
+                main.post {
+                    if (!conversationMode || !extendedListening ||
+                        !nativeModeRequested || !isRunning || closed || endedNormally ||
+                        !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    // A new question cannot inherit the prior TTS ticket or
+                    // GGUF callback. It may only become untrusted local text.
+                    ++ttsPlaybackTicket
+                    try { tts?.stop() } catch (_: RuntimeException) {}
+                    ttsWatchdog?.let { main.removeCallbacks(it) }
+                    ttsWatchdog = null
+                    pendingSpeech = null
+                    nativeRunner?.setResponsePlayback(true)
+                    showStatus("LOCAL_VOICE_BARGEIN_QUESTION: respuesta anterior " +
+                        "interrumpida; procesando una nueva pregunta local.")
+                    processOfflineQuestion(question)
+                }
             },
             onBargeInStop = {
                 // The native worker supplies NO transcript, only the strictly
@@ -698,6 +734,8 @@ class HandsFreePreviewService : Service() {
     private fun finish(reason: String) {
         if (endedNormally || closed) return
         endedNormally = true
+        ++conversationGeneration
+        ++ttsPlaybackTicket
         conversationTimeout?.let { main.removeCallbacks(it) }
         conversationTimeout = null
         localConversationInference?.cancelActive()
@@ -783,12 +821,25 @@ class HandsFreePreviewService : Service() {
      * No text leaves this process and model output never routes into tools.
      */
     private fun processOfflineQuestion(question: String) {
-        if (!conversationMode || closed || endedNormally || consumed || !isRunning ||
+        if (!conversationMode || closed || endedNormally ||
+            (!extendedListening && consumed) || !isRunning ||
             !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return
-        consumed = true
-        nativeRunner?.stop()
-        main.removeCallbacks(timeout)
-        timeGate.stop()
+        if (!extendedListening) {
+            // Preserve the original single-turn security contract:
+            // microphone released before native GGUF inference.
+            consumed = true
+            nativeRunner?.stop()
+            main.removeCallbacks(timeout)
+            timeGate.stop()
+        } else {
+            if (conversationTurns >= MAX_CONVERSATION_TURNS) {
+                finish("LOCAL_VOICE_TURN_LIMIT: máximo 6 preguntas por sesión.")
+                return
+            }
+            conversationTurns++
+            // Silence the normal ASR during inference, not just during TTS.
+            nativeRunner?.setResponsePlayback(true)
+        }
         if (!LocalGgufPolicy.validPrompt(question)) {
             finish("LOCAL_VOICE_QUERY_DENIED: transcripción no permitida.")
             return
@@ -798,12 +849,18 @@ class HandsFreePreviewService : Service() {
             finish("LOCAL_VOICE_MODEL_MISSING: importa primero un GGUF privado.")
             return
         }
+        localConversationInference?.close()
         val engine = LocalGgufInference(modelStore)
         localConversationInference = engine
-        showStatus("LOCAL_VOICE_LLM_THINKING: micrófono cerrado; " +
-            "respondiendo sin Internet. Puedes detener desde el aviso.")
+        val ticket = ++conversationGeneration
+        showStatus(if (extendedListening)
+            "LOCAL_VOICE_LLM_THINKING: micrófono activo pero aislado " +
+                "de órdenes mientras GGUF responde sin Internet."
+            else "LOCAL_VOICE_LLM_THINKING: micrófono cerrado; " +
+                "respondiendo sin Internet. Puedes detener desde el aviso.")
         val watchdog = Runnable {
-            if (isRunning && !closed && !endedNormally && conversationMode) {
+            if (isRunning && !closed && !endedNormally && conversationMode &&
+                conversationGeneration == ticket) {
                 engine.cancelActive()
                 finish("LOCAL_VOICE_LLM_TIMEOUT: generación cancelada sin respuesta.")
             }
@@ -812,6 +869,7 @@ class HandsFreePreviewService : Service() {
         main.postDelayed(watchdog, 90_000L)
         val accepted = engine.ask(question) { response ->
             if (!isRunning || closed || endedNormally || !conversationMode ||
+                conversationGeneration != ticket ||
                 conversationTimeout !== watchdog) return@ask
             main.removeCallbacks(watchdog)
             conversationTimeout = null
@@ -1035,6 +1093,9 @@ class HandsFreePreviewService : Service() {
         const val ACTION_START_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_VOSK_NATIVE"
         const val ACTION_START_CONVERSATION =
             "com.cardenaspiero255.jarvis.HANDSFREE_LOCAL_GGUF_CONVERSATION"
+        const val ACTION_START_LONG_CONVERSATION =
+            "com.cardenaspiero255.jarvis.HANDSFREE_LOCAL_GGUF_MULTITURN"
+        const val MAX_CONVERSATION_TURNS = 6
         const val ACTION_START_LONG_NATIVE = "com.cardenaspiero255.jarvis.HANDSFREE_LONG_NATIVE"
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
