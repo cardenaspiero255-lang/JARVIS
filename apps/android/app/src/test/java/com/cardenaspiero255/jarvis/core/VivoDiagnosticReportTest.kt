@@ -7,15 +7,23 @@ import org.junit.Test
 class VivoDiagnosticReportTest {
     private fun report(
         results: Map<VivoCheck, VivoReportedResult> = emptyMap(),
-        stopRun: String = "NO_PROBADO"
+        stopRun: String = "NO_PROBADO",
+        screenOffSamples: Long = 0L,
+        screenOffObserved: Boolean = false,
+        extended: Boolean = false,
+        timeCommands: Int = 0,
+        stopCommands: Int = 0,
+        questions: Int = 0
     ) =
         VivoDiagnosticReport(
             model = "V2158\nprivate:key", sdk = 34, batteryPercent = 55,
             thermalStatus = 0, availableRamMib = 1536L, pssKib = 94208,
             microphoneGranted = false, notificationsGranted = true, ggufImported = false,
-            screenOffSamples = 0L, screenOffObserved = false,
-            lockscreenLastExtended = false,
-            lockscreenTimeCommandCount = 0, lockscreenStopCommandCount = 0,
+            screenOffSamples = screenOffSamples, screenOffObserved = screenOffObserved,
+            lockscreenLastExtended = extended,
+            lockscreenTimeCommandCount = timeCommands,
+            lockscreenStopCommandCount = stopCommands,
+            lockscreenQuestionCount = questions,
             qwenRun = "NO_PROBADO",
             qwenLatencyMs = null, stopRun = stopRun, results = results
         ).toShareText()
@@ -54,6 +62,47 @@ class VivoDiagnosticReportTest {
         val out = report(mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA))
         assertTrue(out.contains("LOCKSCREEN_NO_CORROBORADO"))
         assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
+    @Test fun screenOffPcmWithoutRecognizedOrdersMustNotClaimSamplesAreMissing() {
+        val out = report(
+            results = mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA),
+            extended = true, screenOffSamples = 67_584L, screenOffObserved = true
+        )
+        assertTrue(out.contains("LOCKSCREEN_PCM_SIN_ORDEN"))
+        assertFalse(out.contains("sin muestras y orden"))
+        assertTrue(out.contains("Pantalla_apagada_respuesta_audible=SOLO_USER_REPORTED"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
+    @Test fun screenOffRecognitionAloneMustNotCertifyAnAudibleAnswer() {
+        val out = report(
+            results = mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA),
+            extended = true, screenOffSamples = 48_000L,
+            screenOffObserved = true, timeCommands = 1
+        )
+        assertTrue(out.contains("LOCKSCREEN_RECONOCIMIENTO_PARCIAL"))
+        assertTrue(out.contains("NO_VERIFICADO_ACUSTICAMENTE"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
+    @Test fun ggufQuestionsAreCountedSeparatelyFromTimeAndStop() {
+        val out = report(
+            results = mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA),
+            extended = true, screenOffSamples = 48_000L,
+            screenOffObserved = true, questions = 2
+        )
+        assertTrue(out.contains("Preguntas_GGUF_recibidas_pantalla_apagada=2"))
+        assertTrue(out.contains("Comandos_HORA_recibidos_pantalla_apagada=0"))
+        assertTrue(out.contains("LOCKSCREEN_RECONOCIMIENTO_PARCIAL"))
+    }
+
+    @Test fun staleOrAbsentEvidenceMustBeCalledOutSeparately() {
+        val reported = mapOf(VivoCheck.LOCKSCREEN to VivoReportedResult.FUNCIONA)
+        assertTrue(report(results = reported, extended = false, screenOffSamples = 67_584L,
+            screenOffObserved = true).contains("LOCKSCREEN_SESION_NO_ACREDITADA"))
+        assertTrue(report(results = reported, extended = true, timeCommands = 1,
+            screenOffObserved = false).contains("LOCKSCREEN_PCM_NO_CORROBORADO"))
     }
 
     @Test fun stopMarkedWorkingWhileNoSessionExistedIsExplicitlyInvalid() {

@@ -30,6 +30,20 @@ class VivoDiagnosticStopGateTest {
         assertTrue(gate.confirmStop(101L, 101L, false, false, true))
     }
 
+    @Test fun stopReceiptMustFailClosedAcrossRevocationAndRapidRetries() {
+        val oldReceipt = 201L
+        val nextReceipt = 202L
+        assertFalse(gate.confirmStop(nextReceipt, oldReceipt, false, false, true))
+        assertFalse(gate.confirmStop(nextReceipt, nextReceipt, true, false, true))
+        assertFalse(gate.confirmStop(nextReceipt, nextReceipt, false, true, true))
+        assertFalse(gate.confirmStop(nextReceipt, nextReceipt, false, false, false))
+        assertTrue(gate.confirmStop(nextReceipt, nextReceipt, false, false, true))
+        assertEquals("CANCELADO_POR_USUARIO",
+            gate.qwenStatusAfterStop(true, "EN_PROCESO"))
+        assertEquals("TEXTO_NO_VACIO_NO_CERTIFICADO",
+            gate.qwenStatusAfterStop(false, "TEXTO_NO_VACIO_NO_CERTIFICADO"))
+    }
+
     @Test fun stopWithoutAnActiveMicCannotBeCalledSuccessful() {
         // The old implementation started an ephemeral service just to STOP it.
         assertFalse(gate.confirmStop(101L, 101L, false, false, false))
