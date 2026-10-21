@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Bundle
@@ -152,6 +153,12 @@ class HandsFreePreviewService : Service() {
         } catch (_: RuntimeException) { false }
         extendedListening = extendedRequested || longConversationRequested
         conversationMode = conversationRequested || longConversationRequested
+        val debugBuild = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (longConversationRequested && !debugBuild) {
+            finish("LOCAL_VOICE_EXPERIMENT_DISABLED: requiere pruebas acústicas " +
+                "reales antes de habilitar interrupción conversacional.")
+            return START_NOT_STICKY
+        }
         // Multi-turn local GGUF is a separate explicit UI action; no automatic
         // upgrade of the previous one-shot voice request.
         if (longConversationRequested &&
