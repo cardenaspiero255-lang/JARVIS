@@ -20,6 +20,9 @@ class LocalDialogue {
     /** Explicit typed notes only; never synced or saved as a pack on disk. */
     fun importLocalNote(text: String): Int = privateKnowledge.importText(text)
 
+    /** Erase only the optional note index on app background, preserve chat. */
+    fun forgetLocalNote() = privateKnowledge.clear()
+
     fun reply(input: String): String {
         // Reject rather than silently truncate an expression or mixed instruction.
         // Rejected inputs are not persisted or eligible for voice readout.
