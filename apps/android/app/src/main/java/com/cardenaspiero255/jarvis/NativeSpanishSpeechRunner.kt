@@ -9,6 +9,10 @@ import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.BargeInStopDecision
 import com.cardenaspiero255.jarvis.core.BargeInStopPolicy
+import com.cardenaspiero255.jarvis.core.BargeInQuestionDecision
+import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
+import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -46,7 +50,8 @@ class NativeSpanishSpeechRunner(
     private val sessionDurationMillis: Long = 60_000L,
     private val conversationMode: Boolean = false,
     private val onQuestion: (String) -> Unit = {},
-    private val onBargeInStop: () -> Unit = {}
+    private val onBargeInStop: () -> Unit = {},
+    private val onBargeInQuestion: (String) -> Unit = {}
 ) {
     init { require(sessionDurationMillis in 60_000L..30 * 60_000L) }
     private val active = AtomicBoolean(false)
@@ -57,6 +62,7 @@ class NativeSpanishSpeechRunner(
     private val playbackVersion = AtomicLong()
     @Volatile private var playbackReference: String? = null
     private val bargeStopPolicy = BargeInStopPolicy()
+    private val bargeQuestionPolicy = BargeInQuestionPolicy()
 
     /** Public voice commands remain muted during TTS; only an AEC-gated,
      * exact and completed STOP may interrupt current output. */
@@ -171,35 +177,59 @@ class NativeSpanishSpeechRunner(
                 16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
             check(minimum > 0) { "Invalid PCM buffer size" }
-            // Share ONE foreground microphone with Vosk and barge-in. When
-            // there is no hardware AEC, stay with MIC and mute all TTS echo.
-            val possibleAec = continuous && !conversationMode &&
-                AcousticEchoCanceler.isAvailable()
-            microphone = AudioRecord(
-                if (possibleAec) MediaRecorder.AudioSource.VOICE_COMMUNICATION
-                else MediaRecorder.AudioSource.MIC, 16_000,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                maxOf(minimum * 2, 4096)
-            )
-            recorder = microphone
-            if (possibleAec) {
-                echoCanceller = try {
-                    AcousticEchoCanceler.create(microphone.audioSessionId)?.apply {
-                        enabled = true
+            // AEC availability does not guarantee that VOICE_COMMUNICATION
+            // can initialize or start capture on this particular device.
+            // Retry only that failed route with MIC; never retry a revoked
+            // permission, and never advertise barge-in without live AEC.
+            val possibleAec = continuous && AcousticEchoCanceler.isAvailable()
+            val capture = NativeAudioSourceFailoverPolicy.open(possibleAec) { source ->
+                var attempted: AudioRecord? = null
+                var effect: AcousticEchoCanceler? = null
+                var started = false
+                try {
+                    val input = AudioRecord(
+                        if (source == NativeAudioSourceChoice.VOICE_COMMUNICATION)
+                            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                        else MediaRecorder.AudioSource.MIC,
+                        16_000, AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum * 2, 4096)
+                    )
+                    attempted = input
+                    if (input.state != AudioRecord.STATE_INITIALIZED) null else {
+                        if (source == NativeAudioSourceChoice.VOICE_COMMUNICATION) {
+                            effect = try {
+                                AcousticEchoCanceler.create(input.audioSessionId)?.apply {
+                                    enabled = true
+                                }
+                            } catch (_: RuntimeException) { null }
+                        }
+                        input.startRecording()
+                        if (input.recordingState != AudioRecord.RECORDSTATE_RECORDING) null
+                        else {
+                            started = true
+                            input to effect
+                        }
                     }
-                } catch (_: RuntimeException) { null }
-                aecReady = try { echoCanceller?.enabled == true }
+                } finally {
+                    if (!started) {
+                        try { effect?.release() } catch (_: RuntimeException) {}
+                        try { attempted?.stop() } catch (_: RuntimeException) {}
+                        try { attempted?.release() } catch (_: RuntimeException) {}
+                    }
+                }
+            }
+            val opened = checkNotNull(capture) { "AudioRecord not capturing" }
+            microphone = opened.second.first
+            recorder = microphone
+            echoCanceller = opened.second.second
+            aecReady = try { echoCanceller?.enabled == true }
                 catch (_: RuntimeException) { false }
+            if (possibleAec && opened.first == NativeAudioSourceChoice.MICROPHONE) {
+                onStatus("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC: origen de voz " +
+                    "no disponible; Vosk continúa sin interrupción automática de TTS.")
             }
-            if (continuous && !conversationMode && !aecReady) {
+            if (continuous && !aecReady) {
                 onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
-            }
-            check(microphone.state == AudioRecord.STATE_INITIALIZED) {
-                "AudioRecord not initialized"
-            }
-            microphone.startRecording()
-            check(microphone.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                "AudioRecord not capturing"
             }
 
             onReady()
@@ -263,6 +293,24 @@ class NativeSpanishSpeechRunner(
                                             playbackVersion.get() == version) {
                                             bargeTriggered = true
                                             onBargeInStop()
+                                        } else if (conversationMode && continuous &&
+                                            active.get() && responsePlayback.get() &&
+                                            playbackVersion.get() == version) {
+                                            // Only the dedicated, opted-in local GGUF mode
+                                            // can turn a full wake-prefixed interruption
+                                            // into a new text question. Never tools/actions.
+                                            val followup = bargeQuestionPolicy.decide(
+                                                heard, spoken, playbackActive = true,
+                                                echoCancellationActive = aecReady,
+                                                finalUtterance = true
+                                            )
+                                            val next = followup.question
+                                            if (followup.decision == BargeInQuestionDecision.ASK &&
+                                                next != null) {
+                                                bargeTriggered = true
+                                                setResponsePlayback(true) // no TTS echo reference yet
+                                                onBargeInQuestion(next)
+                                            }
                                         }
                                     }
                                 } catch (_: Exception) {
@@ -326,7 +374,16 @@ class NativeSpanishSpeechRunner(
                                         }
                                         OfflineVoiceDecision.QUESTION -> {
                                             question = event.question
-                                            break
+                                            if (conversationMode && continuous) {
+                                                // Keep this *same microphone* alive during
+                                                // GGUF inference/TTS; mute every normal
+                                                // command until TTS finishes its echo guard.
+                                                responsePlayback.set(true)
+                                                if (question != null) onQuestion.invoke(question)
+                                                question = null
+                                            } else {
+                                                break
+                                            }
                                         }
                                         OfflineVoiceDecision.WAITING -> onStatus(
                                             "LOCAL_VOICE_WAKE_WAITING: pregunta en 8 segundos.")
