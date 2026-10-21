@@ -5,6 +5,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.os.PowerManager
+import com.cardenaspiero255.jarvis.core.LockScreenCaptureAccumulator
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.BargeInStopDecision
@@ -131,6 +133,8 @@ class NativeSpanishSpeechRunner(
         var failure: String? = null
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
+        val screenOffFrames = LockScreenCaptureAccumulator()
+        val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
         try {
@@ -250,9 +254,20 @@ class NativeSpanishSpeechRunner(
                         // AudioRecord bytes genuinely received, not a timer heartbeat.
                         // Emit only counts + elapsedRealtime; never PCM or transcripts.
                         audioSinceReport += received.toLong()
+                        // Sample display state at AudioRecord.read(), not in UI.
+                        if (continuous) {
+                            val interactiveAtCapture = try {
+                                power?.isInteractive ?: true
+                            } catch (_: RuntimeException) { true }
+                            screenOffFrames.observe(received, interactiveAtCapture)
+                        }
                         val progressNow = SystemClock.elapsedRealtime()
                         if (progressNow - lastAudioReport >= 2_500L) {
-                            onAudioProgress(audioSinceReport, progressNow)
+                            val capturedWhileScreenOff = screenOffFrames.drainScreenOff()
+                            if (continuous) {
+                                if (capturedWhileScreenOff > 0L)
+                                    onAudioProgress(capturedWhileScreenOff, progressNow)
+                            } else onAudioProgress(audioSinceReport, progressNow)
                             audioSinceReport = 0L
                             lastAudioReport = progressNow
                         }

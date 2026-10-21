@@ -153,6 +153,12 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(9, 11, 19))
         }
         layout.addView(OmegaUiKit.hero(this))
+        // Physical acoustic evaluation must not become a production control.
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            layout.addView(primaryButton("LABORATORIO VIVO V25 PRO · UNA APK") {
+                startActivity(Intent(this, VivoDiagnosticActivity::class.java))
+            })
+        }
         // Preview is an explicit user action. HOME selection remains controlled by Android.
         layout.addView(primaryButton("PROBAR JARVIS OS — SIN CAMBIAR FUNTOUCH") {
             startActivity(Intent(this, JarvisHomeActivity::class.java))

@@ -121,6 +121,11 @@ class HandsFreePreviewService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Request receipt alone is not proof that AudioRecord was released.
+            val receipt = intent.getLongExtra(EXTRA_STOP_DIAGNOSTIC_REQUEST_ID, -1L)
+            if (receipt > 0L && isRunning && !closed && !endedNormally) {
+                diagnostics.edit().putLong("stop_ack_id", receipt).commit()
+            }
             finish("Prueba detenida por el usuario. Micrófono liberado.")
             return START_NOT_STICKY
         }
@@ -203,9 +208,14 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
-        screenOffEvidence.reset()
-        diagnostics.edit().remove("lockscreen_off_samples")
-            .remove("lockscreen_off_reports").remove("lockscreen_result").apply()
+        // A short probe cannot erase the last explicit long session evidence.
+        if (extendedListening) {
+            screenOffEvidence.reset()
+            diagnostics.edit().remove("lockscreen_off_samples")
+                .remove("lockscreen_off_reports").remove("lockscreen_result")
+                .remove("lockscreen_time_commands").remove("lockscreen_stop_commands")
+                .putBoolean("lockscreen_last_extended", true).commit()
+        }
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
@@ -328,11 +338,9 @@ class HandsFreePreviewService : Service() {
             onAudioProgress = { sampleCount, elapsed ->
                 main.post {
                     if (!isRunning || closed || !extendedListening || endedNormally) return@post
-                    val awake = try {
-                        (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive ?: true
-                    } catch (_: RuntimeException) { true }
+                    // Only screen-off PCM from the capture worker reaches here.
                     val previousState = screenOffEvidence.snapshot().state
-                    screenOffEvidence.observe(elapsed, sampleCount, awake)
+                    screenOffEvidence.observe(elapsed, sampleCount, interactive = false)
                     val snapshot = screenOffEvidence.snapshot()
                     diagnostics.edit()
                         .putLong("lockscreen_off_samples", snapshot.screenOffSamples)
@@ -376,10 +384,25 @@ class HandsFreePreviewService : Service() {
                 }
             },
             onWake = { wake ->
+                // Captured at recognition, not after main-thread dispatch.
+                val screenOffAtRecognition = if (extendedListening) try {
+                    (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
+                } catch (_: RuntimeException) { false } else false
                 main.post {
                     if (!isRunning || closed || !nativeModeRequested ||
                         (!extendedListening && consumed) ||
                         !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    if (screenOffAtRecognition) {
+                        val key = when (wake) {
+                            PreviewWake.LOCAL_TIME -> "lockscreen_time_commands"
+                            PreviewWake.STOP -> "lockscreen_stop_commands"
+                            else -> null
+                        }
+                        if (key != null) {
+                            diagnostics.edit().putInt(key,
+                                (diagnostics.getInt(key, 0) + 1).coerceAtMost(999)).apply()
+                        }
+                    }
                     if (!extendedListening) {
                         consumed = true
                         nativeRunner?.stop()
@@ -1115,6 +1138,7 @@ class HandsFreePreviewService : Service() {
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
+        const val EXTRA_STOP_DIAGNOSTIC_REQUEST_ID = "jarvis.handsfree.stop_receipt_request_id"
         const val EXTRA_TAPPED = "jarvis.handsfree.explicit"
         private const val CHANNEL = "jarvis_handsfree_preview"
         private const val NOTIFICATION_ID = 4840
