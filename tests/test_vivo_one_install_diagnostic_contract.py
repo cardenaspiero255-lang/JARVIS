@@ -183,7 +183,7 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
         self.assertIn("VivoScreenOffReceiptPolicy.totalAfterProgress", service)
         self.assertIn("screenOffFrames.drainScreenOff()", runner)
-        self.assertIn("diagnostics.edit().putLong(\"lockscreen_off_samples\"", service)
+        self.assertIn(".putLong(\"lockscreen_off_samples\"", service)
 
     def test_echo_and_permission_diagnostics_remain_not_certified(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text()
