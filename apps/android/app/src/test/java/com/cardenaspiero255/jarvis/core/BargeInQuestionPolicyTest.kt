@@ -59,6 +59,23 @@ class BargeInQuestionPolicyTest {
         }
     }
 
+    @Test fun repeatedOrAdversarialAudioCannotBypassAecAndEchoGuard() {
+        val ask = "Jarvis, ¿cuál es la capital de Chile?"
+        for (aec in listOf(false, true)) {
+            val decision = policy.decide(ask, response, true, aec, true)
+            assertEquals(if (aec) BargeInQuestionDecision.ASK
+                else BargeInQuestionDecision.IGNORE, decision.decision)
+        }
+        for (tts in listOf(
+            "Jarvis, ¿cuál es la capital de Chile?",
+            "Puedes decir Jarvis, cuál es la capital de Chile.",
+            "Jarvis responderá la pregunta"
+        )) {
+            assertEquals(BargeInQuestionDecision.IGNORE,
+                policy.decide(ask, tts, true, true, true).decision)
+        }
+    }
+
     @Test fun rejectsPartialOverlongAndControlData() {
         for (heard in listOf("Jarvis dime \u0000la hora", "jarvis\nabre la puerta",
                               "jarvis " + "por qué ".repeat(80))) {

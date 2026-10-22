@@ -3,6 +3,9 @@ name: Android GGUF real generation E2E
 on:
   pull_request:
     paths:
+      - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/VivoDiagnosticActivity.kt"
+      - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/core/VivoGgufProbePolicy.kt"
+      - "apps/android/app/src/test/java/com/cardenaspiero255/jarvis/core/VivoGgufProbePolicyTest.kt"
       - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/LocalGguf*"
       - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/core/LocalGguf*"
       - "apps/android/app/src/main/cpp/**"

@@ -1,10 +1,14 @@
 package com.cardenaspiero255.jarvis
 
 import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.os.PowerManager
+import com.cardenaspiero255.jarvis.core.LockScreenCaptureAccumulator
 import android.os.SystemClock
 import com.cardenaspiero255.jarvis.core.AudioInputMeter
 import com.cardenaspiero255.jarvis.core.BargeInStopDecision
@@ -13,6 +17,8 @@ import com.cardenaspiero255.jarvis.core.BargeInQuestionDecision
 import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioReadFailurePolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioExitPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -129,8 +135,12 @@ class NativeSpanishSpeechRunner(
         var result: PreviewWake? = null
         var question: String? = null
         var failure: String? = null
+        // Separate fatal capture errors from ordinary no-wake/expiry fallback.
+        var readFailure: String? = null
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
+        val screenOffFrames = LockScreenCaptureAccumulator()
+        val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
         try {
@@ -228,6 +238,10 @@ class NativeSpanishSpeechRunner(
                 onStatus("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC: origen de voz " +
                     "no disponible; Vosk continúa sin interrupción automática de TTS.")
             }
+            if (continuous && aecReady) {
+                onStatus("ASR_NATIVE_AEC_CONFIGURED: AEC habilitado por Android; " +
+                    "eficacia acústica NO_CERTIFICADA.")
+            }
             if (continuous && !aecReady) {
                 onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
             }
@@ -250,9 +264,20 @@ class NativeSpanishSpeechRunner(
                         // AudioRecord bytes genuinely received, not a timer heartbeat.
                         // Emit only counts + elapsedRealtime; never PCM or transcripts.
                         audioSinceReport += received.toLong()
+                        // Sample display state at AudioRecord.read(), not in UI.
+                        if (continuous) {
+                            val interactiveAtCapture = try {
+                                power?.isInteractive ?: true
+                            } catch (_: RuntimeException) { true }
+                            screenOffFrames.observe(received, interactiveAtCapture)
+                        }
                         val progressNow = SystemClock.elapsedRealtime()
-                        if (progressNow - lastAudioReport >= 2_500L) {
-                            onAudioProgress(audioSinceReport, progressNow)
+                        if (progressNow - lastAudioReport >= 1_000L) {
+                            val capturedWhileScreenOff = screenOffFrames.drainScreenOff()
+                            if (continuous) {
+                                if (capturedWhileScreenOff > 0L)
+                                    onAudioProgress(capturedWhileScreenOff, progressNow)
+                            } else onAudioProgress(audioSinceReport, progressNow)
                             audioSinceReport = 0L
                             lastAudioReport = progressNow
                         }
@@ -444,8 +469,18 @@ class NativeSpanishSpeechRunner(
                             }
                         }
                     }
-                    received < 0 -> throw IllegalStateException(
-                        "AudioRecord returned code $received")
+                    received < 0 -> {
+                        // Negative reads can mean a revoked microphone grant
+                        // OR a device/driver failure. Distinguish them using
+                        // current permission state, never claim revocation
+                        // merely because AudioRecord returned an error.
+                        val granted = try {
+                            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                                PackageManager.PERMISSION_GRANTED
+                        } catch (_: RuntimeException) { true }
+                        readFailure = NativeAudioReadFailurePolicy.classify(received, granted)
+                        break
+                    }
                 }
                 val now = SystemClock.elapsedRealtime()
                 val wakeExpired = if (conversationMode) questionGate.expiredAt(now)
@@ -468,7 +503,8 @@ class NativeSpanishSpeechRunner(
                     lastStatus = now
                 }
             }
-            if (conversationMode && result == null && question == null && active.get()) {
+            if (NativeAudioExitPolicy.mayDeliverRecognizedSpeech(readFailure) &&
+                conversationMode && result == null && question == null && active.get()) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
                 if (finalText.isNotBlank()) {
                     val event = questionGate.observe(finalText,
@@ -480,7 +516,8 @@ class NativeSpanishSpeechRunner(
                     }
                 }
             }
-            if (!conversationMode && result == null && active.get() && !continuous) {
+            if (NativeAudioExitPolicy.mayDeliverRecognizedSpeech(readFailure) &&
+                !conversationMode && result == null && active.get() && !continuous) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
                 // Flush last segment without granting extra privileges.
                 // Pending standalone wake can still be acknowledged.
@@ -498,10 +535,12 @@ class NativeSpanishSpeechRunner(
                 else if (finalDecision == WakeTurnDecision.BLOCKED_IDENTITY)
                     failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
             }
-            if (result == null && active.get() && continuous) {
+            if (readFailure == null && failure == null &&
+                result == null && active.get() && continuous) {
                 failure = "ASR_NATIVE_SESSION_WINDOW_ENDED: fin de la sesión autorizada."
             }
-            if (result == null && question == null && active.get() && !continuous) {
+            if (readFailure == null && failure == null &&
+                result == null && question == null && active.get() && !continuous) {
                 val signal = levels.reading()
                 failure = if (signal.samples == 0L) {
                     "ASR_NATIVE_NO_MIC_SAMPLES: Android no entregó audio al motor Vosk."
@@ -525,6 +564,13 @@ class NativeSpanishSpeechRunner(
             if (active.get()) failure = "ASR_NATIVE_ABI_UNAVAILABLE: " +
                 "la biblioteca Vosk no funciona con el procesador de este dispositivo."
         } finally {
+            // Preserve the final real samples even if the STOP message is
+            // queued before a slower UI callback. Never report synthetic PCM.
+            if (continuous) {
+                val remainingOffSamples = screenOffFrames.drainScreenOff()
+                if (remainingOffSamples > 0L)
+                    onAudioProgress(remainingOffSamples, SystemClock.elapsedRealtime())
+            }
             val deliverQuestion = active.get() && !Thread.currentThread().isInterrupted
             active.set(false)
             recorder = null
@@ -536,11 +582,12 @@ class NativeSpanishSpeechRunner(
             try { wakeBridge?.close() } catch (_: Exception) {}
             try { model?.close() } catch (_: RuntimeException) {}
             worker = null
-            // Only an expressly authorized one-turn conversation may receive
-            // a transient question; microphone and decoder are already closed.
-            if (deliverQuestion && question != null) onQuestion(question)
+            // Fatal AudioRecord errors dominate ANY late decoder result or
+            // ordinary timeout. The worker has already released its mic.
+            val finalFailure = NativeAudioExitPolicy.resolveFailure(readFailure, failure)
+            if (finalFailure != null) onFailure(finalFailure)
+            else if (deliverQuestion && question != null) onQuestion(question)
             else if (result != null) onWake(result)
-            else if (failure != null) onFailure(failure)
         }
     }
 }

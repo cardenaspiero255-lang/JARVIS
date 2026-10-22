@@ -51,6 +51,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- Explicit debug-only lab, not exported or started automatically. -->
+        <activity
+            android:name=".VivoDiagnosticActivity"
+            android:exported="false" />
         <activity
             android:name=".OwnerVoiceEnrollmentActivity"
             android:exported="false" />

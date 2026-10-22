@@ -44,8 +44,12 @@ import com.cardenaspiero255.jarvis.core.PreviewTimeGate
 import com.cardenaspiero255.jarvis.core.PreviewWake
 import com.cardenaspiero255.jarvis.core.LockScreenAudioEvidence
 import com.cardenaspiero255.jarvis.core.LockScreenAudioState
+import com.cardenaspiero255.jarvis.core.NativeWakeDeliveryGate
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
+import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
+import com.cardenaspiero255.jarvis.core.VivoGgufSessionReceiptPolicy
+import com.cardenaspiero255.jarvis.core.VivoScreenOffReceiptPolicy
 import com.cardenaspiero255.jarvis.core.OfflineVoiceAnswerPolicy
 import java.time.LocalTime
 
@@ -93,7 +97,7 @@ class HandsFreePreviewService : Service() {
     private val screenOffEvidence = LockScreenAudioEvidence()
     private val wakeLockRefresh = object : Runnable {
         override fun run() {
-            if (isRunning && !closed && extendedListening) acquireShortWakeLock()
+            if (isRunning && !closed && !endedNormally && extendedListening) acquireShortWakeLock()
         }
     }
     private var nativeRunner: NativeSpanishSpeechRunner? = null
@@ -121,6 +125,11 @@ class HandsFreePreviewService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Request receipt alone is not proof that AudioRecord was released.
+            val receipt = intent.getLongExtra(EXTRA_STOP_DIAGNOSTIC_REQUEST_ID, -1L)
+            if (receipt > 0L && isRunning && !closed && !endedNormally) {
+                diagnostics.edit().putLong("stop_ack_id", receipt).commit()
+            }
             finish("Prueba detenida por el usuario. Micrófono liberado.")
             return START_NOT_STICKY
         }
@@ -203,9 +212,26 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
-        screenOffEvidence.reset()
-        diagnostics.edit().remove("lockscreen_off_samples")
-            .remove("lockscreen_off_reports").remove("lockscreen_result").apply()
+        // A later denial may be observed after Funtouch terminates the app,
+        // but it does not establish the precise revocation timing.
+        diagnostics.edit().putBoolean("mic_granted_at_start", mic).commit()
+        // A short probe cannot erase the last explicit long session evidence.
+        if (conversationMode) {
+            val sessionEditor = diagnostics.edit()
+            for (key in VivoGgufSessionReceiptPolicy.resetKeys()) sessionEditor.remove(key)
+            // Commit before worker start: prior-session success must never be
+            // mistaken for a completed response in this new session.
+            sessionEditor.commit()
+        }
+        if (extendedListening) {
+            screenOffEvidence.reset()
+            diagnostics.edit().remove("lockscreen_off_samples")
+                .remove("lockscreen_off_reports").remove("lockscreen_result")
+                .remove("lockscreen_time_commands").remove("lockscreen_stop_commands")
+                .remove("lockscreen_question_commands")
+                .remove("aec_runtime_status").remove("mic_revocation_status")
+                .putBoolean("lockscreen_last_extended", true).commit()
+        }
         diagnosticMode = diagnostic
         systemRecognizerRequested = systemRequested
         nativeModeRequested = nativeRequested
@@ -322,26 +348,46 @@ class HandsFreePreviewService : Service() {
             applicationContext,
             onStatus = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested) showStatus(message)
+                    if (isRunning && !closed && !endedNormally && nativeModeRequested) {
+                        if (extendedListening) {
+                            val aec = when {
+                                message.startsWith("ASR_NATIVE_AEC_CONFIGURED") ->
+                                    "AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA"
+                                message.startsWith("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE") ||
+                                    message.startsWith("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC") ->
+                                    "AEC_NO_DISPONIBLE"
+                                else -> null
+                            }
+                            if (aec != null)
+                                diagnostics.edit().putString("aec_runtime_status", aec).apply()
+                        }
+                        showStatus(message)
+                    }
                 }
             },
             onAudioProgress = { sampleCount, elapsed ->
-                main.post {
-                    if (!isRunning || closed || !extendedListening || endedNormally) return@post
-                    val awake = try {
-                        (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive ?: true
-                    } catch (_: RuntimeException) { true }
+                // Persist actual worker samples BEFORE delayed UI messages/STOP.
+                // Do not store PCM, audio or transcripts, only bounded counters.
+                if (extendedListening && sampleCount > 0L) {
                     val previousState = screenOffEvidence.snapshot().state
-                    screenOffEvidence.observe(elapsed, sampleCount, awake)
+                    val oldSamples = screenOffEvidence.snapshot().screenOffSamples
+                    screenOffEvidence.observe(elapsed, sampleCount, interactive = false)
                     val snapshot = screenOffEvidence.snapshot()
-                    diagnostics.edit()
-                        .putLong("lockscreen_off_samples", snapshot.screenOffSamples)
-                        .putInt("lockscreen_off_reports", snapshot.screenOffObservations)
-                        .putString("lockscreen_result", snapshot.state.name).apply()
+                    if (snapshot.screenOffSamples > oldSamples) {
+                        val count = VivoScreenOffReceiptPolicy.totalAfterProgress(
+                            oldSamples, snapshot.screenOffSamples - oldSamples)
+                        diagnostics.edit()
+                            .putLong("lockscreen_off_samples", count)
+                            .putInt("lockscreen_off_reports", snapshot.screenOffObservations)
+                            .putString("lockscreen_result", snapshot.state.name).commit()
+                    }
                     if (previousState != LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED &&
                         snapshot.state == LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED) {
-                        showStatus("LOCKSCREEN_PCM_OBSERVED: micrófono entregó muestras " +
-                            "durante pantalla apagada; solo mide continuidad, no identidad.")
+                        main.post {
+                            if (isRunning && !closed && !endedNormally)
+                                showStatus("LOCKSCREEN_PCM_OBSERVED: muestras reales " +
+                                    "mientras la pantalla estaba apagada; no acredita identidad.")
+                        }
                     }
                 }
             },
@@ -376,10 +422,27 @@ class HandsFreePreviewService : Service() {
                 }
             },
             onWake = { wake ->
+                // Captured at recognition, not after main-thread dispatch.
+                val screenOffAtRecognition = if (extendedListening) try {
+                    (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
+                } catch (_: RuntimeException) { false } else false
                 main.post {
-                    if (!isRunning || closed || !nativeModeRequested ||
-                        (!extendedListening && consumed) ||
-                        !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    if (!NativeWakeDeliveryGate.allow(
+                            isRunning, closed, endedNormally, nativeModeRequested,
+                            timeGate.isActiveAt(SystemClock.elapsedRealtime()),
+                            consumed, extendedListening
+                        )) return@post
+                    if (screenOffAtRecognition) {
+                        val key = when (wake) {
+                            PreviewWake.LOCAL_TIME -> "lockscreen_time_commands"
+                            PreviewWake.STOP -> "lockscreen_stop_commands"
+                            else -> null
+                        }
+                        if (key != null) {
+                            diagnostics.edit().putInt(key,
+                                (diagnostics.getInt(key, 0) + 1).coerceAtMost(999)).apply()
+                        }
+                    }
                     if (!extendedListening) {
                         consumed = true
                         nativeRunner?.stop()
@@ -416,13 +479,40 @@ class HandsFreePreviewService : Service() {
             },
             onFailure = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested && !consumed)
+                    if (isRunning && !closed && !endedNormally &&
+                        nativeModeRequested && !consumed) {
+                        if (extendedListening) {
+                            val code = when {
+                                message.startsWith("ASR_NATIVE_MIC_PERMISSION_DENIED_AT_READ") ->
+                                    "PERMISO_DENEGADO_EN_LECTURA"
+                                message.startsWith("ASR_NATIVE_MIC_PERMISSION") ->
+                                    "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION"
+                                else -> null
+                            }
+                            if (code != null)
+                                diagnostics.edit().putString("mic_revocation_status", code).commit()
+                        }
                         finish(message)
+                    }
                 }
             },
             conversationMode = conversationMode,
             onQuestion = { question ->
-                main.post { processOfflineQuestion(question) }
+                // This callback arrives from the Vosk worker; sample the
+                // display before dispatch, never from a delayed UI callback.
+                val screenOffAtRecognition = if (extendedListening) try {
+                    (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
+                } catch (_: RuntimeException) { false } else false
+                main.post {
+                    if (screenOffAtRecognition && isRunning && !closed &&
+                        extendedListening && !endedNormally &&
+                        timeGate.isActiveAt(SystemClock.elapsedRealtime())) {
+                        val previous = diagnostics.getInt("lockscreen_question_commands", 0)
+                        diagnostics.edit().putInt("lockscreen_question_commands",
+                            (previous + 1).coerceAtMost(999)).apply()
+                    }
+                    processOfflineQuestion(question)
+                }
             },
             onBargeInQuestion = { question ->
                 main.post {
@@ -437,6 +527,9 @@ class HandsFreePreviewService : Service() {
                     ttsWatchdog = null
                     pendingSpeech = null
                     nativeRunner?.setResponsePlayback(true)
+                    val total = diagnostics.getInt("barge_in_question_count", 0)
+                    diagnostics.edit().putInt("barge_in_question_count",
+                        (total + 1).coerceAtMost(999)).apply()
                     showStatus("LOCAL_VOICE_BARGEIN_QUESTION: respuesta anterior " +
                         "interrumpida; procesando una nueva pregunta local.")
                     processOfflineQuestion(question)
@@ -741,6 +834,15 @@ class HandsFreePreviewService : Service() {
     private fun finish(reason: String) {
         if (endedNormally || closed) return
         endedNormally = true
+        // Invalidate queued voice events and stop native capture immediately;
+        // stopSelf()/onDestroy() is not synchronous on Android.
+        timeGate.stop()
+        nativeRunner?.stop()
+        try { tts?.stop() } catch (_: RuntimeException) {}
+        // Disarm queued expirations before stopSelf() schedules destruction.
+        main.removeCallbacks(timeout)
+        main.removeCallbacks(nativeStartupTimeout)
+        main.removeCallbacks(wakeLockRefresh)
         ++conversationGeneration
         ++ttsPlaybackTicket
         conversationTimeout?.let { main.removeCallbacks(it) }
@@ -868,6 +970,7 @@ class HandsFreePreviewService : Service() {
             LocalGgufInference(modelStore).also { localConversationInference = it }
         }
         val ticket = ++conversationGeneration
+        val voiceStartedAt = SystemClock.elapsedRealtime()
         showStatus(if (extendedListening)
             "LOCAL_VOICE_LLM_THINKING: micrófono activo pero aislado " +
                 "de órdenes mientras GGUF responde sin Internet."
@@ -882,7 +985,9 @@ class HandsFreePreviewService : Service() {
         }
         conversationTimeout = watchdog
         main.postDelayed(watchdog, 90_000L)
-        val accepted = engine.ask(question) { response ->
+        val accepted = engine.ask(
+            question, maxNewTokens = FastVoiceGgufPolicy.VOICE_MAX_TOKENS
+        ) { response ->
             if (!isRunning || closed || endedNormally || !conversationMode ||
                 conversationGeneration != ticket ||
                 conversationTimeout !== watchdog) return@ask
@@ -892,6 +997,24 @@ class HandsFreePreviewService : Service() {
             if (safeReply == null) {
                 finish("LOCAL_VOICE_LLM_UNAVAILABLE: modelo no preparado o respuesta inválida.")
             } else {
+                val latency = SystemClock.elapsedRealtime() - voiceStartedAt
+                if (latency > 0L) {
+                    val prior = diagnostics.getInt("voice_gguf_success_count", 0)
+                    diagnostics.edit()
+                        .putInt("voice_gguf_success_count", (prior + 1).coerceAtMost(999))
+                        .putLong("voice_gguf_last_latency_ms", latency).commit()
+                    val performance = engine.latestPerformance()
+                    if (performance != null) {
+                        diagnostics.edit()
+                            .putLong("voice_gguf_load_ms", performance.loadMs)
+                            .putLong("voice_gguf_prefill_ms", performance.prefillMs)
+                            .putLong("voice_gguf_decode_ms", performance.decodeMs)
+                            .putLong("voice_gguf_decoded_tokens", performance.decodedTokens)
+                            .putLong("voice_gguf_cpu_threads", performance.cpuThreads)
+                            .putBoolean("voice_gguf_cache_hit", performance.warmCacheHit)
+                            .commit()
+                    }
+                }
                 showStatus("LOCAL_VOICE_TTS_READY: respuesta generada en el teléfono; " +
                     "no constituye una acción ejecutada.")
                 speakThenStop(safeReply)
@@ -963,9 +1086,13 @@ class HandsFreePreviewService : Service() {
                 main.post {
                     if (utteranceId != "jarvis-preview-$ticket" ||
                         ttsPlaybackTicket != ticket || endedNormally) return@post
-                    if (isRunning && !closed) showStatus(
-                        "TTS_STARTED: Android inició la síntesis; " +
+                    if (isRunning && !closed) {
+                        val prior = diagnostics.getInt("tts_started_count", 0)
+                        diagnostics.edit().putInt("tts_started_count",
+                            (prior + 1).coerceAtMost(999)).apply()
+                        showStatus("TTS_STARTED: Android inició la síntesis; " +
                             "comprobar si el altavoz realmente se escucha.")
+                    }
                 }
             }
             override fun onDone(utteranceId: String?) {
@@ -1115,6 +1242,7 @@ class HandsFreePreviewService : Service() {
         const val ACTION_DIAGNOSE = "com.cardenaspiero255.jarvis.HANDSFREE_AUDIO_DIAGNOSTIC"
         const val ACTION_START_SYSTEM = "com.cardenaspiero255.jarvis.HANDSFREE_SYSTEM_SPEECH"
         const val ACTION_STOP = "com.cardenaspiero255.jarvis.HANDSFREE_STOP"
+        const val EXTRA_STOP_DIAGNOSTIC_REQUEST_ID = "jarvis.handsfree.stop_receipt_request_id"
         const val EXTRA_TAPPED = "jarvis.handsfree.explicit"
         private const val CHANNEL = "jarvis_handsfree_preview"
         private const val NOTIFICATION_ID = 4840

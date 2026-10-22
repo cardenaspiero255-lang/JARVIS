@@ -35,6 +35,19 @@ class LocalGgufNativeInstrumentedTest {
         }
     }
 
+    @Test fun nativePerformanceCountersDoNotReportFabricatedSuccessfulDecode() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val runtime = LocalGgufInference(LocalGgufModelStore(context))
+        try {
+            System.loadLibrary("jarvis_llm")
+            val values = runtime.nativeLastPerformance()
+            assertEquals("Timing receipt schema", 8, values.size)
+            assertTrue("Only nonnegative native counters", values.all { it >= 0L })
+        } finally {
+            runtime.close()
+        }
+    }
+
     @Test fun nativeLlamaCancellationBeforeModelLoadAvoidsExecution() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val runtime = LocalGgufInference(LocalGgufModelStore(context))

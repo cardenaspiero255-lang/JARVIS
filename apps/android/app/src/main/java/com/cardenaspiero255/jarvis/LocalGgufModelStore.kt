@@ -1,8 +1,11 @@
 package com.cardenaspiero255.jarvis
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
+import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
+import com.cardenaspiero255.jarvis.core.VivoGgufEvidenceResetPlan
 import java.io.File
 import java.security.MessageDigest
 
@@ -27,6 +30,19 @@ class LocalGgufModelStore(private val context: Context) {
     // waiting for withVerifiedModel's potentially minute-long native lease.
     // Actual use is always independently SHA-verified under the store monitor.
     fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
+
+    /** Call on inference worker: memory pressure decides whether 491 MB may stay hot. */
+    fun warmCacheBudget(): Long {
+        val info = ActivityManager.MemoryInfo()
+        return try {
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                ?: return FastVoiceGgufPolicy.warmCacheMaxBytes(0L, true)
+            manager.getMemoryInfo(info)
+            FastVoiceGgufPolicy.warmCacheMaxBytes(info.availMem, info.lowMemory)
+        } catch (_: RuntimeException) {
+            FastVoiceGgufPolicy.warmCacheMaxBytes(0L, true)
+        }
+    }
 
     /** Caller must run on a worker, never the UI thread. Returns a private SHA. */
     @Synchronized fun import(uri: Uri): String = synchronized(processModelLock) {
@@ -61,6 +77,12 @@ class LocalGgufModelStore(private val context: Context) {
             require(LocalGgufPolicy.validLength(total) &&
                 LocalGgufPolicy.validHeader(header)) { "No es un GGUF compatible." }
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            // Commit independent QA invalidation BEFORE replacing the model.
+            // Closing the Activity only suppresses its UI callback, not this
+            // state update. It also applies when imported from MainActivity.
+            check(VivoGgufEvidenceResetPlan.invalidate(context)) {
+                "No se pudieron invalidar resultados GGUF anteriores."
+            }
             check(tmp.renameTo(file)) { "No se pudo reemplazar el modelo." }
             check(prefs.edit().putString("sha256", sha).putLong("bytes", total).commit()) {
                 deleteModel()
@@ -114,6 +136,7 @@ class LocalGgufModelStore(private val context: Context) {
     }
 
     @Synchronized fun deleteModel(): Boolean = synchronized(processModelLock) {
+        if (!VivoGgufEvidenceResetPlan.invalidate(context)) return@synchronized false
         val removed = !file.exists() || file.delete()
         prefs.edit().clear().commit()
         removed
