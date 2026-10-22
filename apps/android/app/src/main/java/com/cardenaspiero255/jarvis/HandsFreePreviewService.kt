@@ -48,6 +48,7 @@ import com.cardenaspiero255.jarvis.core.NativeWakeDeliveryGate
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
+import com.cardenaspiero255.jarvis.core.VivoGgufSessionReceiptPolicy
 import com.cardenaspiero255.jarvis.core.VivoScreenOffReceiptPolicy
 import com.cardenaspiero255.jarvis.core.OfflineVoiceAnswerPolicy
 import java.time.LocalTime
@@ -216,9 +217,11 @@ class HandsFreePreviewService : Service() {
         diagnostics.edit().putBoolean("mic_granted_at_start", mic).commit()
         // A short probe cannot erase the last explicit long session evidence.
         if (conversationMode) {
-            diagnostics.edit()
-                .remove("barge_in_question_count")
-                .remove("tts_started_count").commit()
+            val sessionEditor = diagnostics.edit()
+            for (key in VivoGgufSessionReceiptPolicy.resetKeys()) sessionEditor.remove(key)
+            // Commit before worker start: prior-session success must never be
+            // mistaken for a completed response in this new session.
+            sessionEditor.commit()
         }
         if (extendedListening) {
             screenOffEvidence.reset()
@@ -1000,6 +1003,17 @@ class HandsFreePreviewService : Service() {
                     diagnostics.edit()
                         .putInt("voice_gguf_success_count", (prior + 1).coerceAtMost(999))
                         .putLong("voice_gguf_last_latency_ms", latency).commit()
+                    val performance = engine.latestPerformance()
+                    if (performance != null) {
+                        diagnostics.edit()
+                            .putLong("voice_gguf_load_ms", performance.loadMs)
+                            .putLong("voice_gguf_prefill_ms", performance.prefillMs)
+                            .putLong("voice_gguf_decode_ms", performance.decodeMs)
+                            .putLong("voice_gguf_decoded_tokens", performance.decodedTokens)
+                            .putLong("voice_gguf_cpu_threads", performance.cpuThreads)
+                            .putBoolean("voice_gguf_cache_hit", performance.warmCacheHit)
+                            .commit()
+                    }
                 }
                 showStatus("LOCAL_VOICE_TTS_READY: respuesta generada en el teléfono; " +
                     "no constituye una acción ejecutada.")

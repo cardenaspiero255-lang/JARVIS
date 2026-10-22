@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <llama.h>
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -22,6 +24,14 @@ std::string cached_revision;
 uint64_t native_model_loads = 0;
 uint64_t native_cache_hits = 0;
 uint64_t native_cache_evictions = 0;
+// [total, model_load, tokenize, prefill, decode] ms, tokens, CPU threads, hit.
+// Refreshed on each native request under inference_mutex; no text/filenames.
+std::array<jlong, 8> last_performance = {};
+using PerfClock = std::chrono::steady_clock;
+jlong perf_millis(PerfClock::time_point from, PerfClock::time_point to) {
+    return static_cast<jlong>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(to-from).count());
+}
 
 void release_cached_locked() {
     if (cached_model) {
@@ -77,16 +87,21 @@ std::string run_inference(JNIEnv * env, const std::string & path,
     if (!getMethod) { env->DeleteLocalRef(atomicClass); return "Cancelación no disponible."; }
 
     std::lock_guard<std::mutex> lock(inference_mutex);
+    const auto requestStart = PerfClock::now();
+    last_performance = {};
     std::call_once(backend_once, [] { llama_backend_init(); });
     if (was_cancelled(env, signal, getMethod)) {
         env->DeleteLocalRef(atomicClass);
         return "";
     }
 
+    const auto modelLoadStart = PerfClock::now();
+    bool cacheHit = false;
     llama_model * model = nullptr;
     if (keep_loaded && cached_model && cached_path == path &&
         cached_revision == revision) {
         model = cached_model;
+        cacheHit = true;
         native_cache_hits++;
     } else {
         if (keep_loaded) release_cached_locked();
@@ -105,12 +120,19 @@ std::string run_inference(JNIEnv * env, const std::string & path,
         return "No se pudo cargar el modelo GGUF.";
     }
 
+    const jlong loadMs = perf_millis(modelLoadStart, PerfClock::now());
+    jlong tokenizeMs = 0;
+    jlong prefillMs = 0;
+    jlong decodeMs = 0;
+    jlong decodedTokens = 0;
+    int threadsUsed = 0;
     llama_context * context = nullptr;
     llama_sampler * sampler = nullptr;
     std::string output;
     do {
         const llama_vocab * vocab = llama_model_get_vocab(model);
         if (!vocab) { output = "Vocabulario GGUF no disponible."; break; }
+        const auto tokenizerStart = PerfClock::now();
         const int count = -llama_tokenize(vocab,
             prompt.c_str(), static_cast<int>(prompt.size()),
             nullptr, 0, true, true);
@@ -122,6 +144,7 @@ std::string run_inference(JNIEnv * env, const std::string & path,
                 promptTokens.data(), count, true, true) != count) {
             output = "Error de tokenización del modelo."; break;
         }
+        tokenizeMs = perf_millis(tokenizerStart, PerfClock::now());
         llama_context_params ctxOpts = llama_context_default_params();
         ctxOpts.n_ctx = 1024;
         ctxOpts.n_batch = 256;
@@ -133,19 +156,23 @@ std::string run_inference(JNIEnv * env, const std::string & path,
         const int threads = std::clamp(static_cast<int>(hardware / 2), 2, 4);
         ctxOpts.n_threads = threads;
         ctxOpts.n_threads_batch = threads;
+        threadsUsed = threads;
         context = llama_init_from_model(model, ctxOpts);
         if (!context) { output = "Memoria insuficiente para el contexto GGUF."; break; }
         sampler = llama_sampler_init_greedy();
         if (!sampler) { output = "No se pudo iniciar el generador local."; break; }
         bool bad = false;
+        const auto prefillStart = PerfClock::now();
         for (int start = 0; start < count; start += 256) {
             if (was_cancelled(env, signal, getMethod)) { bad = true; break; }
             const int n = std::min(256, count - start);
             llama_batch batch = llama_batch_get_one(promptTokens.data() + start, n);
             if (llama_decode(context, batch) != 0) { bad = true; break; }
         }
+        prefillMs = perf_millis(prefillStart, PerfClock::now());
         if (bad) { output = "Inferencia local cancelada o fallida."; break; }
 
+        const auto decodeStart = PerfClock::now();
         for (int i = 0; i < requested; i++) {
             if (was_cancelled(env, signal, getMethod)) { output.clear(); break; }
             const llama_token next = llama_sampler_sample(sampler, context, -1);
@@ -161,17 +188,24 @@ std::string run_inference(JNIEnv * env, const std::string & path,
             if (n < 0) { output = "Fallo al decodificar una palabra."; break; }
             if (output.size() + static_cast<size_t>(n) > 4096) break;
             output.append(piece.data(), static_cast<size_t>(n));
+            ++decodedTokens;
             llama_token current = next;
             const llama_batch batch = llama_batch_get_one(&current, 1);
             if (llama_decode(context, batch) != 0) {
                 output = "La generación local se interrumpió."; break;
             }
         }
+        decodeMs = perf_millis(decodeStart, PerfClock::now());
     } while (false);
 
     if (sampler) llama_sampler_free(sampler);
     if (context) llama_free(context);
     if (!keep_loaded) llama_model_free(model);
+    last_performance = {
+        std::max<jlong>(1, perf_millis(requestStart, PerfClock::now())),
+        loadMs, tokenizeMs, prefillMs, decodeMs, decodedTokens,
+        static_cast<jlong>(threadsUsed), static_cast<jlong>(cacheHit ? 1 : 0)
+    };
     env->DeleteLocalRef(atomicClass);
     return output;
 }
@@ -243,4 +277,13 @@ Java_com_cardenaspiero255_jarvis_LocalGgufInference_nativeCacheCounters(
     jlongArray result = env->NewLongArray(3);
     if (result) env->SetLongArrayRegion(result, 0, 3, counters);
     return result;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_cardenaspiero255_jarvis_LocalGgufInference_nativeLastPerformance(
+    JNIEnv * env, jobject /*self*/) {
+    std::lock_guard<std::mutex> lock(inference_mutex);
+    jlongArray output = env->NewLongArray(8);
+    if (output) env->SetLongArrayRegion(output, 0, 8, last_performance.data());
+    return output;
 }

@@ -38,6 +38,12 @@ data class VivoDiagnosticReport(
     val micRevocationRuntime: String = "NO_OBSERVADO",
     val voiceGgufAnswers: Int = 0,
     val voiceGgufLatencyMs: Long? = null,
+    val voiceGgufLoadMs: Long? = null,
+    val voiceGgufPrefillMs: Long? = null,
+    val voiceGgufDecodeMs: Long? = null,
+    val voiceGgufDecodedTokens: Long? = null,
+    val voiceGgufCpuThreads: Long? = null,
+    val voiceGgufCacheHit: Boolean? = null,
     val bargeInQuestions: Int = 0,
     val ttsStartedCount: Int = 0
 ) {
@@ -84,6 +90,18 @@ data class VivoDiagnosticReport(
             appendLine("Voice_GGUF_respuestas_medido=" + voiceGgufAnswers.coerceAtLeast(0))
             appendLine("Voice_GGUF_ultima_latencia_ms=" +
                 (voiceGgufLatencyMs?.takeIf { it > 0L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_carga_ms=" +
+                (voiceGgufLoadMs?.takeIf { it >= 0L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_prefill_ms=" +
+                (voiceGgufPrefillMs?.takeIf { it >= 0L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_decode_ms=" +
+                (voiceGgufDecodeMs?.takeIf { it >= 0L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_tokens=" +
+                (voiceGgufDecodedTokens?.takeIf { it in 0L..96L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_CPU_hilos=" +
+                (voiceGgufCpuThreads?.takeIf { it in 1L..8L } ?: "NO_MEDIDA"))
+            appendLine("Voice_GGUF_cache_hit=" +
+                (voiceGgufCacheHit?.toString() ?: "NO_MEDIDO"))
             appendLine("BargeIn_preguntas_interrumpidas=" + bargeInQuestions.coerceAtLeast(0))
             appendLine("TTS_inicios_reportados_por_Android=" + ttsStartedCount.coerceAtLeast(0))
             appendLine("Los eventos de TTS/interrupción no prueban audio audible ni rechazo acústico de eco.")

@@ -502,6 +502,18 @@ class VivoDiagnosticActivity : Activity() {
             voiceGgufAnswers = audio.getInt("voice_gguf_success_count", 0),
             voiceGgufLatencyMs = if (audio.contains("voice_gguf_last_latency_ms"))
                 audio.getLong("voice_gguf_last_latency_ms", 0L) else null,
+            voiceGgufLoadMs = if (audio.contains("voice_gguf_load_ms"))
+                audio.getLong("voice_gguf_load_ms", 0L) else null,
+            voiceGgufPrefillMs = if (audio.contains("voice_gguf_prefill_ms"))
+                audio.getLong("voice_gguf_prefill_ms", 0L) else null,
+            voiceGgufDecodeMs = if (audio.contains("voice_gguf_decode_ms"))
+                audio.getLong("voice_gguf_decode_ms", 0L) else null,
+            voiceGgufDecodedTokens = if (audio.contains("voice_gguf_decoded_tokens"))
+                audio.getLong("voice_gguf_decoded_tokens", 0L) else null,
+            voiceGgufCpuThreads = if (audio.contains("voice_gguf_cpu_threads"))
+                audio.getLong("voice_gguf_cpu_threads", 0L) else null,
+            voiceGgufCacheHit = if (audio.contains("voice_gguf_cache_hit"))
+                audio.getBoolean("voice_gguf_cache_hit", false) else null,
             bargeInQuestions = audio.getInt("barge_in_question_count", 0),
             ttsStartedCount = audio.getInt("tts_started_count", 0),
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",

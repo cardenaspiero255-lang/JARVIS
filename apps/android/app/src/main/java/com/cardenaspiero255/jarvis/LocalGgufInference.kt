@@ -6,6 +6,7 @@ import android.net.Uri
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import com.cardenaspiero255.jarvis.core.LocalGgufRunState
 import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
+import com.cardenaspiero255.jarvis.core.GgufNativePerformance
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,6 +27,9 @@ class LocalGgufInference(private val store: LocalGgufModelStore) {
     private var cancellation = AtomicBoolean(false)
     @Volatile private var closed = false
     @Volatile private var mutationPending = false
+    @Volatile private var latestMeasured: GgufNativePerformance? = null
+
+    fun latestPerformance(): GgufNativePerformance? = latestMeasured
 
     // Cache allowance is computed on the background thread from Android's
     // memory pressure; never preload or retain a large model on a low-RAM phone.
@@ -57,6 +61,9 @@ class LocalGgufInference(private val store: LocalGgufModelStore) {
      */
     external fun nativeCacheCounters(): LongArray
 
+    /** Native-only timing breakdown for the most recent JNI request. */
+    external fun nativeLastPerformance(): LongArray
+
     @Synchronized fun ask(
         question: String,
         maxNewTokens: Int = FastVoiceGgufPolicy.DIRECT_MAX_TOKENS,
@@ -67,6 +74,7 @@ class LocalGgufInference(private val store: LocalGgufModelStore) {
             !runState.tryBegin()) return false
         val signal = AtomicBoolean(false)
         cancellation = signal
+        latestMeasured = null
         worker.submit {
             var result = "Modelo GGUF no instalado, incompatible o alterado."
             try {
@@ -95,6 +103,8 @@ class LocalGgufInference(private val store: LocalGgufModelStore) {
                             generate(model.absolutePath, prompt,
                                 maxNewTokens, signal)
                         }).take(2000).ifBlank { "No se generó una respuesta local." }
+                        latestMeasured = GgufNativePerformance.fromCounters(
+                            nativeLastPerformance())
                     } else if (model != null && !nativeLoaded) {
                         result = "Motor nativo de inferencia no disponible en esta arquitectura."
                     }
