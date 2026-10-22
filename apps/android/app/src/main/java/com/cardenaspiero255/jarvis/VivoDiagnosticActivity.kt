@@ -470,6 +470,10 @@ class VivoDiagnosticActivity : Activity() {
         val confirmedScreenOff = audio.getString("lockscreen_result", "") ==
             "SCREEN_OFF_AUDIO_OBSERVED"
         val samples = audio.getLong("lockscreen_off_samples", 0L).coerceAtLeast(0L)
+        val micNowGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        val micObservation = audio.getString("mic_revocation_status", "NO_OBSERVADO")
+            ?: "NO_OBSERVADO"
         return VivoDiagnosticReport(
             model = Build.MODEL,
             sdk = Build.VERSION.SDK_INT,
@@ -477,8 +481,7 @@ class VivoDiagnosticActivity : Activity() {
             thermalStatus = health.thermalStatus,
             availableRamMib = health.availableMemoryBytes?.div(1024L * 1024L),
             pssKib = mem.totalPss,
-            microphoneGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED,
+            microphoneGranted = micNowGranted,
             notificationsGranted = Build.VERSION.SDK_INT < 33 ||
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED,
@@ -490,8 +493,17 @@ class VivoDiagnosticActivity : Activity() {
             lockscreenStopCommandCount = audio.getInt("lockscreen_stop_commands", 0),
             lockscreenQuestionCount = audio.getInt("lockscreen_question_commands", 0),
             aecRuntime = audio.getString("aec_runtime_status", "NO_MEDIDO") ?: "NO_MEDIDO",
-            micRevocationRuntime =
-                audio.getString("mic_revocation_status", "NO_OBSERVADO") ?: "NO_OBSERVADO",
+            micRevocationRuntime = when {
+                micObservation != "NO_OBSERVADO" -> micObservation
+                !micNowGranted && audio.getBoolean("mic_granted_at_start", false) ->
+                    "PERMISO_AHORA_DENEGADO_TRAS_SESION"
+                else -> "NO_OBSERVADO"
+            },
+            voiceGgufAnswers = audio.getInt("voice_gguf_success_count", 0),
+            voiceGgufLatencyMs = if (audio.contains("voice_gguf_last_latency_ms"))
+                audio.getLong("voice_gguf_last_latency_ms", 0L) else null,
+            bargeInQuestions = audio.getInt("barge_in_question_count", 0),
+            ttsStartedCount = audio.getInt("tts_started_count", 0),
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
             qwenLatencyMs = if (prefs.contains("qwen_ms")) prefs.getLong("qwen_ms", 0L)
                 else null,

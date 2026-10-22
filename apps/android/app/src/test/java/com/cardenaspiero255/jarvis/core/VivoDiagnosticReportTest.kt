@@ -147,6 +147,28 @@ class VivoDiagnosticReportTest {
         assertFalse(report.contains("AEC_CERTIFICADO"))
     }
 
+    @Test fun voiceAnswerCorroboratesGenerationWhenTapProbeWasCancelled() {
+        val out = VivoDiagnosticReport(
+            model = "V2158", sdk = 34, batteryPercent = 45,
+            thermalStatus = 0, availableRamMib = 4500L, pssKib = 200000,
+            microphoneGranted = true, notificationsGranted = true, ggufImported = true,
+            screenOffSamples = 0, screenOffObserved = false,
+            lockscreenLastExtended = true, lockscreenTimeCommandCount = 0,
+            lockscreenStopCommandCount = 0,
+            qwenRun = "CANCELADO_AL_SALIR", qwenLatencyMs = null,
+            stopRun = "STOP_SERVICIO_FINALIZADO",
+            results = mapOf(VivoCheck.QWEN to VivoReportedResult.FUNCIONA),
+            voiceGgufAnswers = 2, voiceGgufLatencyMs = 4321L,
+            bargeInQuestions = 1, ttsStartedCount = 2
+        ).toShareText()
+        assertTrue(out.contains("Voice_GGUF_respuestas_medido=2"))
+        assertTrue(out.contains("GGUF_VOZ_MEDIDA"))
+        assertTrue(out.contains("BargeIn_preguntas_interrumpidas=1"))
+        assertTrue(out.contains("TTS_inicios_reportados_por_Android=2"))
+        assertFalse(out.contains("CONTRADICCION_QWEN"))
+        assertTrue(out.contains("NO_CERTIFICADO"))
+    }
+
     @Test fun reportSeparatesManualObservationFromSystemMeasurement() {
         val out = report(mapOf(
             VivoCheck.MICROPHONE to VivoReportedResult.FUNCIONA,

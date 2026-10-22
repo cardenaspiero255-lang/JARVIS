@@ -106,3 +106,30 @@ generado/no centinela + latencia; precisión semántica requiere observación.
 laboratorio o en el clasificador; ejecuta el modelo verdadero en un
 **emulador**, no en el Vivo. El resultado nunca certifica Funtouch OS,
 revocación de micrófono ni supresión acústica del eco.
+
+
+## Consolidación de recibos y rendimiento limitado
+
+Una prueba de generación **por voz** registra contadores sin guardar preguntas ni
+respuestas: `Voice_GGUF_respuestas_medido` y
+`Voice_GGUF_ultima_latencia_ms`. Esto es independiente del botón 5
+(`Qwen_ejecución`), cuya cancelación al salir sigue siendo real y no
+acredita un fallo de la conversación. El informe solo considera ambos
+canales como fuentes diferentes y nunca certifica precisión o audio audible.
+
+La escucha extendida persiste muestras reales de `AudioRecord`
+antes de encolarlas en el hilo principal; la última fracción de audio se
+drena al liberar la captura. Si Android/Funtouch no entrega PCM mientras
+la pantalla está apagada, el informe sigue indicando 0, sin inventar
+observaciones. Se contabilizan eventos `BargeIn` y `TTS_STARTED`, que
+solo comprueban callbacks y no son certificados acústicos.
+
+El perfil rápido usa hasta **48 tokens** para respuestas habladas,
+manteniendo 96 para consultas escritas. El motor nativo usa entre
+**2 y 4** hilos CPU según núcleos visibles y retiene pesos GGUF de
+hasta 650 MB únicamente si Android informa por lo menos 3 GiB de
+memoria disponible y no marca presión de memoria. Esto es una
+hipótesis medible, no una garantía de velocidad: hay que comparar
+latencia, temperatura, RAM/PSS y calidad real en el Vivo. Por seguridad,
+no desactivar SHA-256, cancelación ni autorización. Modelos más grandes
+siguen usando la ruta que libera pesos entre respuestas.

@@ -22,6 +22,11 @@ class VivoGgufEvidencePersistenceInstrumentedTest {
         val keys = VivoGgufEvidenceResetPlan.changesForModelMutation().keys +
             setOf("stop_status", "OWNER")
         val before = prefs.all.filterKeys { it in keys }
+        val voicePrefs = context.getSharedPreferences(
+            "jarvis_handsfree_diag_v1", Context.MODE_PRIVATE)
+        val voiceKeys = setOf("voice_gguf_success_count", "voice_gguf_last_latency_ms",
+            "barge_in_question_count", "tts_started_count")
+        val beforeVoice = voicePrefs.all.filterKeys { it in voiceKeys }
         try {
             assertTrue(prefs.edit()
                 .putString("qwen", "TEXTO_NO_VACIO_NO_CERTIFICADO")
@@ -31,7 +36,13 @@ class VivoGgufEvidencePersistenceInstrumentedTest {
                 .putString("ECHO_REJECTION", "FUNCIONA")
                 .putString("stop_status", "STOP_SERVICIO_FINALIZADO")
                 .putString("OWNER", "NO_PROBADO").commit())
+            assertTrue(voicePrefs.edit().putInt("voice_gguf_success_count", 3)
+                .putLong("voice_gguf_last_latency_ms", 5000L)
+                .putInt("barge_in_question_count", 1)
+                .putInt("tts_started_count", 2).commit())
             assertTrue(VivoGgufEvidenceResetPlan.invalidate(context))
+            for (key in voiceKeys) assertTrue("Stale voice receipt: $key",
+                !voicePrefs.contains(key))
             val reloaded = context.getSharedPreferences(name, Context.MODE_PRIVATE)
             assertEquals("NO_PROBADO", reloaded.getString("qwen", "not reset"))
             assertTrue(!reloaded.contains("qwen_ms"))
@@ -53,6 +64,17 @@ class VivoGgufEvidencePersistenceInstrumentedTest {
                 }
             }
             assertTrue(reset.commit())
+            val voiceReset = voicePrefs.edit()
+            for (key in voiceKeys) {
+                when (val previous = beforeVoice[key]) {
+                    is String -> voiceReset.putString(key, previous)
+                    is Long -> voiceReset.putLong(key, previous)
+                    is Int -> voiceReset.putInt(key, previous)
+                    is Boolean -> voiceReset.putBoolean(key, previous)
+                    else -> voiceReset.remove(key)
+                }
+            }
+            assertTrue(voiceReset.commit())
         }
     }
 }

@@ -35,7 +35,11 @@ data class VivoDiagnosticReport(
     val results: Map<VivoCheck, VivoReportedResult>,
     val lockscreenQuestionCount: Int = 0,
     val aecRuntime: String = "NO_MEDIDO",
-    val micRevocationRuntime: String = "NO_OBSERVADO"
+    val micRevocationRuntime: String = "NO_OBSERVADO",
+    val voiceGgufAnswers: Int = 0,
+    val voiceGgufLatencyMs: Long? = null,
+    val bargeInQuestions: Int = 0,
+    val ttsStartedCount: Int = 0
 ) {
     fun toShareText(): String {
         val safeModel = model.filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ' ' }
@@ -72,17 +76,30 @@ data class VivoDiagnosticReport(
                 "PERMISO_DENEGADO_EN_LECTURA" -> "PERMISO_DENEGADO_EN_LECTURA"
                 "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION" ->
                     "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION"
+                "PERMISO_AHORA_DENEGADO_TRAS_SESION" ->
+                    "PERMISO_AHORA_DENEGADO_TRAS_SESION"
                 else -> "NO_OBSERVADO"
             })
             appendLine("Qwen_ejecución=$qwenRun latencia_ms=${qwenLatencyMs ?: "NO_MEDIDA"}")
+            appendLine("Voice_GGUF_respuestas_medido=" + voiceGgufAnswers.coerceAtLeast(0))
+            appendLine("Voice_GGUF_ultima_latencia_ms=" +
+                (voiceGgufLatencyMs?.takeIf { it > 0L } ?: "NO_MEDIDA"))
+            appendLine("BargeIn_preguntas_interrumpidas=" + bargeInQuestions.coerceAtLeast(0))
+            appendLine("TTS_inicios_reportados_por_Android=" + ttsStartedCount.coerceAtLeast(0))
+            appendLine("Los eventos de TTS/interrupción no prueban audio audible ni rechazo acústico de eco.")
             appendLine("STOP_ejecución=" + stopRun.filter { it.isLetterOrDigit() || it == '_' }.take(48))
             for (check in VivoCheck.entries) {
                 appendLine("USER_REPORTED_${check.name}=${results[check] ?: VivoReportedResult.NO_PROBADO}")
             }
-            if (results[VivoCheck.QWEN] == VivoReportedResult.FUNCIONA &&
-                (!ggufImported || qwenRun != "TEXTO_NO_VACIO_NO_CERTIFICADO" ||
-                    qwenLatencyMs == null || qwenLatencyMs <= 0)) {
+            if (VivoVoiceGgufEvidencePolicy.isContradictory(
+                    ggufImported, results[VivoCheck.QWEN] ?: VivoReportedResult.NO_PROBADO,
+                    qwenRun, qwenLatencyMs, voiceGgufAnswers, voiceGgufLatencyMs)) {
                 appendLine("CONTRADICCION_QWEN: marca manual sin medición local confirmada.")
+            } else if (qwenRun == "CANCELADO_AL_SALIR" &&
+                voiceGgufAnswers > 0 && voiceGgufLatencyMs != null &&
+                voiceGgufLatencyMs > 0) {
+                appendLine("GGUF_VOZ_MEDIDA: prueba directa cancelada, pero hubo generación " +
+                    "en conversación; audibilidad y precisión NO_CERTIFICADAS.")
             }
             if (results[VivoCheck.OWNER] == VivoReportedResult.FUNCIONA) {
                 appendLine("OWNER_NO_CERTIFICADO: prueba positiva sin FAR/FRR/replay.")

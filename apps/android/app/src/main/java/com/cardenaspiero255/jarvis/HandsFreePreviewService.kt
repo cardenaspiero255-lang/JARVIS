@@ -211,6 +211,9 @@ class HandsFreePreviewService : Service() {
             return START_NOT_STICKY
         }
         isRunning = true
+        // A later denial may be observed after Funtouch terminates the app,
+        // but it does not establish the precise revocation timing.
+        diagnostics.edit().putBoolean("mic_granted_at_start", mic).commit()
         // A short probe cannot erase the last explicit long session evidence.
         if (conversationMode) {
             diagnostics.edit()
