@@ -5,8 +5,8 @@ import org.junit.Test
 
 class FastVoiceGgufPolicyTest {
     @Test fun lowLatencyVoiceIsBoundedAndPreservesFullDirectAnswerBudget() {
-        assertEquals(48, FastVoiceGgufPolicy.VOICE_MAX_TOKENS)
-        assertEquals(96, FastVoiceGgufPolicy.DIRECT_MAX_TOKENS)
+        assertEquals(32, FastVoiceGgufPolicy.VOICE_MAX_TOKENS)
+        assertEquals(64, FastVoiceGgufPolicy.DIRECT_MAX_TOKENS)
         assertTrue(FastVoiceGgufPolicy.VOICE_MAX_TOKENS > 0)
         assertTrue(FastVoiceGgufPolicy.VOICE_MAX_TOKENS < FastVoiceGgufPolicy.DIRECT_MAX_TOKENS)
     }
