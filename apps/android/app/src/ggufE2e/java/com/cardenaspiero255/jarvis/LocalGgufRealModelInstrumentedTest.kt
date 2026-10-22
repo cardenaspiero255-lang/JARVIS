@@ -168,6 +168,10 @@ class LocalGgufRealModelInstrumentedTest {
                 .put("device", device)
                 .put("model", JSONObject().put("sha256", actual).put("bytes", copied))
                 .put("inference", JSONObject()
+                    .put("direct_output_token_budget",
+                        com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy.DIRECT_MAX_TOKENS)
+                    .put("voice_output_token_budget",
+                        com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy.VOICE_MAX_TOKENS)
                     .put("cold_request_ms", durations.first())
                     .put("subsequent_request_ms",
                         JSONArray(durations.drop(1).map { it.toInt() }))

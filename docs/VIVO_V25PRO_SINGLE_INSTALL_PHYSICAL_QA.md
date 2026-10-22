@@ -124,8 +124,9 @@ la pantalla está apagada, el informe sigue indicando 0, sin inventar
 observaciones. Se contabilizan eventos `BargeIn` y `TTS_STARTED`, que
 solo comprueban callbacks y no son certificados acústicos.
 
-El perfil rápido usa hasta **48 tokens** para respuestas habladas,
-manteniendo 96 para consultas escritas. El motor nativo usa entre
+El perfil rápido limita hasta **32 tokens** las respuestas habladas y
+**64 tokens** las consultas escritas; el JNI conserva el tope de 96
+como barrera superior. Se prioriza latencia frente a respuestas extensas. El motor nativo usa entre
 **2 y 4** hilos CPU según núcleos visibles y retiene pesos GGUF de
 hasta 650 MB únicamente si Android informa por lo menos 3 GiB de
 memoria disponible y no marca presión de memoria. Esto es una
