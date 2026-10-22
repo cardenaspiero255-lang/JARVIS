@@ -140,6 +140,30 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn("ASR_NATIVE_AEC_CONFIGURED", runner)
         self.assertIn("NO_CERTIFICADO", report)
 
+    def test_negative_audio_read_preserves_original_cause_to_final_delivery(self):
+        runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
+        self.assertIn("NativeAudioExitPolicy.resolveFailure", runner)
+        self.assertIn("NativeAudioExitPolicy.mayDeliverRecognizedSpeech", runner)
+        self.assertIn("if (finalFailure != null) onFailure(finalFailure)", runner)
+
+    def test_stop_blocks_queued_wake_before_service_destruction(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        self.assertIn("NativeWakeDeliveryGate.allow", service)
+        self.assertIn("nativeRunner?.stop()", service.split("private fun finish(reason: String)")[1]
+                      .split("private fun acquireShortWakeLock")[0])
+        self.assertIn("timeGate.stop()", service.split("private fun finish(reason: String)")[1]
+                      .split("private fun acquireShortWakeLock")[0])
+
+    def test_model_mutation_invalidates_evidence_outside_activity_lifecycle(self):
+        store = (SRC / "LocalGgufModelStore.kt").read_text()
+        activity = (SRC / "VivoDiagnosticActivity.kt").read_text()
+        self.assertIn("VivoGgufEvidenceResetPlan.invalidate", store)
+        self.assertLess(store.index("VivoGgufEvidenceResetPlan.invalidate"),
+                        store.index("tmp.renameTo(file)"))
+        self.assertIn("modelImportEngine?.close()", activity)
+        self.assertNotIn('prefs.edit().putString("qwen", "NO_PROBADO").remove("qwen_ms")',
+                         activity)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
