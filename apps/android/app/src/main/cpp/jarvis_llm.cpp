@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // CPU-only, bounded, synchronous JNI. Kotlin calls ONLY on a single worker.
@@ -125,8 +126,13 @@ std::string run_inference(JNIEnv * env, const std::string & path,
         ctxOpts.n_ctx = 1024;
         ctxOpts.n_batch = 256;
         ctxOpts.n_ubatch = 256;
-        ctxOpts.n_threads = 2;
-        ctxOpts.n_threads_batch = 2;
+        // Use up to four CPU workers on phones with multiple cores; keep
+        // the two-worker baseline on 2-core CI emulators. Bounded to avoid
+        // spawning 8+ threads and unnecessary memory/thermal pressure.
+        const auto hardware = std::thread::hardware_concurrency();
+        const int threads = std::clamp(static_cast<int>(hardware / 2), 2, 4);
+        ctxOpts.n_threads = threads;
+        ctxOpts.n_threads_batch = threads;
         context = llama_init_from_model(model, ctxOpts);
         if (!context) { output = "Memoria insuficiente para el contexto GGUF."; break; }
         sampler = llama_sampler_init_greedy();

@@ -47,6 +47,8 @@ import com.cardenaspiero255.jarvis.core.LockScreenAudioState
 import com.cardenaspiero255.jarvis.core.NativeWakeDeliveryGate
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
+import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
+import com.cardenaspiero255.jarvis.core.VivoScreenOffReceiptPolicy
 import com.cardenaspiero255.jarvis.core.OfflineVoiceAnswerPolicy
 import java.time.LocalTime
 
@@ -210,6 +212,11 @@ class HandsFreePreviewService : Service() {
         }
         isRunning = true
         // A short probe cannot erase the last explicit long session evidence.
+        if (conversationMode) {
+            diagnostics.edit()
+                .remove("barge_in_question_count")
+                .remove("tts_started_count").commit()
+        }
         if (extendedListening) {
             screenOffEvidence.reset()
             diagnostics.edit().remove("lockscreen_off_samples")
@@ -353,20 +360,28 @@ class HandsFreePreviewService : Service() {
                 }
             },
             onAudioProgress = { sampleCount, elapsed ->
-                main.post {
-                    if (!isRunning || closed || !extendedListening || endedNormally) return@post
-                    // Only screen-off PCM from the capture worker reaches here.
+                // Persist actual worker samples BEFORE delayed UI messages/STOP.
+                // Do not store PCM, audio or transcripts, only bounded counters.
+                if (extendedListening && sampleCount > 0L) {
                     val previousState = screenOffEvidence.snapshot().state
+                    val oldSamples = screenOffEvidence.snapshot().screenOffSamples
                     screenOffEvidence.observe(elapsed, sampleCount, interactive = false)
                     val snapshot = screenOffEvidence.snapshot()
-                    diagnostics.edit()
-                        .putLong("lockscreen_off_samples", snapshot.screenOffSamples)
-                        .putInt("lockscreen_off_reports", snapshot.screenOffObservations)
-                        .putString("lockscreen_result", snapshot.state.name).apply()
+                    if (snapshot.screenOffSamples > oldSamples) {
+                        val count = VivoScreenOffReceiptPolicy.totalAfterProgress(
+                            oldSamples, snapshot.screenOffSamples - oldSamples)
+                        diagnostics.edit()
+                            .putLong("lockscreen_off_samples", count)
+                            .putInt("lockscreen_off_reports", snapshot.screenOffObservations)
+                            .putString("lockscreen_result", snapshot.state.name).commit()
+                    }
                     if (previousState != LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED &&
                         snapshot.state == LockScreenAudioState.SCREEN_OFF_AUDIO_OBSERVED) {
-                        showStatus("LOCKSCREEN_PCM_OBSERVED: micrófono entregó muestras " +
-                            "durante pantalla apagada; solo mide continuidad, no identidad.")
+                        main.post {
+                            if (isRunning && !closed && !endedNormally)
+                                showStatus("LOCKSCREEN_PCM_OBSERVED: muestras reales " +
+                                    "mientras la pantalla estaba apagada; no acredita identidad.")
+                        }
                     }
                 }
             },
@@ -506,6 +521,9 @@ class HandsFreePreviewService : Service() {
                     ttsWatchdog = null
                     pendingSpeech = null
                     nativeRunner?.setResponsePlayback(true)
+                    val total = diagnostics.getInt("barge_in_question_count", 0)
+                    diagnostics.edit().putInt("barge_in_question_count",
+                        (total + 1).coerceAtMost(999)).apply()
                     showStatus("LOCAL_VOICE_BARGEIN_QUESTION: respuesta anterior " +
                         "interrumpida; procesando una nueva pregunta local.")
                     processOfflineQuestion(question)
@@ -946,6 +964,7 @@ class HandsFreePreviewService : Service() {
             LocalGgufInference(modelStore).also { localConversationInference = it }
         }
         val ticket = ++conversationGeneration
+        val voiceStartedAt = SystemClock.elapsedRealtime()
         showStatus(if (extendedListening)
             "LOCAL_VOICE_LLM_THINKING: micrófono activo pero aislado " +
                 "de órdenes mientras GGUF responde sin Internet."
@@ -960,7 +979,9 @@ class HandsFreePreviewService : Service() {
         }
         conversationTimeout = watchdog
         main.postDelayed(watchdog, 90_000L)
-        val accepted = engine.ask(question) { response ->
+        val accepted = engine.ask(
+            question, maxNewTokens = FastVoiceGgufPolicy.VOICE_MAX_TOKENS
+        ) { response ->
             if (!isRunning || closed || endedNormally || !conversationMode ||
                 conversationGeneration != ticket ||
                 conversationTimeout !== watchdog) return@ask
@@ -970,6 +991,13 @@ class HandsFreePreviewService : Service() {
             if (safeReply == null) {
                 finish("LOCAL_VOICE_LLM_UNAVAILABLE: modelo no preparado o respuesta inválida.")
             } else {
+                val latency = SystemClock.elapsedRealtime() - voiceStartedAt
+                if (latency > 0L) {
+                    val prior = diagnostics.getInt("voice_gguf_success_count", 0)
+                    diagnostics.edit()
+                        .putInt("voice_gguf_success_count", (prior + 1).coerceAtMost(999))
+                        .putLong("voice_gguf_last_latency_ms", latency).commit()
+                }
                 showStatus("LOCAL_VOICE_TTS_READY: respuesta generada en el teléfono; " +
                     "no constituye una acción ejecutada.")
                 speakThenStop(safeReply)
@@ -1041,9 +1069,13 @@ class HandsFreePreviewService : Service() {
                 main.post {
                     if (utteranceId != "jarvis-preview-$ticket" ||
                         ttsPlaybackTicket != ticket || endedNormally) return@post
-                    if (isRunning && !closed) showStatus(
-                        "TTS_STARTED: Android inició la síntesis; " +
+                    if (isRunning && !closed) {
+                        val prior = diagnostics.getInt("tts_started_count", 0)
+                        diagnostics.edit().putInt("tts_started_count",
+                            (prior + 1).coerceAtMost(999)).apply()
+                        showStatus("TTS_STARTED: Android inició la síntesis; " +
                             "comprobar si el altavoz realmente se escucha.")
+                    }
                 }
             }
             override fun onDone(utteranceId: String?) {

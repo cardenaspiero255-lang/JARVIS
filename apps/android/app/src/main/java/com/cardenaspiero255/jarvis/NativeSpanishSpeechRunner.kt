@@ -272,7 +272,7 @@ class NativeSpanishSpeechRunner(
                             screenOffFrames.observe(received, interactiveAtCapture)
                         }
                         val progressNow = SystemClock.elapsedRealtime()
-                        if (progressNow - lastAudioReport >= 2_500L) {
+                        if (progressNow - lastAudioReport >= 1_000L) {
                             val capturedWhileScreenOff = screenOffFrames.drainScreenOff()
                             if (continuous) {
                                 if (capturedWhileScreenOff > 0L)
@@ -564,6 +564,13 @@ class NativeSpanishSpeechRunner(
             if (active.get()) failure = "ASR_NATIVE_ABI_UNAVAILABLE: " +
                 "la biblioteca Vosk no funciona con el procesador de este dispositivo."
         } finally {
+            // Preserve the final real samples even if the STOP message is
+            // queued before a slower UI callback. Never report synthetic PCM.
+            if (continuous) {
+                val remainingOffSamples = screenOffFrames.drainScreenOff()
+                if (remainingOffSamples > 0L)
+                    onAudioProgress(remainingOffSamples, SystemClock.elapsedRealtime())
+            }
             val deliverQuestion = active.get() && !Thread.currentThread().isInterrupted
             active.set(false)
             recorder = null

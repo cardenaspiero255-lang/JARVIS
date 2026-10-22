@@ -1,8 +1,10 @@
 package com.cardenaspiero255.jarvis
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
+import com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy
 import com.cardenaspiero255.jarvis.core.VivoGgufEvidenceResetPlan
 import java.io.File
 import java.security.MessageDigest
@@ -28,6 +30,19 @@ class LocalGgufModelStore(private val context: Context) {
     // waiting for withVerifiedModel's potentially minute-long native lease.
     // Actual use is always independently SHA-verified under the store monitor.
     fun hasModel(): Boolean = file.isFile && prefs.contains("sha256")
+
+    /** Call on inference worker: memory pressure decides whether 491 MB may stay hot. */
+    fun warmCacheBudget(): Long {
+        val info = ActivityManager.MemoryInfo()
+        return try {
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                ?: return FastVoiceGgufPolicy.warmCacheMaxBytes(0L, true)
+            manager.getMemoryInfo(info)
+            FastVoiceGgufPolicy.warmCacheMaxBytes(info.availMem, info.lowMemory)
+        } catch (_: RuntimeException) {
+            FastVoiceGgufPolicy.warmCacheMaxBytes(0L, true)
+        }
+    }
 
     /** Caller must run on a worker, never the UI thread. Returns a private SHA. */
     @Synchronized fun import(uri: Uri): String = synchronized(processModelLock) {

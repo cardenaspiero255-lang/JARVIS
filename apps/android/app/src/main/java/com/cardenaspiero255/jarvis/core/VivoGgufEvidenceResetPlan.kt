@@ -24,6 +24,11 @@ object VivoGgufEvidenceResetPlan {
         for ((key, value) in changesForModelMutation()) {
             if (value == null) editor.remove(key) else editor.putString(key, value)
         }
-        return editor.commit()
+        // A new model must not inherit a voice answer from old weights.
+        val conversation = context.getSharedPreferences(
+            "jarvis_handsfree_diag_v1", Context.MODE_PRIVATE).edit()
+            .remove("voice_gguf_success_count").remove("voice_gguf_last_latency_ms")
+            .remove("barge_in_question_count").remove("tts_started_count")
+        return editor.commit() && conversation.commit()
     }
 }
