@@ -146,7 +146,11 @@ std::string run_inference(JNIEnv * env, const std::string & path,
         }
         tokenizeMs = perf_millis(tokenizerStart, PerfClock::now());
         llama_context_params ctxOpts = llama_context_default_params();
-        ctxOpts.n_ctx = 1024;
+        // Allocate only the context the bounded prompt/generation needs.
+        // Larger user prompts still use up to the existing 1024-token ceiling.
+        const int contextTokens =
+            std::clamp(((count + requested + 63) / 64) * 64, 256, 1024);
+        ctxOpts.n_ctx = static_cast<uint32_t>(contextTokens);
         ctxOpts.n_batch = 256;
         ctxOpts.n_ubatch = 256;
         // Use up to four CPU workers on phones with multiple cores; keep

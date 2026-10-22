@@ -107,6 +107,11 @@ class LocalGgufRealModelInstrumentedTest {
             val result = checkedText(answer.get())
             answers.add(result)
             durations.add(maxOf(1L, SystemClock.elapsedRealtime() - start))
+            val initialNativePerf = inference.nativeLastPerformance()
+            assertEquals("JNI native timing format", 8, initialNativePerf.size)
+            assertTrue("Native total time measured", initialNativePerf[0] > 0L)
+            assertTrue("At least one actual decoded token", initialNativePerf[5] > 0L)
+            assertTrue("Bounded CPU thread count", initialNativePerf[6] in 1L..4L)
             println(
                 "GGUF_E2E_REAL_GENERATION_OK sha256=$actual bytes=$copied " +
                 "generated_chars=${result.length} elapsed_ms=${durations[0]} offline=true"
@@ -168,6 +173,11 @@ class LocalGgufRealModelInstrumentedTest {
                 .put("device", device)
                 .put("model", JSONObject().put("sha256", actual).put("bytes", copied))
                 .put("inference", JSONObject()
+                    .put("native_first_load_ms", initialNativePerf[1])
+                    .put("native_first_prefill_ms", initialNativePerf[3])
+                    .put("native_first_decode_ms", initialNativePerf[4])
+                    .put("native_first_decoded_tokens", initialNativePerf[5])
+                    .put("native_first_cpu_threads", initialNativePerf[6])
                     .put("direct_output_token_budget",
                         com.cardenaspiero255.jarvis.core.FastVoiceGgufPolicy.DIRECT_MAX_TOKENS)
                     .put("voice_output_token_budget",

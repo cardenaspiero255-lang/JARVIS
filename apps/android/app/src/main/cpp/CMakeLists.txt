@@ -12,7 +12,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 # ARM64 Android: pinned llama.cpp includes KleidiAI AArch64 kernels.
-# Keep x86_64 emulator/other targets on the portable baseline. No -march=native.
+# Keep x86_64 emulator/other targets on the portable baseline. No host-native architecture flags.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
   set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
 else()
