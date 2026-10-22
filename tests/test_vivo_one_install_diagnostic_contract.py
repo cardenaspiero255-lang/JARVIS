@@ -207,6 +207,36 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn("std::thread::hardware_concurrency()", cpp)
         self.assertIn("validPrompt", (SRC / "core/LocalGgufPolicy.kt").read_text())
 
+    def test_arm64_backend_is_explicitly_accelerated_without_x86_cross_contamination(self):
+        cmake=(ROOT/"apps/android/app/src/main/cpp/CMakeLists.txt").read_text()
+        self.assertIn('ANDROID_ABI STREQUAL "arm64-v8a"', cmake)
+        self.assertIn("set(GGML_CPU_KLEIDIAI ON", cmake)
+        self.assertIn("set(GGML_CPU_KLEIDIAI OFF", cmake)
+        self.assertIn("GGML_NATIVE OFF", cmake)
+        self.assertNotIn("-march=native", cmake)
+
+    def test_native_performance_receipts_include_breakdown_without_sensitive_data(self):
+        cpp=(ROOT/"apps/android/app/src/main/cpp/jarvis_llm.cpp").read_text()
+        inference=(SRC/"LocalGgufInference.kt").read_text()
+        report=(SRC/"core/VivoDiagnosticReport.kt").read_text()
+        service=(SRC/"HandsFreePreviewService.kt").read_text()
+        self.assertIn("nativeLastPerformance", cpp)
+        self.assertIn("nativeLastPerformance", inference)
+        self.assertIn("voice_gguf_load_ms", service)
+        self.assertIn("voice_gguf_prefill_ms", service)
+        self.assertIn("voice_gguf_decode_ms", service)
+        self.assertIn("Voice_GGUF_prefill_ms=", report)
+        self.assertIn("Voice_GGUF_decode_ms=", report)
+        self.assertNotIn("prompt=", report)
+
+    def test_new_voice_session_rejects_previous_session_gguf_receipts(self):
+        service=(SRC/"HandsFreePreviewService.kt").read_text()
+        policy=(SRC/"core/VivoGgufSessionReceiptPolicy.kt").read_text()
+        self.assertIn("VivoGgufSessionReceiptPolicy.resetKeys()", service)
+        self.assertIn('"voice_gguf_success_count"', policy)
+        self.assertIn('"voice_gguf_last_latency_ms"', policy)
+        self.assertIn('"barge_in_question_count"', policy)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
