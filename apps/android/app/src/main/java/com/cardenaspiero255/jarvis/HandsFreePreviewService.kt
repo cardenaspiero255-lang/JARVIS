@@ -94,7 +94,7 @@ class HandsFreePreviewService : Service() {
     private val screenOffEvidence = LockScreenAudioEvidence()
     private val wakeLockRefresh = object : Runnable {
         override fun run() {
-            if (isRunning && !closed && extendedListening) acquireShortWakeLock()
+            if (isRunning && !closed && !endedNormally && extendedListening) acquireShortWakeLock()
         }
     }
     private var nativeRunner: NativeSpanishSpeechRunner? = null
@@ -335,7 +335,7 @@ class HandsFreePreviewService : Service() {
             applicationContext,
             onStatus = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested) {
+                    if (isRunning && !closed && !endedNormally && nativeModeRequested) {
                         if (extendedListening) {
                             val aec = when {
                                 message.startsWith("ASR_NATIVE_AEC_CONFIGURED") ->
@@ -458,7 +458,8 @@ class HandsFreePreviewService : Service() {
             },
             onFailure = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested && !consumed) {
+                    if (isRunning && !closed && !endedNormally &&
+                        nativeModeRequested && !consumed) {
                         if (extendedListening) {
                             val code = when {
                                 message.startsWith("ASR_NATIVE_MIC_PERMISSION_DENIED_AT_READ") ->
@@ -814,6 +815,10 @@ class HandsFreePreviewService : Service() {
         timeGate.stop()
         nativeRunner?.stop()
         try { tts?.stop() } catch (_: RuntimeException) {}
+        // Disarm queued expirations before stopSelf() schedules destruction.
+        main.removeCallbacks(timeout)
+        main.removeCallbacks(nativeStartupTimeout)
+        main.removeCallbacks(wakeLockRefresh)
         ++conversationGeneration
         ++ttsPlaybackTicket
         conversationTimeout?.let { main.removeCallbacks(it) }

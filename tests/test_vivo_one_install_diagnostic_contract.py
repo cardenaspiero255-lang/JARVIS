@@ -153,6 +153,10 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
                       .split("private fun acquireShortWakeLock")[0])
         self.assertIn("timeGate.stop()", service.split("private fun finish(reason: String)")[1]
                       .split("private fun acquireShortWakeLock")[0])
+        self.assertIn("!endedNormally && nativeModeRequested", service.split("onStatus = { message ->")[1]
+                      .split("onAudioProgress =")[0])
+        self.assertIn("!endedNormally", service.split("onFailure = { message ->")[1]
+                      .split("conversationMode = conversationMode")[0])
 
     def test_model_mutation_invalidates_evidence_outside_activity_lifecycle(self):
         store = (SRC / "LocalGgufModelStore.kt").read_text()
