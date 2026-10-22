@@ -168,6 +168,43 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertNotIn('prefs.edit().putString("qwen", "NO_PROBADO").remove("qwen_ms")',
                          activity)
 
+    def test_voice_gguf_diagnostic_survives_exit_of_direct_probe(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        activity = (SRC / "VivoDiagnosticActivity.kt").read_text()
+        self.assertIn('voice_gguf_success_count', service)
+        self.assertIn('voice_gguf_last_latency_ms', service)
+        self.assertIn('Voice_GGUF_respuestas_medido=', report)
+        self.assertIn('VivoVoiceGgufEvidencePolicy.isContradictory', report)
+        self.assertIn('voiceGgufAnswers = audio.getInt', activity)
+
+    def test_screenoff_receipts_persist_before_delayed_ui_callbacks(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
+        self.assertIn("VivoScreenOffReceiptPolicy.totalAfterProgress", service)
+        self.assertIn("screenOffFrames.drainScreenOff()", runner)
+        self.assertIn("diagnostics.edit().putLong(\"lockscreen_off_samples\"", service)
+
+    def test_echo_and_permission_diagnostics_remain_not_certified(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        self.assertIn('barge_in_question_count', service)
+        self.assertIn('tts_started_count', service)
+        self.assertIn('BargeIn_preguntas_interrumpidas=', report)
+        self.assertIn('TTS_inicios_reportados_por_Android=', report)
+        self.assertIn('Revocacion_MIC_observada=', report)
+        self.assertIn('NO_CERTIFICADO', report)
+
+    def test_latency_profile_bounds_output_without_disabling_integrity(self):
+        inference = (SRC / "LocalGgufInference.kt").read_text()
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        cpp = (ROOT / "apps/android/app/src/main/cpp/jarvis_llm.cpp").read_text()
+        self.assertIn("FastVoiceGgufPolicy.VOICE_MAX_TOKENS", service)
+        self.assertIn("maxNewTokens", inference)
+        self.assertIn("FastVoiceGgufPolicy.warmCacheMaxBytes", inference)
+        self.assertIn("std::thread::hardware_concurrency()", cpp)
+        self.assertIn("validPrompt", (SRC / "core/LocalGgufPolicy.kt").read_text())
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)
