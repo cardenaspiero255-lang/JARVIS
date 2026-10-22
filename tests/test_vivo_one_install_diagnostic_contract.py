@@ -201,7 +201,9 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         cpp = (ROOT / "apps/android/app/src/main/cpp/jarvis_llm.cpp").read_text()
         self.assertIn("FastVoiceGgufPolicy.VOICE_MAX_TOKENS", service)
         self.assertIn("maxNewTokens", inference)
-        self.assertIn("FastVoiceGgufPolicy.warmCacheMaxBytes", inference)
+        self.assertIn("FastVoiceGgufPolicy.warmCacheMaxBytes",
+                      (SRC / "LocalGgufModelStore.kt").read_text())
+        self.assertIn("store.warmCacheBudget()", inference)
         self.assertIn("std::thread::hardware_concurrency()", cpp)
         self.assertIn("validPrompt", (SRC / "core/LocalGgufPolicy.kt").read_text())
 
