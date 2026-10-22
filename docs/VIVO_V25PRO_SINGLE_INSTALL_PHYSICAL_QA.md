@@ -47,3 +47,62 @@ como USER_REPORTED y nunca acreditan certificación.
 
 No fusionar la rama sobre main ni habilitar la función experimental
 en release hasta recibir evidencia física consentida y auditoría.
+
+
+## Campaña presencial tras PR #99 · GGUF y voz (sin certificación automática)
+
+**Modelo compatible y derechos:** el laboratorio de debug permite ahora
+`IMPORTAR GGUF PRIVADO · ARCHIVO LOCAL` sin abandonar la pantalla.
+Android abre su selector de documentos con `ACTION_OPEN_DOCUMENT` y preferencia
+de archivos locales. Se copia a almacenamiento privado y se registra SHA-256,
+sin permisos generales de almacenamiento ni acceso a Internet desde JARVIS.
+
+Para una prueba pequeña y reproducible, el repositorio fija un ejemplo de
+SmolLM2 135M Q4_K_M, bajo Apache-2.0, documentado en
+`tools/prepare_gguf_e2e_fixture.py`:
+`https://huggingface.co/ggml-org/SmolLM2-135M-GGUF`
+`SmolLM2-135M-Q4_K_M.gguf`.
+**No está integrado en la APK**: el propietario debe descargarlo por su
+cuenta, comprobar origen y condiciones y elegirlo voluntariamente mediante
+el selector. No sustituir por una extensión .gguf renombrada.
+El resultado positivo `TEXTO_NO_VACIO_NO_CERTIFICADO` prueba solamente texto
+generado/no centinela + latencia; precisión semántica requiere observación.
+
+### Orden en el Vivo V25 Pro (una instalación)
+1. Con batería suficiente y Android 14, abrir JARVIS debug → LABORATORIO
+   VIVO; `ACTUALIZAR`, anotar modelo, permisos, térmico y RAM.
+2. Importar GGUF desde **ARCHIVO LOCAL** y comprobar
+   `GGUF_IMPORTADO_SHA256`. Si ya existe, puede omitirse la importación.
+   El ensayo después de una importación limpia empieza en `NO_PROBADO`;
+   no hereda un antiguo `QWEN=FUNCIONA`.
+3. Desactivar temporalmente Wi-Fi y datos **manualmente** si se desea
+   un ensayo de aislamiento; pulsar `Qwen local: respuesta + latencia`.
+   Guardar únicamente código de resultado y milisegundos. No reenviar
+   texto generado, audio ni URI del modelo. Reactivar la conectividad
+   manualmente después.
+4. Iniciar la escucha extendida consentida, bloquear pantalla,
+   pronunciar `Jarvis, dime la hora`, observar si responde **sin desbloquear**.
+   Repetir con `Jarvis, para` y ver si la notificación desaparece.
+   Separar PCM, contadores HORA/STOP/preguntas y audibilidad USER_REPORTED.
+5. Para revocación: iniciar una sesión, entrar a Ajustes Android
+   → Permisos → Micrófono → JARVIS → Denegar. Volver a JARVIS,
+   inspeccionar `Revocacion_MIC_observada` (si es `NO_OBSERVADO`,
+   la causa sigue sin acreditarse), el indicador de uso del micrófono
+   en Android y si el servicio cesó. Restablecer el permiso manualmente.
+   La negación de una lectura no demuestra por sí sola que la app haya
+   liberado el recurso dentro de un plazo concreto.
+6. Para eco: iniciar una conversación de hasta seis turnos con GGUF ya
+   importado. Registrar `AEC_estado_sesion`; durante TTS hablar
+   `Jarvis, ¿cuál es la capital de Chile?` y comprobar si responde a
+   **una sola** interrupción. Repetir sin hablar: el TTS propio no debe
+   generar turnos espurios. Si AEC no está disponible, usar DETENER
+   visible: **no** declarar superada la interrupción acústica.
+7. Compartir el reporte sin identificadores. La app nunca declara
+   propietario autenticado, resistencia replay, 24/7 ni voz audible
+   certificada por una marca manual.
+
+### Alcance de CI
+`Android GGUF real generation E2E` se activa ahora por cambios en el
+laboratorio o en el clasificador; ejecuta el modelo verdadero en un
+**emulador**, no en el Vivo. El resultado nunca certifica Funtouch OS,
+revocación de micrófono ni supresión acústica del eco.
