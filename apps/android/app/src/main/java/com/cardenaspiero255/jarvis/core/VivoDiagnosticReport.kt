@@ -33,7 +33,9 @@ data class VivoDiagnosticReport(
     val qwenLatencyMs: Long?,
     val stopRun: String,
     val results: Map<VivoCheck, VivoReportedResult>,
-    val lockscreenQuestionCount: Int = 0
+    val lockscreenQuestionCount: Int = 0,
+    val aecRuntime: String = "NO_MEDIDO",
+    val micRevocationRuntime: String = "NO_OBSERVADO"
 ) {
     fun toShareText(): String {
         val safeModel = model.filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ' ' }
@@ -60,6 +62,18 @@ data class VivoDiagnosticReport(
                 if (results[VivoCheck.LOCKSCREEN] == VivoReportedResult.FUNCIONA)
                     "SOLO_USER_REPORTED" else "NO_VERIFICADO")
             appendLine("Comandos y preguntas reconocidos no certifican audio audible ni identidad del hablante.")
+            // An enabled platform AEC is not an acoustic echo-suppression test.
+            appendLine("AEC_estado_sesion=" + when (aecRuntime) {
+                "AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA" -> "AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA"
+                "AEC_NO_DISPONIBLE" -> "AEC_NO_DISPONIBLE"
+                else -> "NO_MEDIDO"
+            })
+            appendLine("Revocacion_MIC_observada=" + when (micRevocationRuntime) {
+                "PERMISO_DENEGADO_EN_LECTURA" -> "PERMISO_DENEGADO_EN_LECTURA"
+                "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION" ->
+                    "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION"
+                else -> "NO_OBSERVADO"
+            })
             appendLine("Qwen_ejecución=$qwenRun latencia_ms=${qwenLatencyMs ?: "NO_MEDIDA"}")
             appendLine("STOP_ejecución=" + stopRun.filter { it.isLetterOrDigit() || it == '_' }.take(48))
             for (check in VivoCheck.entries) {

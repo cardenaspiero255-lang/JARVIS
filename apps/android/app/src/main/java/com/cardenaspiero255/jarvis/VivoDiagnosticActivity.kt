@@ -3,6 +3,8 @@ package com.cardenaspiero255.jarvis
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -20,6 +22,7 @@ import android.widget.TextView
 import com.cardenaspiero255.jarvis.core.VivoCheck
 import com.cardenaspiero255.jarvis.core.VivoDiagnosticReport
 import com.cardenaspiero255.jarvis.core.VivoDiagnosticStopGate
+import com.cardenaspiero255.jarvis.core.VivoGgufProbePolicy
 import com.cardenaspiero255.jarvis.core.VivoReportedResult
 
 /**
@@ -39,6 +42,7 @@ class VivoDiagnosticActivity : Activity() {
     private lateinit var snapshot: TextView
     private lateinit var resultColumn: LinearLayout
     private var localInference: LocalGgufInference? = null
+    private var modelImportEngine: LocalGgufInference? = null
     private var inferenceTimeout: Runnable? = null
     private var qwenGeneration = 0
     private val refresh = object : Runnable {
@@ -111,19 +115,34 @@ class VivoDiagnosticActivity : Activity() {
                     startLocalSession(HandsFreePreviewService.ACTION_START_LONG_NATIVE)
                 }.show()
         })
-        root.addView(button("IMPORTAR GGUF PRIVADO · INSTRUCCIONES") {
-            AlertDialog.Builder(this)
-                .setTitle("Qwen offline necesita un modelo GGUF")
-                .setMessage("Esta APK NO contiene los 491 MB usados en CI. Para medir " +
-                    "una respuesta real: vuelve a la pantalla principal de JARVIS, " +
-                    "busca IA GENERATIVA LOCAL y pulsa IMPORTAR MODELO GGUF. " +
-                    "Selecciona un archivo compatible que tengas derecho a usar. " +
-                    "JARVIS verificará su SHA-256 y lo copiará al almacenamiento privado. " +
-                    "No se descarga automáticamente ningún modelo ni se usa la nube.")
-                .setNegativeButton("CERRAR", null)
-                .setPositiveButton("IR A JARVIS") { _, _ ->
-                    startActivity(Intent(this, MainActivity::class.java))
-                }.show()
+        root.addView(button("IMPORTAR GGUF PRIVADO · ARCHIVO LOCAL") {
+            if (HandsFreePreviewService.isRunning || localInference != null ||
+                modelImportEngine != null) {
+                status.text = "Primero DETENER el micrófono o terminar la operación GGUF."
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Importar modelo GGUF offline")
+                    .setMessage("Esta APK NO contiene los 491 MB usados en CI. " +
+                        "Selecciona un GGUF local compatible y con licencia adecuada. " +
+                        "Se copia a almacenamiento privado en segundo plano y registra " +
+                        "SHA-256. Reemplazará el GGUF privado anterior, si existe. " +
+                        "No se descarga automáticamente ni se usa la nube.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("ELEGIR ARCHIVO") { _, _ ->
+                        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        try {
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(picker, GGUF_LAB_PICKER_REQUEST)
+                        } catch (_: ActivityNotFoundException) {
+                            status.text = "Android no tiene selector de archivos local."
+                        }
+                    }.show()
+            }
         })
         root.addView(button("5 · Qwen local: respuesta + latencia (sin nube)") {
             testLocalQwenByTap()
@@ -306,9 +325,52 @@ class VivoDiagnosticActivity : Activity() {
         ui.postDelayed(task, 250L)
     }
 
+    @Deprecated("Android system document picker; no persistent URI grant needed")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != GGUF_LAB_PICKER_REQUEST) return
+        val selected = if (resultCode == RESULT_OK &&
+            data?.data?.scheme == ContentResolver.SCHEME_CONTENT) data.data else null
+        if (selected == null) {
+            status.text = "GGUF_NO_SELECCIONADO: sin cambios al modelo anterior."
+            return
+        }
+        if (isFinishing || isDestroyed || HandsFreePreviewService.isRunning ||
+            localInference != null || modelImportEngine != null) {
+            status.text = "GGUF_IMPORTACION_NO_AUTORIZADA: cierra primero la sesión activa."
+            return
+        }
+        val engine = LocalGgufInference(LocalGgufModelStore(this))
+        modelImportEngine = engine
+        status.text = "GGUF_IMPORTANDO: copiando y verificando SHA-256, espera el resultado."
+        val accepted = engine.importModel(selected) { sha ->
+            if (modelImportEngine !== engine) return@importModel
+            modelImportEngine = null
+            engine.close()
+            if (sha == null) {
+                status.text = "GGUF_IMPORTACION_ERROR: archivo incompatible o sin espacio."
+            } else {
+                // A model change invalidates any older manual claims or latency.
+                prefs.edit().putString("qwen", "NO_PROBADO").remove("qwen_ms")
+                    .putString(VivoCheck.QWEN.name, VivoReportedResult.NO_PROBADO.name)
+                    .putString(VivoCheck.BARGE_IN.name, VivoReportedResult.NO_PROBADO.name)
+                    .commit()
+                status.text = "GGUF_IMPORTADO_SHA256: modelo privado copiado. " +
+                    "Pulsa la prueba Qwen local para medir generación real."
+                redrawReportedResults()
+                snapshot.text = collectReport().toShareText()
+            }
+        }
+        if (!accepted) {
+            modelImportEngine = null
+            engine.close()
+            status.text = "GGUF_IMPORTACION_OCUPADA: intenta cuando finalice la operación."
+        }
+    }
+
     private fun testLocalQwenByTap() {
-        if (localInference != null) {
-            status.text = "Qwen ya está procesando. DETENER cancela la prueba."
+        if (localInference != null || modelImportEngine != null) {
+            status.text = "GGUF_OCUPADO: termina importación o inferencia antes de probar."
             return
         }
         if (!LocalGgufModelStore(this).hasModel()) {
@@ -330,11 +392,11 @@ class VivoDiagnosticActivity : Activity() {
             val elapsed = SystemClock.elapsedRealtime() - began
             inferenceTimeout?.let(ui::removeCallbacks)
             inferenceTimeout = null
-            val errors = listOf("Modelo GGUF", "Motor nativo",
-                "La inferencia local falló", "El motor nativo", "No se generó")
-            val succeeded = answer.isNotBlank() && errors.none { answer.startsWith(it) }
-            prefs.edit().putString("qwen", if (succeeded) "TEXTO_NO_VACIO_NO_CERTIFICADO"
-                else "ERROR_INFERENCIA")
+            val classified = VivoGgufProbePolicy.classify(
+                modelHint = LocalGgufModelStore(this).hasModel(),
+                response = answer, elapsedMs = elapsed)
+            val succeeded = classified == "TEXTO_NO_VACIO_NO_CERTIFICADO"
+            prefs.edit().putString("qwen", classified)
                 .putLong("qwen_ms", elapsed).apply()
             status.text = if (succeeded)
                 "QWEN_LOCAL_TEXT: respuesta no vacía en ${elapsed} ms. " +
@@ -427,6 +489,9 @@ class VivoDiagnosticActivity : Activity() {
             lockscreenTimeCommandCount = audio.getInt("lockscreen_time_commands", 0),
             lockscreenStopCommandCount = audio.getInt("lockscreen_stop_commands", 0),
             lockscreenQuestionCount = audio.getInt("lockscreen_question_commands", 0),
+            aecRuntime = audio.getString("aec_runtime_status", "NO_MEDIDO") ?: "NO_MEDIDO",
+            micRevocationRuntime =
+                audio.getString("mic_revocation_status", "NO_OBSERVADO") ?: "NO_OBSERVADO",
             qwenRun = prefs.getString("qwen", "NO_PROBADO") ?: "NO_PROBADO",
             qwenLatencyMs = if (prefs.contains("qwen_ms")) prefs.getLong("qwen_ms", 0L)
                 else null,
@@ -482,6 +547,12 @@ class VivoDiagnosticActivity : Activity() {
         localInference?.cancelActive()
         localInference?.close()
         localInference = null
+        modelImportEngine?.close()
+        modelImportEngine = null
         super.onDestroy()
+    }
+
+    private companion object {
+        const val GGUF_LAB_PICKER_REQUEST = 8223
     }
 }

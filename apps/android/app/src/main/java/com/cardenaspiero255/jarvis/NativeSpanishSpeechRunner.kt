@@ -235,6 +235,10 @@ class NativeSpanishSpeechRunner(
                 onStatus("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC: origen de voz " +
                     "no disponible; Vosk continúa sin interrupción automática de TTS.")
             }
+            if (continuous && aecReady) {
+                onStatus("ASR_NATIVE_AEC_CONFIGURED: AEC habilitado por Android; " +
+                    "eficacia acústica NO_CERTIFICADA.")
+            }
             if (continuous && !aecReady) {
                 onStatus("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE: usa DETENER en aviso.")
             }

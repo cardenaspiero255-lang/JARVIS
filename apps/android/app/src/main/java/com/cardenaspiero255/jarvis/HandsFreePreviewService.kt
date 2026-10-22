@@ -215,6 +215,7 @@ class HandsFreePreviewService : Service() {
                 .remove("lockscreen_off_reports").remove("lockscreen_result")
                 .remove("lockscreen_time_commands").remove("lockscreen_stop_commands")
                 .remove("lockscreen_question_commands")
+                .remove("aec_runtime_status").remove("mic_revocation_status")
                 .putBoolean("lockscreen_last_extended", true).commit()
         }
         diagnosticMode = diagnostic
@@ -333,7 +334,21 @@ class HandsFreePreviewService : Service() {
             applicationContext,
             onStatus = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested) showStatus(message)
+                    if (isRunning && !closed && nativeModeRequested) {
+                        if (extendedListening) {
+                            val aec = when {
+                                message.startsWith("ASR_NATIVE_AEC_CONFIGURED") ->
+                                    "AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA"
+                                message.startsWith("ASR_NATIVE_BARGEIN_AEC_UNAVAILABLE") ||
+                                    message.startsWith("ASR_NATIVE_AEC_CAPTURE_FALLBACK_MIC") ->
+                                    "AEC_NO_DISPONIBLE"
+                                else -> null
+                            }
+                            if (aec != null)
+                                diagnostics.edit().putString("aec_runtime_status", aec).apply()
+                        }
+                        showStatus(message)
+                    }
                 }
             },
             onAudioProgress = { sampleCount, elapsed ->
@@ -440,8 +455,20 @@ class HandsFreePreviewService : Service() {
             },
             onFailure = { message ->
                 main.post {
-                    if (isRunning && !closed && nativeModeRequested && !consumed)
+                    if (isRunning && !closed && nativeModeRequested && !consumed) {
+                        if (extendedListening) {
+                            val code = when {
+                                message.startsWith("ASR_NATIVE_MIC_PERMISSION_DENIED_AT_READ") ->
+                                    "PERMISO_DENEGADO_EN_LECTURA"
+                                message.startsWith("ASR_NATIVE_MIC_PERMISSION") ->
+                                    "PERMISO_DENEGADO_SIN_PRUEBA_DE_REVOCACION"
+                                else -> null
+                            }
+                            if (code != null)
+                                diagnostics.edit().putString("mic_revocation_status", code).commit()
+                        }
                         finish(message)
+                    }
                 }
             },
             conversationMode = conversationMode,
