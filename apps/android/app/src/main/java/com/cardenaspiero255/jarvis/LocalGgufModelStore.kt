@@ -3,6 +3,7 @@ package com.cardenaspiero255.jarvis
 import android.content.Context
 import android.net.Uri
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
+import com.cardenaspiero255.jarvis.core.VivoGgufEvidenceResetPlan
 import java.io.File
 import java.security.MessageDigest
 
@@ -61,6 +62,12 @@ class LocalGgufModelStore(private val context: Context) {
             require(LocalGgufPolicy.validLength(total) &&
                 LocalGgufPolicy.validHeader(header)) { "No es un GGUF compatible." }
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            // Commit independent QA invalidation BEFORE replacing the model.
+            // Closing the Activity only suppresses its UI callback, not this
+            // state update. It also applies when imported from MainActivity.
+            check(VivoGgufEvidenceResetPlan.invalidate(context)) {
+                "No se pudieron invalidar resultados GGUF anteriores."
+            }
             check(tmp.renameTo(file)) { "No se pudo reemplazar el modelo." }
             check(prefs.edit().putString("sha256", sha).putLong("bytes", total).commit()) {
                 deleteModel()
@@ -114,6 +121,7 @@ class LocalGgufModelStore(private val context: Context) {
     }
 
     @Synchronized fun deleteModel(): Boolean = synchronized(processModelLock) {
+        if (!VivoGgufEvidenceResetPlan.invalidate(context)) return@synchronized false
         val removed = !file.exists() || file.delete()
         prefs.edit().clear().commit()
         removed

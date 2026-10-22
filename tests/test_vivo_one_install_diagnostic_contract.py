@@ -124,7 +124,7 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn("ContentResolver.SCHEME_CONTENT", screen)
         self.assertIn("importModel(selected)", screen)
         self.assertIn("VivoGgufProbePolicy.classify", screen)
-        self.assertIn('putString(VivoCheck.QWEN.name, VivoReportedResult.NO_PROBADO.name)', screen)
+        self.assertIn("VivoGgufEvidenceResetPlan.invalidate", (SRC / "LocalGgufModelStore.kt").read_text())
         self.assertIn("OfflineVoiceAnswerPolicy.forTts", classifier)
         self.assertNotIn("android.permission.INTERNET", screen)
         self.assertNotIn("startActivityForResult", screen.split("override fun onCreate")[0])

@@ -353,11 +353,8 @@ class VivoDiagnosticActivity : Activity() {
             if (sha == null) {
                 ggufOutcome.text = "GGUF_IMPORTACION_ERROR: archivo incompatible o sin espacio."
             } else {
-                // A model change invalidates any older manual claims or latency.
-                prefs.edit().putString("qwen", "NO_PROBADO").remove("qwen_ms")
-                    .putString(VivoCheck.QWEN.name, VivoReportedResult.NO_PROBADO.name)
-                    .putString(VivoCheck.BARGE_IN.name, VivoReportedResult.NO_PROBADO.name)
-                    .commit()
+                // Evidence was invalidated durably by the model store, even
+                // if this Activity was closed before import completed.
                 ggufOutcome.text = "GGUF_IMPORTADO_SHA256: modelo privado copiado. " +
                     "Pulsa la prueba Qwen local para medir generación real."
                 redrawReportedResults()

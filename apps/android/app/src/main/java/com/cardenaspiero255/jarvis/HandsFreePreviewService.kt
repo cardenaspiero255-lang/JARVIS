@@ -44,6 +44,7 @@ import com.cardenaspiero255.jarvis.core.PreviewTimeGate
 import com.cardenaspiero255.jarvis.core.PreviewWake
 import com.cardenaspiero255.jarvis.core.LockScreenAudioEvidence
 import com.cardenaspiero255.jarvis.core.LockScreenAudioState
+import com.cardenaspiero255.jarvis.core.NativeWakeDeliveryGate
 import com.cardenaspiero255.jarvis.core.SpeakerEvidence
 import com.cardenaspiero255.jarvis.core.LocalGgufPolicy
 import com.cardenaspiero255.jarvis.core.OfflineVoiceAnswerPolicy
@@ -405,9 +406,11 @@ class HandsFreePreviewService : Service() {
                     (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == false
                 } catch (_: RuntimeException) { false } else false
                 main.post {
-                    if (!isRunning || closed || !nativeModeRequested ||
-                        (!extendedListening && consumed) ||
-                        !timeGate.isActiveAt(SystemClock.elapsedRealtime())) return@post
+                    if (!NativeWakeDeliveryGate.allow(
+                            isRunning, closed, endedNormally, nativeModeRequested,
+                            timeGate.isActiveAt(SystemClock.elapsedRealtime()),
+                            consumed, extendedListening
+                        )) return@post
                     if (screenOffAtRecognition) {
                         val key = when (wake) {
                             PreviewWake.LOCAL_TIME -> "lockscreen_time_commands"
@@ -806,6 +809,11 @@ class HandsFreePreviewService : Service() {
     private fun finish(reason: String) {
         if (endedNormally || closed) return
         endedNormally = true
+        // Invalidate queued voice events and stop native capture immediately;
+        // stopSelf()/onDestroy() is not synchronous on Android.
+        timeGate.stop()
+        nativeRunner?.stop()
+        try { tts?.stop() } catch (_: RuntimeException) {}
         ++conversationGeneration
         ++ttsPlaybackTicket
         conversationTimeout?.let { main.removeCallbacks(it) }

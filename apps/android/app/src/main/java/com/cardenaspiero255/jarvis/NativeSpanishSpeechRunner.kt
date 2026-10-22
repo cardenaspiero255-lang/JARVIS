@@ -18,6 +18,7 @@ import com.cardenaspiero255.jarvis.core.BargeInQuestionPolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioReadFailurePolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioExitPolicy
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -134,6 +135,8 @@ class NativeSpanishSpeechRunner(
         var result: PreviewWake? = null
         var question: String? = null
         var failure: String? = null
+        // Separate fatal capture errors from ordinary no-wake/expiry fallback.
+        var readFailure: String? = null
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
         val screenOffFrames = LockScreenCaptureAccumulator()
@@ -475,7 +478,7 @@ class NativeSpanishSpeechRunner(
                             context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
                                 PackageManager.PERMISSION_GRANTED
                         } catch (_: RuntimeException) { true }
-                        failure = NativeAudioReadFailurePolicy.classify(received, granted)
+                        readFailure = NativeAudioReadFailurePolicy.classify(received, granted)
                         break
                     }
                 }
@@ -500,7 +503,8 @@ class NativeSpanishSpeechRunner(
                     lastStatus = now
                 }
             }
-            if (conversationMode && result == null && question == null && active.get()) {
+            if (NativeAudioExitPolicy.mayDeliverRecognizedSpeech(readFailure) &&
+                conversationMode && result == null && question == null && active.get()) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
                 if (finalText.isNotBlank()) {
                     val event = questionGate.observe(finalText,
@@ -512,7 +516,8 @@ class NativeSpanishSpeechRunner(
                     }
                 }
             }
-            if (!conversationMode && result == null && active.get() && !continuous) {
+            if (NativeAudioExitPolicy.mayDeliverRecognizedSpeech(readFailure) &&
+                !conversationMode && result == null && active.get() && !continuous) {
                 val finalText = JSONObject(recognizer.finalResult).optString("text", "")
                 // Flush last segment without granting extra privileges.
                 // Pending standalone wake can still be acknowledged.
@@ -530,10 +535,12 @@ class NativeSpanishSpeechRunner(
                 else if (finalDecision == WakeTurnDecision.BLOCKED_IDENTITY)
                     failure = "ASR_NATIVE_IDENTITY_BLOCKED: voz no confiable."
             }
-            if (result == null && active.get() && continuous) {
+            if (readFailure == null && failure == null &&
+                result == null && active.get() && continuous) {
                 failure = "ASR_NATIVE_SESSION_WINDOW_ENDED: fin de la sesión autorizada."
             }
-            if (result == null && question == null && active.get() && !continuous) {
+            if (readFailure == null && failure == null &&
+                result == null && question == null && active.get() && !continuous) {
                 val signal = levels.reading()
                 failure = if (signal.samples == 0L) {
                     "ASR_NATIVE_NO_MIC_SAMPLES: Android no entregó audio al motor Vosk."
@@ -568,11 +575,12 @@ class NativeSpanishSpeechRunner(
             try { wakeBridge?.close() } catch (_: Exception) {}
             try { model?.close() } catch (_: RuntimeException) {}
             worker = null
-            // Only an expressly authorized one-turn conversation may receive
-            // a transient question; microphone and decoder are already closed.
-            if (deliverQuestion && question != null) onQuestion(question)
+            // Fatal AudioRecord errors dominate ANY late decoder result or
+            // ordinary timeout. The worker has already released its mic.
+            val finalFailure = NativeAudioExitPolicy.resolveFailure(readFailure, failure)
+            if (finalFailure != null) onFailure(finalFailure)
+            else if (deliverQuestion && question != null) onQuestion(question)
             else if (result != null) onWake(result)
-            else if (failure != null) onFailure(failure)
         }
     }
 }
