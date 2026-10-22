@@ -115,6 +115,31 @@ class VivoOneInstallDiagnosticContract(unittest.TestCase):
         self.assertIn("BargeInQuestionPolicy", runner)
         self.assertNotIn("SpeakerEvidence.MATCHED", activity)
 
+    def test_gguf_lab_supports_explicit_private_import_without_fabricated_success(self):
+        screen = (SRC / "VivoDiagnosticActivity.kt").read_text()
+        classifier = (SRC / "core/VivoGgufProbePolicy.kt").read_text()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT", screen)
+        self.assertIn("Intent.CATEGORY_OPENABLE", screen)
+        self.assertIn("Intent.FLAG_GRANT_READ_URI_PERMISSION", screen)
+        self.assertIn("ContentResolver.SCHEME_CONTENT", screen)
+        self.assertIn("importModel(selected)", screen)
+        self.assertIn("VivoGgufProbePolicy.classify", screen)
+        self.assertIn('putString(VivoCheck.QWEN.name, VivoReportedResult.NO_PROBADO.name)', screen)
+        self.assertIn("OfflineVoiceAnswerPolicy.forTts", classifier)
+        self.assertNotIn("android.permission.INTERNET", screen)
+        self.assertNotIn("startActivityForResult", screen.split("override fun onCreate")[0])
+
+    def test_aec_and_revocation_physical_signals_are_distinct(self):
+        service = (SRC / "HandsFreePreviewService.kt").read_text()
+        runner = (SRC / "NativeSpanishSpeechRunner.kt").read_text()
+        report = (SRC / "core/VivoDiagnosticReport.kt").read_text()
+        self.assertIn("AEC_estado_sesion=", report)
+        self.assertIn("Revocacion_MIC_observada=", report)
+        self.assertIn('aec_runtime_status', service)
+        self.assertIn('mic_revocation_status', service)
+        self.assertIn("ASR_NATIVE_AEC_CONFIGURED", runner)
+        self.assertIn("NO_CERTIFICADO", report)
+
     def test_debug_apk_is_uploaded_from_ci(self):
         workflow = (ROOT / ".github/workflows/android-shell.yml").read_text()
         self.assertIn("jarvis-omega-debug-apk", workflow)

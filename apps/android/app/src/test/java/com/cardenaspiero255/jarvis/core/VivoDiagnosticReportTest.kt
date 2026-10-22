@@ -126,6 +126,27 @@ class VivoDiagnosticReportTest {
         assertTrue(out.contains("NO_CERTIFICADO"))
     }
 
+    @Test fun aecAndRevocationAreRuntimeSignalsNotAcousticCertification() {
+        val report = VivoDiagnosticReport(
+            model = "V2158", sdk = 34,
+            batteryPercent = 80, thermalStatus = 0,
+            availableRamMib = 4000L, pssKib = 90000,
+            microphoneGranted = false, notificationsGranted = true,
+            ggufImported = false, screenOffSamples = 67584L,
+            screenOffObserved = true, lockscreenLastExtended = true,
+            lockscreenTimeCommandCount = 0, lockscreenStopCommandCount = 0,
+            qwenRun = "GGUF_NO_IMPORTADO", qwenLatencyMs = null,
+            stopRun = "STOP_SERVICIO_FINALIZADO",
+            results = mapOf(VivoCheck.ECHO_REJECTION to VivoReportedResult.FUNCIONA),
+            aecRuntime = "AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA",
+            micRevocationRuntime = "PERMISO_DENEGADO_EN_LECTURA"
+        ).toShareText()
+        assertTrue(report.contains("AEC_estado_sesion=AEC_ACTIVADO_SIN_PRUEBA_ACUSTICA"))
+        assertTrue(report.contains("Revocacion_MIC_observada=PERMISO_DENEGADO_EN_LECTURA"))
+        assertTrue(report.contains("NO_CERTIFICADO"))
+        assertFalse(report.contains("AEC_CERTIFICADO"))
+    }
+
     @Test fun reportSeparatesManualObservationFromSystemMeasurement() {
         val out = report(mapOf(
             VivoCheck.MICROPHONE to VivoReportedResult.FUNCIONA,
