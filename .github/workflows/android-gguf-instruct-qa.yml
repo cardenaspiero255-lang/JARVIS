@@ -1,0 +1,74 @@
+name: Android GGUF Instruct Spanish QA
+
+on:
+  pull_request:
+    paths:
+      - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/LocalGgufInference.kt"
+      - "apps/android/app/src/main/java/com/cardenaspiero255/jarvis/core/LocalGguf*"
+      - "apps/android/app/src/ggufInstructE2e/**"
+      - "apps/android/app/build.gradle.kts"
+      - "apps/android/run_android14_instruct_qa.sh"
+      - "tools/prepare_gguf_instruct_e2e_fixture.py"
+      - ".github/workflows/android-gguf-instruct-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instruct-spanish-proxy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout without retained credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+        with:
+          gradle-version: "8.13"
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Install pinned SDK and NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Build-only tokenizer
+        run: python3 -m pip install --disable-pip-version-check --no-deps sentencepiece==0.2.1
+      - name: Obtain authentic Instruct weights with pinned SHA-256
+        run: |
+          python3 tools/prepare_gguf_instruct_e2e_fixture.py \
+            --dest apps/android/app/build/generated/ggufInstructE2eAssets/instruct-smollm.gguf
+      - name: Enable emulator virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Four authentic Spanish model answers on Android14
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          ram-size: 3072M
+          working-directory: apps/android
+          script: bash run_android14_instruct_qa.sh
+      - name: Preserve only structured quality proxy and test reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: jarvis-instruct-spanish-proxy-evidence
+          path: |
+            apps/android/app/build/diagnostics/instruct-quality/
+            apps/android/app/build/outputs/androidTest-results/
+          retention-days: 7
+          if-no-files-found: warn
