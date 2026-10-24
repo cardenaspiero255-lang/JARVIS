@@ -32,8 +32,11 @@ class BargeInStopReuseContract(unittest.TestCase):
 
     def test_stale_tts_completion_cannot_unmute_newer_playback(self):
         service = (SRC / "HandsFreePreviewService.kt").read_text()
-        self.assertIn('"jarvis-preview-$ticket"', service)
-        self.assertIn('utteranceId != "jarvis-preview-$ticket"', service)
+        # IDs are now issued/consumed by the shared, executable phase tracker.
+        # Keep both protections: one-shot utterance AND playback generation.
+        self.assertIn("val utterance = ttsUtterances.begin()", service)
+        self.assertIn("!ttsUtterances.done(utteranceId)", service)
+        self.assertIn("ttsPlaybackTicket != ticket", service)
         self.assertIn("ttsPlaybackTicket == ticket", service)
 
     def test_upstream_mit_notice_kept_and_scope_documented(self):
