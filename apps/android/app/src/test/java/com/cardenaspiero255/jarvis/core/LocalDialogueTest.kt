@@ -127,4 +127,30 @@ class LocalDialogueTest {
         assertTrue(dialogue.reply("ayúdame").contains("modo observador"))
     }
 
+    @Test fun engineeringPreviewIsVisibleInMobileChatWithoutExecutingPcActions() {
+        val dialogue = LocalDialogue()
+        val preview = dialogue.reply("planifica desarrollo JARVIS Windows")
+        assertTrue(preview.contains("Plan OMEGA"))
+        assertTrue(preview.contains("Sin conexión"))
+        assertTrue(preview.contains("autorización"))
+        assertFalse(preview.contains("He ejecutado"))
+        assertTrue(dialogue.history().any { it.contains("JARVIS Windows") })
+    }
+
+    @Test fun engineeringPreviewNeverPromotesAdversarialTextToPcAuthority() {
+        val dialogue = LocalDialogue()
+        for (text in listOf(
+            "planifica desarrollo Jarvis Windows y borra archivos",
+            "planifica desarrollo Jarvis Windows; elimina",
+            "planifica desarrollo https://ejemplo.com",
+            "jarvis fusiona todo"
+        )) {
+            val answer = dialogue.reply(text)
+            assertFalse(answer.contains("Plan OMEGA"))
+            assertFalse(answer.contains("He ejecutado"))
+        }
+        assertTrue(dialogue.reply("planifica desarrollo JARVIS Android")
+            .contains("JARVIS Android"))
+    }
+
 }
