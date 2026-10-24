@@ -19,6 +19,7 @@ import com.cardenaspiero255.jarvis.core.NativeAudioSourceChoice
 import com.cardenaspiero255.jarvis.core.NativeAudioSourceFailoverPolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioReadFailurePolicy
 import com.cardenaspiero255.jarvis.core.NativeAudioExitPolicy
+import com.cardenaspiero255.jarvis.core.NativeAudioZeroReadGuard
 import com.cardenaspiero255.jarvis.core.HandsFreePreviewPolicy
 import com.cardenaspiero255.jarvis.core.NativeDecoderRetryPolicy
 import com.cardenaspiero255.jarvis.core.OfflineCommandGrammarPolicy
@@ -140,6 +141,7 @@ class NativeSpanishSpeechRunner(
         val levels = AudioInputMeter()
         val earlyWake = PartialWakeSignalPolicy()
         val screenOffFrames = LockScreenCaptureAccumulator()
+        val zeroReadGuard = NativeAudioZeroReadGuard()
         val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         var lastPartialProbe = 0L
         var hadUnmatchedSpeech = false
@@ -261,6 +263,7 @@ class NativeSpanishSpeechRunner(
                 )
                 when {
                     received > 0 -> {
+                        zeroReadGuard.observe(received) // real PCM resets stall budget
                         // AudioRecord bytes genuinely received, not a timer heartbeat.
                         // Emit only counts + elapsedRealtime; never PCM or transcripts.
                         audioSinceReport += received.toLong()
@@ -467,6 +470,24 @@ class NativeSpanishSpeechRunner(
                                     "ASR_NATIVE_WAKE_CANDIDATE: «Jarvis» detectado " +
                                         "parcialmente; esperando frase completa.")
                             }
+                        }
+                    }
+                    received == 0 -> {
+                        // Some OEMs can repeatedly return 0 from READ_BLOCKING.
+                        // Back off instead of hot-spinning for the whole session;
+                        // genuine silent PCM returns a positive sample count.
+                        if (!active.get() || Thread.currentThread().isInterrupted) break
+                        if (zeroReadGuard.observe(0)) {
+                            readFailure = "ASR_NATIVE_ZERO_AUDIO_READ_STALL: " +
+                                "Android no entregó muestras tras varios intentos; " +
+                                "micrófono detenido sin interpretar silencio como voz."
+                            break
+                        }
+                        try {
+                            Thread.sleep(NativeAudioZeroReadGuard.BACKOFF_MS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
                         }
                     }
                     received < 0 -> {
