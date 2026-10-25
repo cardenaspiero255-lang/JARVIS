@@ -66,4 +66,36 @@ class OfflineVoiceQuestionGateTest {
         assertTrue(OfflineVoiceAnswerPolicy.forTts("palabra ".repeat(180))!!.length <= 420)
         assertFalse(OfflineVoiceAnswerPolicy.mayExecuteDeviceActions)
     }
+
+    @Test fun nativeFailuresCannotBecomeSpokenAnswers() {
+        val failures = listOf(
+            "Solicitud local inválida.",
+            "No se pudo iniciar la cancelación.",
+            "Cancelación no disponible.",
+            "No se pudo cargar el modelo GGUF.",
+            "Vocabulario GGUF no disponible.",
+            "La pregunta supera el contexto local máximo.",
+            "Error de tokenización del modelo.",
+            "Memoria insuficiente para el contexto GGUF.",
+            "No se pudo iniciar el generador local.",
+            "Inferencia local cancelada o fallida.",
+            "Fallo al decodificar una palabra.",
+            "La generación local se interrumpió.",
+            "Parámetros faltantes.",
+            "No se pudo preparar el mensaje."
+        )
+        for (failure in failures) {
+            assertNull(failure, OfflineVoiceAnswerPolicy.forTts(failure))
+            assertNull(failure, OfflineVoiceAnswerPolicy.forTts(
+                " \n" + failure.uppercase(java.util.Locale.ROOT) + " \t"))
+            // Error classification must happen before the 420-character limit.
+            assertNull(failure, OfflineVoiceAnswerPolicy.forTts(failure + " detalle".repeat(80)))
+        }
+    }
+
+    @Test fun explainingAnErrorIsNotItselfAnErrorSentinel() {
+        val answer = "Un error de tokenización indica un problema al preparar el texto."
+        assertEquals(answer, OfflineVoiceAnswerPolicy.forTts(answer))
+        assertFalse(OfflineVoiceAnswerPolicy.mayExecuteDeviceActions)
+    }
 }

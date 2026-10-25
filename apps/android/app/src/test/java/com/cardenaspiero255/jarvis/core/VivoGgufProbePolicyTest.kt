@@ -18,6 +18,12 @@ class VivoGgufProbePolicyTest {
             "La inferencia local falló. No se ejecutó ninguna acción.",
             "El motor nativo no pudo cargar el modelo.",
             "No se generó una respuesta local.",
+            "No se pudo cargar el modelo GGUF.",
+            "Memoria insuficiente para el contexto GGUF.",
+            "La pregunta supera el contexto local máximo.",
+            "Error de tokenización del modelo.",
+            "Inferencia local cancelada o fallida.",
+            "La generación local se interrumpió.",
             "     "
         )) {
             assertEquals(reply, "ERROR_INFERENCIA",

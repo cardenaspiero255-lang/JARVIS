@@ -98,6 +98,32 @@ class OfflineVoiceQuestionGate(private val followupMillis: Long = 8_000L) {
 object OfflineVoiceAnswerPolicy {
     const val mayExecuteDeviceActions = false
 
+    // JNI currently returns errors as plain strings, just like generated text.
+    // Keep every native/adapter sentinel out of TTS and generation receipts.
+    // The source contract checks coverage when those producers change. This
+    // conservative bridge is not a typed JNI result or semantic validation.
+    private val failurePrefixes = listOf(
+        "Modelo GGUF no instalado",
+        "Motor nativo de inferencia no disponible",
+        "La inferencia local falló",
+        "El motor nativo no pudo",
+        "No se generó una respuesta local",
+        "Solicitud local inválida",
+        "No se pudo iniciar la cancelación",
+        "Cancelación no disponible",
+        "No se pudo cargar el modelo GGUF",
+        "Vocabulario GGUF no disponible",
+        "La pregunta supera el contexto local máximo",
+        "Error de tokenización del modelo",
+        "Memoria insuficiente para el contexto GGUF",
+        "No se pudo iniciar el generador local",
+        "Inferencia local cancelada o fallida",
+        "Fallo al decodificar una palabra",
+        "La generación local se interrumpió",
+        "Parámetros faltantes",
+        "No se pudo preparar el mensaje"
+    )
+
     fun forTts(response: String?): String? {
         val original = response?.trim() ?: return null
         if (original.isBlank() ||
@@ -106,11 +132,7 @@ object OfflineVoiceAnswerPolicy {
         ) return null
 
         val clean = original.replace(Regex("\\s+"), " ").trim()
-        if (clean.startsWith("Modelo GGUF no instalado", ignoreCase = true) ||
-            clean.startsWith("Motor nativo de inferencia no disponible", ignoreCase = true) ||
-            clean.startsWith("La inferencia local falló", ignoreCase = true) ||
-            clean.startsWith("El motor nativo no pudo", ignoreCase = true) ||
-            clean.startsWith("No se generó una respuesta local", ignoreCase = true)) return null
+        if (failurePrefixes.any { clean.startsWith(it, ignoreCase = true) }) return null
         if (clean.isBlank()) return null
         return if (clean.length <= 420) clean else clean.take(419).trimEnd() + "…"
     }

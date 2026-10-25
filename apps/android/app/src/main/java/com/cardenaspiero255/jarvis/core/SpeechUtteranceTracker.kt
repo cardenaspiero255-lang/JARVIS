@@ -47,6 +47,14 @@ class SpeechUtteranceTracker {
         return true
     }
 
+    /** A separate deadline bounds a started engine that never reports completion. */
+    @Synchronized
+    fun playbackTimedOut(id: String?): Boolean {
+        if (id == null || id != currentId || phase != Phase.STARTED) return false
+        cancel()
+        return true
+    }
+
     @Synchronized
     fun cancel() {
         currentId = null
