@@ -8,7 +8,15 @@ class TermuxResultTracker {
     private var activeToken: Int? = null
     private var requestedAt = 0L
     private var current = TermuxResultState.IDLE
-    private val uidPattern = Regex("^uid=[0-9]+(?:\\([^)]{1,64}\\))?(?:\\s|$)")
+    // Termux 'id' output: prove the WHOLE reply, never merely a UID prefix.
+    // An unexpected suffix, extra line or malformed group must fail closed.
+    private val uidPattern = Regex(
+        "^uid=[0-9]+(?:\\([A-Za-z0-9_.-]{1,64}\\))?" +
+            "(?: gid=[0-9]+(?:\\([A-Za-z0-9_.-]{1,64}\\))?)?" +
+            "(?: groups=[0-9]+(?:\\([A-Za-z0-9_.-]{1,64}\\))?" +
+            "(?:,[0-9]+(?:\\([A-Za-z0-9_.-]{1,64}\\))?)*)?" +
+            "(?: context=[A-Za-z0-9_:.,-]{1,128})?$"
+    )
 
     @Synchronized
     fun begin(nowElapsedMs: Long): Int {
@@ -38,7 +46,7 @@ class TermuxResultTracker {
         if (status(nowElapsedMs) != TermuxResultState.WAITING ||
             activeToken != token) return false
         val outputIsUidOnly = stdout.length <= 256 &&
-            uidPattern.containsMatchIn(stdout.trim())
+            uidPattern.matches(stdout.trim())
         current = if (exitCode == 0 && errCode == -1 && outputIsUidOnly)
             TermuxResultState.VERIFIED else TermuxResultState.FAILED
         activeToken = null
