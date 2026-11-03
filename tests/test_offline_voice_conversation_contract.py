@@ -28,6 +28,8 @@ class LocalVoiceBridgeContract(unittest.TestCase):
         gate = (SRC / "core/OfflineVoiceQuestionGate.kt").read_text()
         service = (SRC / "HandsFreePreviewService.kt").read_text()
         self.assertIn("LocalGgufPolicy.validPrompt", gate)
+        self.assertIn("LocalGgufPolicy.validReadOnlyQuestion(question)", gate)
+        self.assertIn("LocalGgufPolicy.validReadOnlyQuestion(question)", service)
         self.assertIn("mayExecuteDeviceActions = false", gate)
         self.assertIn('onQuestion = { question ->', service)
         self.assertIn('OfflineVoiceAnswerPolicy.forTts(response)', service)
