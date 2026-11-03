@@ -31,6 +31,40 @@ class CompanionResultPolicyTest {
         assertEquals(TermuxResultState.TIMED_OUT, state.status(70002L))
     }
 
+    @Test fun termuxRequiresEntireAuthenticatedIdOutputNotJustUidPrefix() {
+        val malformed = listOf(
+            "uid=1000(test) INJECTED_PAYLOAD",
+            "uid=1000(test) gid=1000(test) arbitrary",
+            "uid=1000(test) gid=oops",
+            "uid=1000(test) gid=1000(test)\nINJECTED",
+            "uid=1000(test) groups=1000(test),oops",
+            "uid=1000(test) context=u:r:untrusted_app:s0\nadmin"
+        )
+        for (stdout in malformed) {
+            val state = TermuxResultTracker()
+            val token = state.begin(1000L)
+            assertTrue(state.receive(token, 0, -1, stdout, 1001L))
+            assertEquals("Untrusted output must not be accepted: $stdout",
+                TermuxResultState.FAILED, state.status(1001L))
+            assertFalse(state.receive(token, 0, -1, stdout, 1002L))
+        }
+    }
+
+    @Test fun termuxPreservesLegitimateIdFormatsAfterValidatingWholeLine() {
+        val valid = listOf(
+            "uid=1000(test)",
+            "uid=1000(test) gid=1000(test)",
+            "uid=1000(test) gid=1000(test) groups=1000(test),4(adm)",
+            "uid=1000(test) gid=1000(test) groups=1000(test) context=u:r:untrusted_app:s0"
+        )
+        for (stdout in valid) {
+            val state = TermuxResultTracker()
+            val token = state.begin(2000L)
+            assertTrue(state.receive(token, 0, -1, stdout, 2001L))
+            assertEquals(TermuxResultState.VERIFIED, state.status(2001L))
+        }
+    }
+
     @Test fun lockOutcomeRequiresActualFreshDeviceLockObservation() {
         assertEquals(OwnDroidLockState.NOT_VERIFIED,
             OwnDroidLockEvidence.evaluate(sent = true, beforeLocked = false, afterLocked = false))
