@@ -789,7 +789,8 @@ class HandsFreePreviewService : Service() {
         nativeRunner?.stop()
         main.removeCallbacks(timeout)
         timeGate.stop()
-        if (!LocalGgufPolicy.validPrompt(question)) {
+        if (!LocalGgufPolicy.validPrompt(question) ||
+            !LocalGgufPolicy.validReadOnlyQuestion(question)) {
             finish("LOCAL_VOICE_QUERY_DENIED: transcripción no permitida.")
             return
         }

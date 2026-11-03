@@ -34,4 +34,19 @@ object LocalGgufPolicy {
         return !Regex("(^|[ ,])(?:ejecuta|borra|elimina|instala|autoriza|desactiva|abre ajustes)([ ,.]|$)")
             .containsMatchIn(normalized)
     }
+
+    /**
+     * Operational voice requests are not read-only model questions.
+     * This does not alter the generic typed prompt API or grant any device action.
+     */
+    fun validReadOnlyQuestion(prompt: String): Boolean {
+        if (!validPrompt(prompt)) return false
+        val normalized = java.text.Normalizer.normalize(
+            prompt.lowercase(java.util.Locale.ROOT),
+            java.text.Normalizer.Form.NFD
+        ).replace(Regex("""\p{M}+"""), "").trim()
+        val direct = Regex("""^(?:por\s+favor\s+)?(?:reinicia|reiniciar|restablece|restablecer)\b""")
+        val chained = Regex("""\b(?:y|luego|despues)\s+(?:por\s+favor\s+)?(?:reinicia|reiniciar|restablece|restablecer)\b""")
+        return !direct.containsMatchIn(normalized) && !chained.containsMatchIn(normalized)
+    }
 }

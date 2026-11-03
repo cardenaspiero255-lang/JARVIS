@@ -50,6 +50,34 @@ class OfflineVoiceQuestionGateTest {
         )
     }
 
+    @Test fun doesNotRouteOperationalRestartRequestsToReadOnlyGguf() {
+        val operational = listOf(
+            "Jarvis, reinicia Termux",
+            "Jarvis, restablece Android",
+            "Jarvis, por favor reinicia Termux",
+            "Jarvis dime algo y luego reinicia Termux"
+        )
+        for (phrase in operational) assertEquals(
+            "Operational speech must not become an LLM question: $phrase",
+            OfflineVoiceDecision.IGNORED,
+            OfflineVoiceQuestionGate().observe(phrase, 1_000L).decision
+        )
+        val explanatory = listOf(
+            "Jarvis, ¿qué significa reiniciar Android?",
+            "Jarvis, ¿cómo reiniciar Termux?",
+            "Jarvis, ¿qué es un procesador?"
+        )
+        for (phrase in explanatory) assertEquals(
+            "Read-only question unexpectedly blocked: $phrase",
+            OfflineVoiceDecision.QUESTION,
+            OfflineVoiceQuestionGate().observe(phrase, 1_000L).decision
+        )
+        assertEquals(
+            OfflineVoiceDecision.STOP,
+            OfflineVoiceQuestionGate().observe("Jarvis, detente", 2_000L).decision
+        )
+    }
+
     @Test fun rejectsOutOfBoundsOrNonFiniteTime() {
         val gate = OfflineVoiceQuestionGate()
         assertEquals(OfflineVoiceDecision.IGNORED, gate.observe("Jarvis", -1L).decision)
