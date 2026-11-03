@@ -57,7 +57,7 @@ class OfflineVoiceQuestionGate(private val followupMillis: Long = 8_000L) {
         val folded = normalized(question)
         if (folded.isBlank() || question.length > 240 ||
             folded.startsWith("no ") || folded.startsWith("nunca ") ||
-            !LocalGgufPolicy.validPrompt(question)) return ignored()
+            !LocalGgufPolicy.validReadOnlyQuestion(question)) return ignored()
 
         // Extra defense: requests to change the device are NOT even presented
         // to a generative model as if they were answerable device operations.
