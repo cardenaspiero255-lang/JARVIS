@@ -1,0 +1,7 @@
+# Desktop UI Automation (BSD-3-Clause); imported lazily, Windows only.
+pywinauto==0.6.9
+# Offline Spanish ASR (Apache-2.0) + audio capture (MIT); explicit one-shot microphone.
+vosk==0.3.45
+sounddevice==0.5.2
+# Local Windows system TTS via SAPI5 (MPL-2.0).
+pyttsx3==2.99
