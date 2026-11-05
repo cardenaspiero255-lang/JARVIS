@@ -58,7 +58,15 @@ class LocalDialogue {
         val routinePreview = if (normalized.startsWith("planifica ")) {
             routinePlanner.plan(sanitized.substringAfter(' ', ""))
         } else null
+        // Mobile-first: Windows-style review gates for an offline plan only.
+        // No PC connection, repo inspection, file modification or implicit approval.
+        val developerPreview = if (normalized.startsWith("planifica desarrollo ")) {
+            OmegaMobileDeveloperPlanner().plan(
+                normalized.removePrefix("planifica desarrollo ")
+            )
+        } else null
         val answer = when {
+            developerPreview != null -> developerPreview.summary
             routinePreview != null -> routinePreview.summary
             sanitized.isBlank() -> "Escribe una pregunta para conversar."
             normalized == "repitelo" || normalized == "repite" ->
